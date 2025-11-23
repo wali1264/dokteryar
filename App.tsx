@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
@@ -77,9 +76,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans flex flex-row-reverse">
+    <div className="h-screen bg-gray-50 font-sans flex flex-row-reverse overflow-hidden">
       <Sidebar />
-      <main className="flex-1 mr-64 transition-all duration-300">
+      <main className="flex-1 mr-64 h-full overflow-y-auto transition-all duration-300">
         {renderPage()}
       </main>
     </div>
