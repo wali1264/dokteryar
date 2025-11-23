@@ -195,8 +195,9 @@ export const Diagnosis: React.FC = () => {
       }
       setFinalDiagnosis(diagnosisResult.diagnosis || '');
       setStep(3);
-    } catch (error) {
-      alert("خطا در تشخیص.");
+    } catch (error: any) {
+      console.error(error);
+      alert(`خطا در ارتباط با دستیار هوشمند:\n${error.message || error.toString()}`);
     } finally {
       setLoading(false);
     }
@@ -212,7 +213,10 @@ export const Diagnosis: React.FC = () => {
           setSafetyResult(result);
           setShowSafetyModal(true);
           setModalPosition({ x: window.innerWidth / 2 - 200, y: window.innerHeight / 2 - 150 });
-      } catch (e) { alert("خطا."); } finally { setCheckingSafety(false); }
+      } catch (error: any) { 
+        console.error(error);
+        alert(`خطا در بررسی ایمنی: ${error.message}`); 
+      } finally { setCheckingSafety(false); }
   };
 
   const saveInlinePrescription = () => {

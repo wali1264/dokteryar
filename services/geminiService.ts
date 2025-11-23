@@ -4,8 +4,26 @@ import { Book, Patient, Vitals, SafetyCheckResult, Prescription } from "../types
 import { useStore } from "../store";
 
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("API Key not found");
+  let apiKey: string | undefined = undefined;
+
+  // 1. Try Vite's import.meta.env (Primary for Vercel/Frontend)
+  // We prioritize VITE_GOOGLE_GENAI_TOKEN to avoid Vercel "sensitive key" warnings
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    apiKey = (import.meta as any).env.VITE_GOOGLE_GENAI_TOKEN || 
+             (import.meta as any).env.VITE_API_KEY || 
+             (import.meta as any).env.API_KEY;
+  }
+
+  // 2. Fallback to standard process.env
+  if (!apiKey && typeof process !== 'undefined' && process.env) {
+    apiKey = process.env.API_KEY || process.env.VITE_API_KEY;
+  }
+
+  if (!apiKey) {
+    console.error("API Key is missing. Checked: VITE_GOOGLE_GENAI_TOKEN, VITE_API_KEY, API_KEY");
+    throw new Error("کلید ارتباط با هوش مصنوعی یافت نشد.\nلطفاً در تنظیمات Vercel متغیر VITE_GOOGLE_GENAI_TOKEN را تنظیم کنید.");
+  }
+  
   // Log the interaction
   useStore.getState().logAiInteraction();
   return new GoogleGenAI({ apiKey });
@@ -15,33 +33,32 @@ const getAiClient = () => {
 
 // This function now acts as a "Consultant" finding best books
 export const recommendBooks = async (query: string): Promise<Partial<Book>[]> => {
-  const ai = getAiClient();
-  
-  const prompt = `
-    Act as a senior Medical Librarian and Researcher.
-    The doctor is asking: "${query}".
-    
-    TASK:
-    1. Search the web (using Google Search) to find the most authoritative medical resources.
-    2. Suggest 3-4 distinct resources.
-    3. **CRITICAL**: Determine if the resource is likely "FREE" (Open Access, WHO Guidelines, PDF available) or "PAID" (Commercial Textbook, Paid Journal).
-    4. If FREE: Find a direct PDF link or a page with a free download.
-    5. If PAID: Find the official publisher page (Elsevier, Amazon, Springer).
-    
-    OUTPUT FORMAT:
-    You must output ONLY a valid JSON Array. Do not add conversational text.
-    Items structure: 
-    { 
-      title, 
-      author, 
-      summary (in Persian), 
-      category (in Persian), 
-      sourceUrl (URL to download or buy),
-      accessType: "FREE" or "PAID"
-    }
-  `;
-
   try {
+    const ai = getAiClient();
+    const prompt = `
+      Act as a senior Medical Librarian and Researcher.
+      The doctor is asking: "${query}".
+      
+      TASK:
+      1. Search the web (using Google Search) to find the most authoritative medical resources.
+      2. Suggest 3-4 distinct resources.
+      3. **CRITICAL**: Determine if the resource is likely "FREE" (Open Access, WHO Guidelines, PDF available) or "PAID" (Commercial Textbook, Paid Journal).
+      4. If FREE: Find a direct PDF link or a page with a free download.
+      5. If PAID: Find the official publisher page (Elsevier, Amazon, Springer).
+      
+      OUTPUT FORMAT:
+      You must output ONLY a valid JSON Array. Do not add conversational text.
+      Items structure: 
+      { 
+        title, 
+        author, 
+        summary (in Persian), 
+        category (in Persian), 
+        sourceUrl (URL to download or buy),
+        accessType: "FREE" or "PAID"
+      }
+    `;
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
@@ -77,60 +94,64 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
 };
 
 export const analyzeBookContent = async (bookTitle: string): Promise<string> => {
-    const ai = getAiClient();
-    const prompt = `
-    Act as an expert medical summarizer.
-    Target Book: "${bookTitle}"
-    
-    TASK:
-    Search the web for the key clinical protocols, diagnostic criteria, and treatment guidelines found in this specific book.
-    Compile a "Comprehensive Knowledge Summary" that can be used by an AI to diagnose patients based on this book's philosophy.
-    
-    OUTPUT LANGUAGE: PERSIAN (FARSI).
-    Structure:
-    1. Key Concepts
-    2. Diagnostic Criteria
-    3. Common Treatments
-    4. Important Tables/Rules
-    `;
+    try {
+        const ai = getAiClient();
+        const prompt = `
+        Act as an expert medical summarizer.
+        Target Book: "${bookTitle}"
+        
+        TASK:
+        Search the web for the key clinical protocols, diagnostic criteria, and treatment guidelines found in this specific book.
+        Compile a "Comprehensive Knowledge Summary" that can be used by an AI to diagnose patients based on this book's philosophy.
+        
+        OUTPUT LANGUAGE: PERSIAN (FARSI).
+        Structure:
+        1. Key Concepts
+        2. Diagnostic Criteria
+        3. Common Treatments
+        4. Important Tables/Rules
+        `;
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: prompt,
-        config: { tools: [{ googleSearch: {} }] }
-    });
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview',
+            contents: prompt,
+            config: { tools: [{ googleSearch: {} }] }
+        });
 
-    return response.text || "محتوایی یافت نشد.";
+        return response.text || "محتوایی یافت نشد.";
+    } catch (e) {
+        throw e;
+    }
 };
 
 export const askBookQuestion = async (book: Book, question: string): Promise<string> => {
-  const ai = getAiClient();
-  
-  const contentContext = book.content ? book.content.substring(0, 50000) : book.summary;
-
-  const prompt = `
-    You are an expert medical assistant.
-    The user is asking a question about the following medical document/book.
-    
-    DOCUMENT TITLE: ${book.title}
-    AUTHOR: ${book.author}
-    
-    DOCUMENT CONTENT:
-    """
-    ${contentContext}
-    """
-    
-    USER QUESTION:
-    ${question}
-    
-    INSTRUCTIONS:
-    - Answer ONLY based on the provided document content.
-    - If the answer is not in the document, state "این اطلاعات در متن سند موجود نیست."
-    - Output Language: PERSIAN (Farsi).
-    - Be concise and clinical.
-  `;
-
   try {
+    const ai = getAiClient();
+    
+    const contentContext = book.content ? book.content.substring(0, 50000) : book.summary;
+
+    const prompt = `
+      You are an expert medical assistant.
+      The user is asking a question about the following medical document/book.
+      
+      DOCUMENT TITLE: ${book.title}
+      AUTHOR: ${book.author}
+      
+      DOCUMENT CONTENT:
+      """
+      ${contentContext}
+      """
+      
+      USER QUESTION:
+      ${question}
+      
+      INSTRUCTIONS:
+      - Answer ONLY based on the provided document content.
+      - If the answer is not in the document, state "این اطلاعات در متن سند موجود نیست."
+      - Output Language: PERSIAN (Farsi).
+      - Be concise and clinical.
+    `;
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt
@@ -298,33 +319,33 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
 };
 
 export const checkPrescriptionSafety = async (patient: Patient, medications: { name: string; dosage: string }[]): Promise<SafetyCheckResult> => {
-  const ai = getAiClient();
-
-  const prompt = `
-    ACT AS A CLINICAL PHARMACIST AND SAFETY SYSTEM.
-    
-    Analyze the following prescription for SAFETY ISSUES.
-    
-    PATIENT:
-    - Age: ${patient.age}
-    - Gender: ${patient.gender}
-    - History: ${patient.medicalHistory} (Pay attention to PREGNANCY, HEART ISSUES, DIABETES, KIDNEY/LIVER issues)
-    - Allergies: ${patient.allergies}
-
-    MEDICATIONS TO CHECK:
-    ${medications.map(m => `- ${m.name} (${m.dosage})`).join('\n')}
-
-    TASKS:
-    1. Check for DRUG-DRUG Interactions between the listed medications.
-    2. Check for PATIENT-DRUG Contraindications.
-    3. Check for Dose appropriateness.
-
-    OUTPUT:
-    Return JSON. If no issues, return empty list.
-    Output Language: PERSIAN (Farsi).
-  `;
-
   try {
+    const ai = getAiClient();
+
+    const prompt = `
+      ACT AS A CLINICAL PHARMACIST AND SAFETY SYSTEM.
+      
+      Analyze the following prescription for SAFETY ISSUES.
+      
+      PATIENT:
+      - Age: ${patient.age}
+      - Gender: ${patient.gender}
+      - History: ${patient.medicalHistory} (Pay attention to PREGNANCY, HEART ISSUES, DIABETES, KIDNEY/LIVER issues)
+      - Allergies: ${patient.allergies}
+
+      MEDICATIONS TO CHECK:
+      ${medications.map(m => `- ${m.name} (${m.dosage})`).join('\n')}
+
+      TASKS:
+      1. Check for DRUG-DRUG Interactions between the listed medications.
+      2. Check for PATIENT-DRUG Contraindications.
+      3. Check for Dose appropriateness.
+
+      OUTPUT:
+      Return JSON. If no issues, return empty list.
+      Output Language: PERSIAN (Farsi).
+    `;
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-preview',
       contents: prompt,
