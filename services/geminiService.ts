@@ -4,9 +4,23 @@ import { Book, Patient, Vitals, SafetyCheckResult, Prescription } from "../types
 import { useStore } from "../store";
 
 const getAiClient = () => {
-  // --- HARDCODED API KEY (User Request) ---
-  // این کلید به درخواست کاربر مستقیماً در کد قرار گرفت تا مشکلات متغیرهای محیطی برطرف شود.
-  const apiKey = 'AIzaSyClpXrP1CNPc5ebgsdNk6U6mBFmim6qjm0';
+  // Hardcoded key for experimental/testing phase
+  let apiKey: string | undefined = "AIzaSyDuGPEhX2RjtA_ronphbMnoCe2pskeshaA";
+
+  // 1. Try Vite's import.meta.env (Primary for Vercel/Frontend)
+  // We prioritize VITE_GOOGLE_GENAI_TOKEN to avoid Vercel "sensitive key" warnings
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+    const envKey = (import.meta as any).env.VITE_GOOGLE_GENAI_TOKEN || 
+             (import.meta as any).env.VITE_API_KEY || 
+             (import.meta as any).env.API_KEY;
+    if (envKey) apiKey = envKey;
+  }
+
+  // 2. Fallback to standard process.env
+  if (typeof process !== 'undefined' && process.env) {
+    const envKey = process.env.API_KEY || process.env.VITE_API_KEY;
+    if (envKey) apiKey = envKey;
+  }
 
   if (!apiKey) {
     console.error("API Key is missing.");
@@ -49,7 +63,7 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -102,7 +116,7 @@ export const analyzeBookContent = async (bookTitle: string): Promise<string> => 
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-pro-preview',
             contents: prompt,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -142,7 +156,7 @@ export const askBookQuestion = async (book: Book, question: string): Promise<str
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt
     });
     return response.text || "خطا در دریافت پاسخ.";
@@ -251,7 +265,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: { parts },
       config: {
         tools: tools,
@@ -336,7 +350,7 @@ export const checkPrescriptionSafety = async (patient: Patient, medications: { n
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
