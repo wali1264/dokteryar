@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Copy of Copy of Copy of 1",
+  "description": "Advanced AI-powered medical assistant for diagnosis, prescription management, and medical library research.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
