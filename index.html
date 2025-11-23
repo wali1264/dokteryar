@@ -91,29 +91,34 @@
             margin: 0; /* Clear browser default margins */
         }
 
+        /* 
+           CRITICAL PRINT FIX:
+           Do not use 'display: none' on body children because it hides the #root div
+           where the React app lives. Instead, use 'visibility' to hide visually 
+           but keep the structure active for the modal to be targeted.
+        */
         body {
+            visibility: hidden;
             background: white;
             height: auto;
-            overflow: visible;
         }
 
-        /* Hide everything by default */
-        body > * {
-          display: none !important;
+        /* Reset visibility for the print modal and its children */
+        .print-modal-container, 
+        .print-modal-container * {
+             visibility: visible !important;
         }
-        
-        /* Only show print modal and reset its positioning */
+
+        /* Position the modal to take up the full print page */
         .print-modal-container {
-             display: block !important;
              position: absolute !important;
              top: 0 !important;
              left: 0 !important;
              width: 100% !important;
-             height: auto !important;
+             margin: 0 !important;
+             padding: 0 !important;
              z-index: 9999 !important;
              background: white !important;
-             padding: 0 !important;
-             margin: 0 !important;
              overflow: visible !important;
         }
 
@@ -138,8 +143,8 @@
             box-sizing: border-box !important;
         }
         
-        /* Hide scaling wrappers or extra UI */
-        .no-print, .preview-toolbar {
+        /* Hide scaling wrappers or extra UI (Toolbar) explicitly */
+        .preview-toolbar, .no-print {
             display: none !important;
         }
 
