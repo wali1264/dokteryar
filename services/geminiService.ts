@@ -60,7 +60,7 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -113,7 +113,7 @@ export const analyzeBookContent = async (bookTitle: string): Promise<string> => 
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash',
             contents: prompt,
             config: { tools: [{ googleSearch: {} }] }
         });
@@ -153,7 +153,7 @@ export const askBookQuestion = async (book: Book, question: string): Promise<str
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt
     });
     return response.text || "خطا در دریافت پاسخ.";
@@ -262,7 +262,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
         tools: tools,
@@ -347,7 +347,7 @@ export const checkPrescriptionSafety = async (patient: Patient, medications: { n
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
