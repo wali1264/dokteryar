@@ -1,0 +1,73 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تولیدکننده لایسنس مدی‌مایند (Admin Only)</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        h2 { color: #0ea5e9; margin-bottom: 1.5rem; }
+        input { width: 100%; padding: 0.75rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 0.5rem; font-size: 1rem; box-sizing: border-box; }
+        button { background: #0ea5e9; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 1rem; cursor: pointer; width: 100%; font-weight: bold; }
+        button:hover { background: #0284c7; }
+        .result { margin-top: 1.5rem; padding: 1rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 0.5rem; display: none; }
+        .code { font-family: monospace; font-size: 1.5rem; color: #334155; letter-spacing: 2px; font-weight: bold; margin-top: 0.5rem; display: block; }
+        .salt-info { font-size: 0.75rem; color: #94a3b8; margin-top: 2rem; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🔐 تولید لایسنس مدی‌مایند</h2>
+        <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 1rem;">نام کامل پزشک را وارد کنید تا کد فعال‌سازی اختصاصی تولید شود.</p>
+        
+        <input type="text" id="doctorName" placeholder="مثال: دکتر احمد ولی" />
+        <button onclick="generateLicense()">تولید کد فعال‌سازی</button>
+
+        <div id="resultArea" class="result">
+            <span style="font-size: 0.8rem; color: #64748b;">کد لایسنس برای این نام:</span>
+            <span id="licenseCode" class="code">----</span>
+        </div>
+
+        <div class="salt-info">Security Key: MEDIMIND_AFG_SECURE_KEY_2025_#XK9</div>
+    </div>
+
+    <script>
+        const SALT_KEY = "MEDIMIND_AFG_SECURE_KEY_2025_#XK9";
+
+        async function generateLicense() {
+            const nameInput = document.getElementById('doctorName').value;
+            const resultArea = document.getElementById('resultArea');
+            const codeDisplay = document.getElementById('licenseCode');
+
+            if (!nameInput.trim()) {
+                alert("لطفا نام پزشک را وارد کنید.");
+                return;
+            }
+
+            // 1. Normalize: Remove spaces, lowercase
+            const normalizedName = nameInput.trim().replace(/\s+/g, '').toLowerCase();
+
+            // 2. Combine with Salt
+            const dataToHash = normalizedName + SALT_KEY;
+
+            // 3. SHA-256 Hash using Web Crypto API
+            const msgBuffer = new TextEncoder().encode(dataToHash);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // 4. Take first 8 chars and uppercase
+            const licenseCode = hashHex.substring(0, 8).toUpperCase();
+            
+            // Format as XXXX-XXXX
+            const formattedCode = licenseCode.substring(0, 4) + '-' + licenseCode.substring(4, 8);
+
+            codeDisplay.textContent = formattedCode;
+            resultArea.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
