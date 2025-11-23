@@ -4,24 +4,13 @@ import { Book, Patient, Vitals, SafetyCheckResult, Prescription } from "../types
 import { useStore } from "../store";
 
 const getAiClient = () => {
-  let apiKey: string | undefined = undefined;
-
-  // 1. Try Vite's import.meta.env (Primary for Vercel/Frontend)
-  // We prioritize VITE_GOOGLE_GENAI_TOKEN to avoid Vercel "sensitive key" warnings
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    apiKey = (import.meta as any).env.VITE_GOOGLE_GENAI_TOKEN || 
-             (import.meta as any).env.VITE_API_KEY || 
-             (import.meta as any).env.API_KEY;
-  }
-
-  // 2. Fallback to standard process.env
-  if (!apiKey && typeof process !== 'undefined' && process.env) {
-    apiKey = process.env.API_KEY || process.env.VITE_API_KEY;
-  }
+  // --- HARDCODED API KEY (User Request) ---
+  // این کلید به درخواست کاربر مستقیماً در کد قرار گرفت تا مشکلات متغیرهای محیطی برطرف شود.
+  const apiKey = 'AIzaSyClpXrP1CNPc5ebgsdNk6U6mBFmim6qjm0';
 
   if (!apiKey) {
-    console.error("API Key is missing. Checked: VITE_GOOGLE_GENAI_TOKEN, VITE_API_KEY, API_KEY");
-    throw new Error("کلید ارتباط با هوش مصنوعی یافت نشد.\nلطفاً در تنظیمات Vercel متغیر VITE_GOOGLE_GENAI_TOKEN را تنظیم کنید.");
+    console.error("API Key is missing.");
+    throw new Error("کلید ارتباط با هوش مصنوعی یافت نشد.");
   }
   
   // Log the interaction
