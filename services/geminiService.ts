@@ -50,15 +50,15 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
       5. If PAID: Find the official publisher page (Elsevier, Amazon, Springer).
       
       OUTPUT FORMAT:
-      You must output ONLY a valid JSON Array. Do not add conversational text.
+      You must output ONLY a valid JSON Array. Do not add conversational text or markdown blocks.
       Items structure: 
       { 
-        title, 
-        author, 
-        summary (in Persian), 
-        category (in Persian), 
-        sourceUrl (URL to download or buy),
-        accessType: "FREE" or "PAID"
+        "title": "string", 
+        "author": "string", 
+        "summary": "string (in Persian)", 
+        "category": "string (in Persian)", 
+        "sourceUrl": "string (URL)",
+        "accessType": "FREE" or "PAID"
       }
     `;
 
@@ -66,28 +66,20 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              author: { type: Type.STRING },
-              summary: { type: Type.STRING },
-              category: { type: Type.STRING },
-              sourceUrl: { type: Type.STRING },
-              accessType: { type: Type.STRING, enum: ['FREE', 'PAID'] }
-            }
-          }
-        }
+        tools: [{ googleSearch: {} }]
+        // NOTE: responseMimeType: "application/json" is NOT supported with tools in the current API version
       }
     });
     
     let text = response.text || "[]";
-    // Clean markdown formatting if present (common issue with search tools)
+    // Clean markdown formatting if present
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    // Ensure we only parse the array part if extra text exists
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1) {
+        text = text.substring(firstBracket, lastBracket + 1);
+    }
     
     return JSON.parse(text);
   } catch (error) {
@@ -258,7 +250,24 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
     5. **Suggestions**: Suggest medications with standard dosages.
     
     OUTPUT LANGUAGE: PERSIAN (FARSI).
-    Format the output as JSON.
+    
+    REQUIRED OUTPUT FORMAT:
+    Return ONLY a valid JSON object. Do NOT wrap in markdown code blocks or add explanations outside JSON.
+    JSON Structure:
+    {
+      "diagnosis": "Name of the disease",
+      "confidence": number (0-100),
+      "reasoning": "Detailed medical explanation",
+      "labAnalysis": "Detailed extraction and analysis of uploaded lab reports/images (string)",
+      "safetyWarnings": ["List of general patient condition warnings"],
+      "suggestedMedications": [
+         { "name": "Drug Name", "dosage": "Dosage Info", "reason": "Why this drug?" }
+      ],
+      "dietaryAdvice": {
+        "recommended": ["Food Item"],
+        "avoid": ["Food Item"]
+      }
+    }
   `});
 
   const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
@@ -268,40 +277,24 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
       model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
-        tools: tools,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            diagnosis: { type: Type.STRING },
-            confidence: { type: Type.NUMBER },
-            reasoning: { type: Type.STRING },
-            labAnalysis: { type: Type.STRING, description: "Detailed extraction and analysis of uploaded lab reports/images." },
-            safetyWarnings: { type: Type.ARRAY, items: { type: Type.STRING }, description: "General patient condition warnings" },
-            suggestedMedications: { 
-              type: Type.ARRAY, 
-              items: { 
-                type: Type.OBJECT, 
-                properties: {
-                  name: { type: Type.STRING },
-                  dosage: { type: Type.STRING },
-                  reason: { type: Type.STRING }
-                }
-              }
-            },
-            dietaryAdvice: {
-              type: Type.OBJECT,
-              properties: {
-                recommended: { type: Type.ARRAY, items: { type: Type.STRING } },
-                avoid: { type: Type.ARRAY, items: { type: Type.STRING } }
-              }
-            }
-          }
-        }
+        tools: tools
+        // NOTE: responseMimeType: "application/json" is NOT supported with tools (Search)
       }
     });
 
-    const resultJson = JSON.parse(response.text || "{}");
+    let text = response.text || "{}";
+    
+    // Clean markdown formatting if present
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    
+    // Attempt to extract JSON if there is extra text
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+        text = text.substring(firstBrace, lastBrace + 1);
+    }
+
+    const resultJson = JSON.parse(text);
 
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
       ?.map((chunk: any) => ({
@@ -349,6 +342,7 @@ export const checkPrescriptionSafety = async (patient: Patient, medications: { n
       Output Language: PERSIAN (Farsi).
     `;
 
+    // This function does NOT use tools, so we CAN use responseMimeType
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
