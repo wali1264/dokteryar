@@ -159,7 +159,7 @@ export const PrescriptionPad: React.FC = () => {
     <div className="p-8 max-w-7xl mx-auto h-screen flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <div>
-            <h2 className="text-2xl font-bold text-gray-800">مدیریت نسخه‌های آماده (الگوها)</h2>
+            <h2 className="text-2xl font-bold text-gray-800">مدیریت نسخه‌ها</h2>
             <p className="text-gray-500 text-sm mt-1">در این بخش نسخه‌های پرتکرار را تعریف کنید تا در هنگام ویزیت با یک کلیک بارگذاری شوند.</p>
         </div>
       </div>

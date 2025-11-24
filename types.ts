@@ -22,6 +22,7 @@ export interface Vitals {
   temperature: string;
   oxygenLevel: string;
   weight: string;
+  glucose: string; // New field for Blood Sugar
 }
 
 export interface Book {
@@ -75,10 +76,29 @@ export interface SafetyCheckResult {
   }[];
 }
 
+export interface TraditionalMedicine {
+    temperament: string; // e.g., "Sard-o-Tar" (Cold & Wet)
+    recommendedFoods: string[]; // "Do's"
+    forbiddenFoods: string[]; // "Don'ts"
+    herbalRemedies: string[]; // Teas, plants
+    lifestyleTips: string[]; // Sleep, environment, etc.
+}
+
+// New Interface for the Supervisor Feature
+export interface SupervisorResult {
+  verdict: 'APPROVED' | 'REJECTED' | 'NEEDS_REFINEMENT'; // The final judgment
+  score: number; // 0-100 score of the current diagnosis
+  critiqueSummary: string; // A ruthless summary of what's wrong or right
+  diagnosticFlaws: string[]; // 90% priority: Logic errors, missed differentials
+  safetyConcerns: string[]; // 10% priority: Interactions, contraindications
+  suggestedAction: string; // The text that will be fed back into the Deep Review loop
+}
+
 export interface DiagnosisResult {
   diagnosis: string;
   confidence: number; // 0-100
   reasoning: string; // Why this diagnosis?
+  simplifiedExplanation?: string; // New: Simple summary for general understanding
   labAnalysis?: string; // Extracted text analysis from uploaded images
   safetyWarnings: string[]; // General patient warnings (not specific drug-drug interactions)
   suggestedMedications: {
@@ -91,7 +111,14 @@ export interface DiagnosisResult {
     recommended: string[];
     avoid: string[];
   };
+  // New Field for the Wellness Card
+  traditionalMedicine?: TraditionalMedicine;
+  
   sources: { title: string; uri: string }[];
+  
+  // New Fields for Deep Review / Consilium
+  debateResponse?: string; // The AI's conversational reply to the doctor's objection
+  debateOutcome?: 'AGREE' | 'DEFEND'; // Did AI accept the doctor's view or defend its own?
 }
 
 export interface DoctorProfile {

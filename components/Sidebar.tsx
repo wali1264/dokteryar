@@ -27,7 +27,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center gap-3 text-medical-500">
           <Stethoscope size={32} />
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">مدی‌مایند</h1>
+            <h1 className="text-xl font-bold text-white tracking-tight">دکتریار</h1>
             <p className="text-xs text-slate-500 mt-1">دستیار هوشمند پزشک</p>
           </div>
         </div>
@@ -38,7 +38,7 @@ export const Sidebar: React.FC = () => {
         <NavItem page="PATIENTS" icon={Users} label="مدیریت بیماران" />
         <NavItem page="DIAGNOSIS" icon={Stethoscope} label="تشخیص هوشمند" />
         <NavItem page="LIBRARY" icon={BookOpen} label="کتابخانه تخصصی" />
-        <NavItem page="PRESCRIPTIONS" icon={FileText} label="مدیریت الگوها" />
+        <NavItem page="PRESCRIPTIONS" icon={FileText} label="مدیریت نسخه‌ها" />
       </nav>
 
       <div className="p-4 border-t border-slate-800">

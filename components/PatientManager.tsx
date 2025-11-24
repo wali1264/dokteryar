@@ -294,8 +294,8 @@ export const PatientManager: React.FC = () => {
                 <h3 className="text-xl font-bold text-gray-800">
                 {editingId ? 'ویرایش اطلاعات بیمار' : 'تشکیل پرونده جدید'}
                 </h3>
-                {/* Voice Controls */}
-                <div className="flex items-center gap-2">
+                {/* Voice Controls with increased margin to avoid close button overlap */}
+                <div className="flex items-center gap-2 ml-12">
                     <button 
                         onClick={() => setDictationLang(prev => prev === 'fa-IR' ? 'en-US' : 'fa-IR')}
                         className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition-colors border border-slate-200"

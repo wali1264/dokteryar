@@ -317,7 +317,7 @@ export const Dashboard: React.FC = () => {
                             
                             {/* Footer */}
                             <div className="mt-12 text-center text-xs text-gray-400 pt-4 border-t">
-                                این گزارش به صورت سیستمی توسط نرم‌افزار مدی‌مایند در تاریخ {new Date().toLocaleDateString('fa-IR')} تولید شده است.
+                                این گزارش به صورت سیستمی توسط نرم‌افزار دکتریار در تاریخ {new Date().toLocaleDateString('fa-IR')} تولید شده است.
                             </div>
                         </div>
                   </div>

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Book, Patient, Vitals, SafetyCheckResult, Prescription } from "../types";
+import { Book, Patient, Vitals, SafetyCheckResult, Prescription, DiagnosisResult, SupervisorResult } from "../types";
 import { useStore } from "../store";
 
 const getAiClient = () => {
@@ -66,7 +66,8 @@ export const recommendBooks = async (query: string): Promise<Partial<Book>[]> =>
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }],
+        temperature: 0.1, // Low temperature for factual accuracy
         // NOTE: responseMimeType: "application/json" is NOT supported with tools in the current API version
       }
     });
@@ -110,7 +111,10 @@ export const analyzeBookContent = async (bookTitle: string): Promise<string> => 
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: prompt,
-            config: { tools: [{ googleSearch: {} }] }
+            config: { 
+              tools: [{ googleSearch: {} }],
+              temperature: 0.2
+            }
         });
 
         return response.text || "محتوایی یافت نشد.";
@@ -149,7 +153,8 @@ export const askBookQuestion = async (book: Book, question: string): Promise<str
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: prompt
+      contents: prompt,
+      config: { temperature: 0.1 }
     });
     return response.text || "خطا در دریافت پاسخ.";
   } catch (error) {
@@ -164,10 +169,10 @@ interface DiagnosisInput {
   patient: Patient;
   symptoms: string;
   vitals: Vitals;
-  labImagesBase64?: string[]; // Changed from single string to array
+  labImagesBase64?: string[]; 
   selectedBooks: Book[];
   useWebSearch: boolean;
-  pastPrescriptions: Prescription[]; // New: Context Recall
+  pastPrescriptions: Prescription[]; 
 }
 
 export const performDiagnosis = async (input: DiagnosisInput) => {
@@ -198,6 +203,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
 
     Current Vitals:
     - BP: ${input.vitals.bloodPressure}
+    - Glucose (BS): ${input.vitals.glucose}
     - HR: ${input.vitals.heartRate}
     - Temp: ${input.vitals.temperature}
     - O2: ${input.vitals.oxygenLevel}
@@ -208,7 +214,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
   `;
 
   if (input.selectedBooks.length > 0) {
-    contextString += `\n\n--- CONSULTED REFERENCE DOCUMENTS (PRIORITY) ---\n`;
+    contextString += `\n\n--- CONSULTED REFERENCE DOCUMENTS (PRIORITY: HIGH) ---\n`;
     input.selectedBooks.forEach(b => {
       // Only use content if it exists (downloaded/uploaded)
       if (b.content) {
@@ -216,7 +222,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
           contextString += `\n[SOURCE: ${b.title}]\nCONTENT:\n${contentToUse}\n----------------\n`;
       }
     });
-    contextString += `\nNOTE: Prioritize the information found in the "CONSULTED REFERENCE DOCUMENTS" above when forming your diagnosis.\n`;
+    contextString += `\nNOTE: You MUST prioritize the "CONSULTED REFERENCE DOCUMENTS" above. If the answer is in these documents, use it. Do not hallucinate outside of these facts if possible.\n`;
   }
 
   const parts: any[] = [{ text: contextString }];
@@ -237,17 +243,20 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
   parts.push({ text: `
     Act as a Senior Specialist Doctor (Fogh-e-Takhasos) and Academic Researcher.
     
-    STRICT EVIDENCE-BASED MEDICINE RULES:
-    1. **Source Filtering**: You MUST use Google Search to verify clinical data. ONLY use high-impact medical sources (PubMed, NIH, Mayo Clinic, Cleveland Clinic, UpToDate, WHO, Merck Manuals).
-    2. **Ignore Noise**: Do NOT use blogs, forums, social media, or non-medical wiki pages. If a source is not reputable, discard it.
-    3. **Fact-Checking**: If you make a specific medical claim or statistic, it must be grounded in a real source.
+    >>> ANTI-HALLUCINATION & SAFETY PROTOCOL <<<
+    1. **Thinking Phase**: Before generating the JSON, you MUST internally reason about the case. Verify drug names, dosages, and interactions.
+    2. **Evidence Priority**: If 'CONSULTED REFERENCE DOCUMENTS' are provided, base your diagnosis 90% on them.
+    3. **Strict Fact-Checking**: Do NOT invent medications. If you are unsure about a dosage, do not suggest it.
+    4. **Source Filtering**: Use Google Search to verify clinical data. ONLY use high-impact medical sources (PubMed, NIH, Mayo Clinic, UpToDate, WHO).
+    5. **Contraindication Check**: Explicitly check the patient's allergies and history (Pregnancy, Diabetes, Cardiac) against suggested drugs.
 
     DIAGNOSIS INSTRUCTIONS:
-    1. **Safety First**: Explicitly check the patient's history and allergies. 
-    2. **Lab Analysis**: If images are provided, extract findings into 'labAnalysis'.
-    3. **Diagnosis**: Provide the most likely diagnosis and differential diagnoses based on evidence (and past history).
-    4. **Deep Reasoning**: Connect symptoms and lab findings to specific reputable sources.
-    5. **Suggestions**: Suggest medications with standard dosages.
+    1. **Lab Analysis**: If images are provided, extract findings into 'labAnalysis'.
+    2. **Diagnosis**: Provide the most likely diagnosis and differential diagnoses based on evidence.
+    3. **Reasoning**: Explain WHY this diagnosis was reached, citing specific symptoms or lab values.
+    4. **Simplified Summary**: In 'simplifiedExplanation', provide a 2-3 sentence summary in plain language suitable for a general practitioner or the patient.
+    5. **Suggestions**: Suggest medications with STANDARD dosages.
+    6. **TRADITIONAL MEDICINE & LIFESTYLE**: Based on the symptoms, determine the likely 'Temperament' (Mizaj) in Traditional Persian Medicine (e.g., Cold & Wet, Hot & Dry). Provide 'traditionalMedicine' advice including foods to eat/avoid, herbal teas (safe ones), and lifestyle tips.
     
     OUTPUT LANGUAGE: PERSIAN (FARSI).
     
@@ -258,6 +267,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
       "diagnosis": "Name of the disease",
       "confidence": number (0-100),
       "reasoning": "Detailed medical explanation",
+      "simplifiedExplanation": "Simple summary in plain Persian",
       "labAnalysis": "Detailed extraction and analysis of uploaded lab reports/images (string)",
       "safetyWarnings": ["List of general patient condition warnings"],
       "suggestedMedications": [
@@ -266,6 +276,13 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
       "dietaryAdvice": {
         "recommended": ["Food Item"],
         "avoid": ["Food Item"]
+      },
+      "traditionalMedicine": {
+          "temperament": "Diagnosis of Mizaj (e.g. Ghalabe-ye-Sard-o-Tar)",
+          "recommendedFoods": ["Specific beneficial foods"],
+          "forbiddenFoods": ["Foods that worsen the condition"],
+          "herbalRemedies": ["Safe herbal teas or plants"],
+          "lifestyleTips": ["Lifestyle/Sleep/Environment advice"]
       }
     }
   `});
@@ -277,8 +294,9 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
       model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
-        tools: tools
-        // NOTE: responseMimeType: "application/json" is NOT supported with tools (Search)
+        tools: tools,
+        temperature: 0.1, // Drastically reduced for safety
+        thinkingConfig: { thinkingBudget: 2048 } // Allocate tokens for internal reasoning to reduce hallucinations
       }
     });
 
@@ -314,6 +332,197 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
   }
 };
 
+// --- Smart Clinical Supervisor (NAZER HOOSHMAND) ---
+
+export const performClinicalSupervision = async (
+    input: DiagnosisInput,
+    currentDiagnosis: DiagnosisResult
+): Promise<SupervisorResult> => {
+    const ai = getAiClient();
+
+    // Prepare Context similar to Diagnosis
+    let contextString = `
+    PATIENT DATA:
+    - Age/Gender: ${input.patient.age} / ${input.patient.gender}
+    - Symptoms: ${input.symptoms}
+    - Medical History: ${input.patient.medicalHistory}
+    - Allergies: ${input.patient.allergies}
+    - Vitals: BP=${input.vitals.bloodPressure}, Glucose=${input.vitals.glucose}, HR=${input.vitals.heartRate}, Temp=${input.vitals.temperature}
+    
+    CURRENT PROPOSED DIAGNOSIS (By Junior AI Doctor):
+    - Diagnosis: ${currentDiagnosis.diagnosis}
+    - Reasoning: ${currentDiagnosis.reasoning}
+    - Proposed Meds: ${currentDiagnosis.suggestedMedications.map(m => m.name).join(', ')}
+    `;
+
+    const prompt = `
+      Act as the "SUPREME CLINICAL SUPERVISOR" (Nazer Arshad Pezeshki).
+      You represent the collective knowledge of ALL medical specialties (Uber-Doctor).
+      You are strict, critical, and have zero tolerance for diagnostic errors.
+
+      TASK:
+      Review the provided "CURRENT PROPOSED DIAGNOSIS" for the given "PATIENT DATA".
+      
+      >>> PRIORITY WEIGHTING <<<
+      1. **90% FOCUS ON DIAGNOSTIC ACCURACY & LOGIC**:
+         - Is the diagnosis logically sound based on the symptoms?
+         - Are there missing differential diagnoses?
+         - Is the reasoning flawed?
+         - Did the junior doctor miss a red flag in the vitals or history?
+      2. **10% FOCUS ON SAFETY & INTERACTIONS**:
+         - Are there major drug interactions?
+         - Is the dosage appropriate (if mentioned)?
+
+      INSTRUCTIONS:
+      - Critique the diagnosis ruthlessly.
+      - If it is excellent, say so. If it is flawed, explain exactly why.
+      - In 'suggestedAction', write a concise, authoritative paragraph that I can feed back into the diagnosis system to correct it.
+      
+      OUTPUT LANGUAGE: PERSIAN (FARSI).
+      
+      OUTPUT JSON FORMAT ONLY:
+      {
+        "verdict": "APPROVED" | "REJECTED" | "NEEDS_REFINEMENT",
+        "score": number (0-100),
+        "critiqueSummary": "Short but powerful summary of your review",
+        "diagnosticFlaws": ["List of logical/diagnostic errors (90% importance)"],
+        "safetyConcerns": ["List of safety/interaction issues (10% importance)"],
+        "suggestedAction": "Text to auto-fill into the correction box for the next iteration"
+      }
+    `;
+
+    const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [{ text: contextString }, { text: prompt }],
+            config: {
+                tools: tools,
+                temperature: 0.05, // Extremely low for maximum critical logic
+                thinkingConfig: { thinkingBudget: 4096 } // High thinking budget for deep supervision
+            }
+        });
+
+        let text = response.text || "{}";
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            text = text.substring(firstBrace, lastBrace + 1);
+        }
+
+        return JSON.parse(text);
+    } catch (error) {
+        console.error("Supervision failed", error);
+        throw error;
+    }
+};
+
+// --- Deep Review & Debate Function ---
+
+export const performDeepReview = async (
+    input: DiagnosisInput, 
+    originalDiagnosis: string, 
+    doctorFeedback?: string
+): Promise<DiagnosisResult> => {
+    const ai = getAiClient();
+    
+    const prompt = `
+      Act as a "Medical Board Supervisor" and "Senior Clinical Critic".
+      
+      CONTEXT:
+      A junior AI doctor has made a diagnosis. The human physician has requested a "DEEP REVIEW" and may have provided objections.
+      
+      PATIENT DATA:
+      - Age/Gender: ${input.patient.age} / ${input.patient.gender}
+      - Symptoms: ${input.symptoms}
+      - History: ${input.patient.medicalHistory}
+      - Allergies: ${input.patient.allergies}
+      - Vitals: Glucose: ${input.vitals.glucose}
+      
+      ORIGINAL AI DIAGNOSIS:
+      "${originalDiagnosis}"
+      
+      PHYSICIAN'S FEEDBACK / OBJECTION:
+      "${doctorFeedback || "No specific objection, but requested deep verification."}"
+      
+      TASK:
+      1. **DEEP THINKING**: You must spend significant computational effort to verify the diagnosis.
+      2. **CRITIQUE**: 
+         - If the physician provided an objection, valid scientific evidence to support OR refute it.
+         - If the physician is correct, humbly apologize and correct the diagnosis.
+         - If the physician is incorrect, respectfully defend the original diagnosis with stronger evidence (citations).
+      3. **OUTPUT**:
+         - Generate a conversational "Debate Response" (debateResponse).
+         - Generate a "Simplified Explanation" for the non-specialist.
+         - Generate a FULL Updated Diagnosis Object, INCLUDING the 'traditionalMedicine' section based on the new findings.
+      
+      OUTPUT LANGUAGE: PERSIAN (FARSI).
+      
+      REQUIRED JSON STRUCTURE:
+      {
+        "diagnosis": "Updated Name of the disease",
+        "confidence": number (0-100),
+        "reasoning": "Deeply reasoned medical explanation",
+        "simplifiedExplanation": "Simple summary in plain Persian",
+        "debateResponse": "Direct conversational reply to the doctor",
+        "debateOutcome": "AGREE" (if you changed diagnosis based on feedback) or "DEFEND" (if you kept original),
+        "labAnalysis": "...",
+        "safetyWarnings": ["..."],
+        "suggestedMedications": [ ... ],
+        "dietaryAdvice": { ... },
+        "traditionalMedicine": {
+          "temperament": "...",
+          "recommendedFoods": ["..."],
+          "forbiddenFoods": ["..."],
+          "herbalRemedies": ["..."],
+          "lifestyleTips": ["..."]
+        }
+      }
+    `;
+    
+    const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
+    
+    try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            tools: tools,
+            temperature: 0.15, // Slightly higher to allow for conversational nuance in debateResponse
+            thinkingConfig: { thinkingBudget: 10000 } 
+          }
+        });
+    
+        let text = response.text || "{}";
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            text = text.substring(firstBrace, lastBrace + 1);
+        }
+    
+        const resultJson = JSON.parse(text);
+        
+        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
+          ?.map((chunk: any) => ({
+            title: chunk.web?.title || "منبع معتبر پزشکی",
+            uri: chunk.web?.uri || "#"
+          }))
+          .filter((s: any) => s.uri !== "#") || [];
+    
+        return {
+          ...resultJson,
+          sources
+        };
+    
+      } catch (error) {
+        console.error("Deep Review failed", error);
+        throw error;
+      }
+};
+
 export const checkPrescriptionSafety = async (patient: Patient, medications: { name: string; dosage: string }[]): Promise<SafetyCheckResult> => {
   try {
     const ai = getAiClient();
@@ -347,6 +556,7 @@ export const checkPrescriptionSafety = async (patient: Patient, medications: { n
       model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
+        temperature: 0.1, // Strict mode
         responseMimeType: "application/json",
         responseSchema: {
             type: Type.OBJECT,
