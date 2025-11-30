@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Book, Patient, Vitals, SafetyCheckResult, Prescription, DiagnosisResult, SupervisorResult } from "../types";
+import { Book, Patient, Vitals, SafetyCheckResult, Prescription, DiagnosisResult, SupervisorResult, LabResultItem } from "../types";
 import { useStore } from "../store";
 
 const getAiClient = () => {
@@ -29,6 +29,112 @@ const getAiClient = () => {
   // Log the interaction
   useStore.getState().logAiInteraction();
   return new GoogleGenAI({ apiKey });
+};
+
+// --- NEW: Universal Medical Document Extractor ---
+export const extractClinicalData = async (imageFile: File): Promise<string> => {
+    try {
+        const ai = getAiClient();
+        
+        const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = error => reject(error);
+        });
+
+        const prompt = `
+            ACT AS A SENIOR MEDICAL DATA ANALYST.
+            
+            TASK: 
+            Analyze the attached medical document (it could be an X-Ray report, MRI report, Lab Result, ECG strip, or handwritten doctor's note).
+            
+            GOAL:
+            Extract the KEY CLINICAL FINDINGS into a concise, professional Persian summary.
+            
+            INSTRUCTIONS:
+            1. If it's a REPORT (text), summarize the "Impression" or "Conclusion".
+            2. If it's a LAB SHEET, list ONLY the abnormal values.
+            3. If it's an IMAGE (X-Ray/MRI), describe the visible pathology briefly.
+            4. Output ONLY the summary text in PERSIAN. Do not add introductory phrases like "Here is the summary".
+            5. If the image is unreadable, say "تصویر ناخوانا است".
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                temperature: 0.1,
+            }
+        });
+
+        return response.text || "";
+
+    } catch (error) {
+        console.error("Clinical Extraction Failed", error);
+        throw error;
+    }
+};
+
+// --- NEW: Lab Report Parser (OCR) ---
+export const parseLabReport = async (imageFile: File): Promise<LabResultItem[]> => {
+    try {
+        const ai = getAiClient();
+        
+        // Convert File to Base64
+        const base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(imageFile);
+            reader.onload = () => resolve((reader.result as string).split(',')[1]);
+            reader.onerror = error => reject(error);
+        });
+
+        const prompt = `
+            ACT AS A MEDICAL DATA ENTRY SPECIALIST.
+            
+            TASK: 
+            Look at the attached medical lab report image.
+            Extract the test results into a structured JSON array.
+            
+            FIELDS TO EXTRACT:
+            1. testName: Name of the analyte (e.g., "Hemoglobin", "WBC", "Fasting Blood Sugar").
+            2. result: The numerical value found.
+            3. unit: The unit of measurement (e.g., "mg/dL", "g/dL", "%").
+            4. normalRange: The reference range printed on the paper.
+            5. flag: 'H' if marked High/High, 'L' if marked Low, 'A' if marked Abnormal, otherwise 'N'.
+            
+            INSTRUCTIONS:
+            - If a value is missing, use empty string "".
+            - Be extremely accurate with numbers.
+            - Output JSON ONLY. No markdown.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                temperature: 0.1,
+                responseMimeType: "application/json"
+            }
+        });
+
+        const text = response.text || "[]";
+        return JSON.parse(text);
+
+    } catch (error) {
+        console.error("Lab Parsing Failed", error);
+        throw error;
+    }
 };
 
 // --- AI Librarian & RAG ---
@@ -169,6 +275,7 @@ interface DiagnosisInput {
   symptoms: string;
   vitals: Vitals;
   labImagesBase64?: string[]; 
+  extractedClinicalData?: string; // New Field: Summarized text from images
   selectedBooks: Book[];
   useWebSearch: boolean;
   pastPrescriptions: Prescription[]; 
@@ -191,6 +298,16 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
       });
   }
 
+  // Add Extracted Data Context
+  let extractedDataContext = "";
+  if (input.extractedClinicalData) {
+      extractedDataContext = `
+      --- EXTRACTED CLINICAL DATA FROM SCANS/DOCUMENTS ---
+      ${input.extractedClinicalData}
+      ----------------------------------------------------
+      `;
+  }
+
   let contextString = `
     Patient Profile (CRITICAL CONTEXT):
     - Age: ${input.patient.age}
@@ -199,6 +316,7 @@ export const performDiagnosis = async (input: DiagnosisInput) => {
     - Allergies: ${input.patient.allergies} (Check for general contraindications)
 
     ${historyContext}
+    ${extractedDataContext}
 
     Current Vitals:
     - BP: ${input.vitals.bloodPressure}
