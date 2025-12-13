@@ -84,7 +84,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   };
 
   const handleAdminLogin = () => {
-    if (adminPassword === 'admin') { // Hardcoded for demo/frontend-only protection
+    if (adminPassword === 'Alliwali@1264') { // Secure password applied
       setShowAdminLogin(false);
       setShowAdminDashboard(true);
       setKeyStats(keyManager.getStatistics()); // Load stats
