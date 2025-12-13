@@ -76,8 +76,12 @@ function App() {
                 const newSessionId = payload.new.active_session_id;
                 const localSessionId = localStorage.getItem('tabib_session_id');
                 
-                // If DB session ID changes and doesn't match ours, it means someone else logged in
-                if (newSessionId && newSessionId !== localSessionId) {
+                // If DB session ID becomes null (explicit logout) or changes to something else
+                // AND we are still locally logged in with an old ID -> Kick out
+                if (localSessionId && newSessionId !== localSessionId) {
+                    // If newSessionId is null, it means someone logged out properly on another device?
+                    // No, usually if I log out, my local session is cleared.
+                    // This logic handles: I am Device A. Device B logs in. DB changes to ID_B. Device A sees change.
                     alert('حساب کاربری شما در دستگاه دیگری وارد شده است. جهت امنیت، دسترسی این دستگاه قطع می‌گردد.');
                     handleSignOut();
                 }
@@ -107,14 +111,18 @@ function App() {
       const localSessionId = localStorage.getItem('tabib_session_id');
       const dbSessionId = data?.active_session_id;
 
+      // If there IS a session in DB, but it doesn't match ours -> Block
+      // If DB session is NULL (Clean Exit), we assume this is a new login attempt (AuthPage handles the update)
+      // Note: AuthPage updates DB *before* this component mounts fully or in parallel.
+      // If we are here, and dbSessionId differs from local, it's a conflict.
+      
       if (dbSessionId && localSessionId && dbSessionId !== localSessionId) {
-          // Mismatch found on load - verify fail
           await handleSignOut();
           alert('جلسه کاری نامعتبر است. لطفا مجددا وارد شوید.');
           return;
       }
 
-      // Self-healing: If user is logged in but DB has no session ID (first time migration), set it.
+      // Self-healing: If user is logged in locally but DB is null (migrated or error), auto-fix it
       if (!dbSessionId && localSessionId) {
           await supabase.from('profiles').update({ active_session_id: localSessionId }).eq('id', userId);
       }
@@ -128,6 +136,16 @@ function App() {
   };
 
   const handleSignOut = async () => {
+    try {
+      if (session?.user?.id) {
+         // Clean Exit: Clear the DB session ID so the next login is clean
+         await supabase.from('profiles').update({ 
+           active_session_id: null,
+           last_login_device: null 
+         }).eq('id', session.user.id);
+      }
+    } catch (e) { console.error("Error cleaning session:", e); }
+
     localStorage.removeItem('tabib_session_id'); // Clear local session ID
     await supabase.auth.signOut();
     setSession(null);

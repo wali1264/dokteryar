@@ -62,9 +62,31 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setDeferredPrompt(null);
   };
 
+  // --- CLEAN EXIT LOGIC ---
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    // App.tsx listener will handle the redirect to AuthPage
+    try {
+      // 1. Identify the user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // 2. Clear the session from Database ("Empty the chair")
+      if (user) {
+        await supabase.from('profiles').update({ 
+          active_session_id: null,
+          last_login_device: null 
+        }).eq('id', user.id);
+      }
+
+      // 3. Clear local storage
+      localStorage.removeItem('tabib_session_id');
+
+      // 4. Perform Supabase SignOut
+      await supabase.auth.signOut();
+      
+    } catch (error) {
+      console.error("Error during sign out:", error);
+      // Force sign out even if DB update fails (fallback)
+      await supabase.auth.signOut();
+    }
   };
 
   // Trigger Logic
