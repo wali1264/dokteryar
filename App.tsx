@@ -42,7 +42,7 @@ function App() {
     // 1. Check active session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if (session) checkUserApproval(session.user.id);
+      if (session) checkUserStatus(session.user.id);
       else setAuthLoading(false);
     });
 
@@ -53,7 +53,7 @@ function App() {
       setSession(session);
       if (session) {
          setAuthLoading(true);
-         checkUserApproval(session.user.id);
+         checkUserStatus(session.user.id);
       } else {
          setAuthLoading(false);
          setIsApproved(null);
@@ -63,11 +63,36 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkUserApproval = async (userId: string) => {
+  // --- Real-time Session Enforcement ---
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    // Listen for changes to the user's profile specifically regarding session ID
+    const channel = supabase.channel('security_check')
+        .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` },
+            (payload) => {
+                const newSessionId = payload.new.active_session_id;
+                const localSessionId = localStorage.getItem('tabib_session_id');
+                
+                // If DB session ID changes and doesn't match ours, it means someone else logged in
+                if (newSessionId && newSessionId !== localSessionId) {
+                    alert('حساب کاربری شما در دستگاه دیگری وارد شده است. جهت امنیت، دسترسی این دستگاه قطع می‌گردد.');
+                    handleSignOut();
+                }
+            }
+        )
+        .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [session]);
+
+  const checkUserStatus = async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('is_approved')
+        .select('is_approved, active_session_id')
         .eq('id', userId)
         .single();
 
@@ -75,8 +100,25 @@ function App() {
          console.error('Error fetching profile:', error);
       }
 
-      // If data exists, use value. If not (maybe trigger lag), default false.
+      // 1. Approval Check
       setIsApproved(data?.is_approved ?? false);
+
+      // 2. Session Integrity Check
+      const localSessionId = localStorage.getItem('tabib_session_id');
+      const dbSessionId = data?.active_session_id;
+
+      if (dbSessionId && localSessionId && dbSessionId !== localSessionId) {
+          // Mismatch found on load - verify fail
+          await handleSignOut();
+          alert('جلسه کاری نامعتبر است. لطفا مجددا وارد شوید.');
+          return;
+      }
+
+      // Self-healing: If user is logged in but DB has no session ID (first time migration), set it.
+      if (!dbSessionId && localSessionId) {
+          await supabase.from('profiles').update({ active_session_id: localSessionId }).eq('id', userId);
+      }
+
     } catch (e) {
       console.error(e);
       setIsApproved(false);
@@ -86,6 +128,7 @@ function App() {
   };
 
   const handleSignOut = async () => {
+    localStorage.removeItem('tabib_session_id'); // Clear local session ID
     await supabase.auth.signOut();
     setSession(null);
     setIsApproved(null);
@@ -137,7 +180,7 @@ function App() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
            <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-           <p className="text-gray-500 font-medium text-sm animate-pulse">در حال بررسی هویت...</p>
+           <p className="text-gray-500 font-medium text-sm animate-pulse">در حال بررسی هویت و امنیت...</p>
         </div>
       </div>
     );

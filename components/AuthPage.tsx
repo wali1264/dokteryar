@@ -24,11 +24,26 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+
+        // --- SECURITY ENFORCEMENT ---
+        // 1. Generate a unique session ID for this specific device/login
+        const sessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+        
+        // 2. Store it locally
+        localStorage.setItem('tabib_session_id', sessionId);
+
+        // 3. Update the database immediately to invalidate other sessions
+        if (data.user) {
+           await supabase.from('profiles').update({
+             active_session_id: sessionId,
+             last_login_device: navigator.userAgent
+           }).eq('id', data.user.id);
+        }
         // App.tsx listener will handle the redirect
       } else {
         const { error } = await supabase.auth.signUp({
