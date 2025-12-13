@@ -3,169 +3,25 @@
 <html lang="fa" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0284c7" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>طبیب هوشمند | AI Medical Assistant</title>
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="دستیار هوشمند پزشکی با قابلیت تشخیص و مدیریت پرونده بیماران" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="دکتریار" />
-    
-    <title>دستیار هوشمند پزشکی دکتریار</title>
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3774/3774299.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&display=swap" rel="stylesheet">
-    
-    <!-- PDF.js for Client-Side PDF Extraction -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <script>
-      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    </script>
-
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Vazirmatn', 'sans-serif'],
-            },
-            colors: {
-              medical: {
-                50: '#f0f9ff',
-                100: '#e0f2fe',
-                500: '#0ea5e9',
-                600: '#0284c7',
-                700: '#0369a1',
-                800: '#075985',
-                900: '#0c4a6e',
-              },
-              slate: {
-                850: '#1e293b', 
-              }
-            }
-          },
-        },
-      }
-    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
     <style>
-      /* Paper UI Simulation for Screen */
-      .paper-sheet {
-          background: white;
-          width: 210mm; /* A4 width */
-          min-height: 297mm; /* A4 height */
-          margin: 0 auto;
-          box-shadow: 0 4px 25px rgba(0,0,0,0.15);
-          position: relative;
-          overflow: hidden;
-          padding: 0;
-          transform-origin: top center; /* Critical for centered scaling */
-          transition: transform 0.2s ease-out;
+      body {
+        font-family: 'Vazirmatn', sans-serif;
+        background-color: #f3f4f6;
       }
-      
-      .paper-content {
-          position: relative;
-          z-index: 10;
-          height: 100%;
-          display: flex;
-          flex-direction: column;
-      }
-
-      /* Watermark */
-      .watermark-layer {
-          position: absolute;
-          inset: 0;
-          z-index: 0;
-          opacity: 0.1;
-          background-position: center;
-          background-repeat: no-repeat;
-          background-size: 60%;
-          filter: grayscale(100%);
-          pointer-events: none;
-      }
-
-      /* Screen Preview Container */
-      .screen-preview-container {
-          overflow: auto;
-          display: flex;
-          justify-content: center;
-          align-items: flex-start;
-          background: #475569; /* Slate 600 */
-          perspective: 1000px;
-      }
-
-      @media print {
-        @page {
-            size: A4;
-            margin: 0; /* Clear browser default margins */
-        }
-
-        /* 
-           CRITICAL PRINT FIX:
-           Do not use 'display: none' on body children because it hides the #root div
-           where the React app lives. Instead, use 'visibility' to hide visually 
-           but keep the structure active for the modal to be targeted.
-        */
-        body {
-            visibility: hidden;
-            background: white;
-            height: auto;
-        }
-
-        /* Reset visibility for the print modal and its children */
-        .print-modal-container, 
-        .print-modal-container * {
-             visibility: visible !important;
-        }
-
-        /* Position the modal to take up the full print page */
-        .print-modal-container {
-             position: absolute !important;
-             top: 0 !important;
-             left: 0 !important;
-             width: 100% !important;
-             margin: 0 !important;
-             padding: 0 !important;
-             z-index: 9999 !important;
-             background: white !important;
-             overflow: visible !important;
-        }
-
-        .screen-preview-container {
-            display: block !important;
-            background: white !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            height: auto !important;
-        }
-
-        /* Reset the paper sheet for print - Add 5mm Padding */
-        .paper-sheet {
-            box-shadow: none !important;
-            margin: 0 !important;
-            width: 100% !important;
-            height: auto !important;
-            min-height: 100vh !important;
-            border: none !important;
-            transform: none !important; /* Remove screen scaling */
-            padding: 5mm !important; /* 5mm Safety Margin */
-            box-sizing: border-box !important;
-        }
-        
-        /* Hide scaling wrappers or extra UI (Toolbar) explicitly */
-        .preview-toolbar, .no-print {
-            display: none !important;
-        }
-
-        .print-break-inside-avoid {
-            break-inside: avoid;
-        }
-        
-        * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-        }
-      }
-      
+      /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
@@ -174,32 +30,30 @@
         background: #f1f1f1; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #94a3b8; 
+        background: #888; 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #64748b; 
+        background: #555; 
       }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "zustand/": "https://aistudiocdn.com/zustand@^5.0.8/",
-    "zustand": "https://aistudiocdn.com/zustand@^5.0.8",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
-    "uuid": "https://aistudiocdn.com/uuid@^13.0.0",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.86.0"
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.39.0"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-  <body class="bg-gray-50 text-slate-900 font-sans overscroll-none">
+  <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>

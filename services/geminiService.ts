@@ -1,703 +1,465 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { Book, Patient, Vitals, SafetyCheckResult, Prescription, DiagnosisResult, SupervisorResult, LabResultItem } from "../types";
-import { useStore } from "../store";
+import type { GenerateContentResponse, Chat, Part, Content } from "@google/genai";
+import { DoctorDiagnosis, DualDiagnosis, LabAnalysis, PatientData, RadiologyAnalysis, PhysicalExamAnalysis, PatientRecord, CardiologyAnalysis, NeurologyAnalysis, PsychologyAnalysis, OphthalmologyAnalysis, PediatricsAnalysis, OrthopedicsAnalysis, DentistryAnalysis, GynecologyAnalysis, PulmonologyAnalysis, GastroenterologyAnalysis, UrologyAnalysis, HematologyAnalysis, EmergencyAnalysis, GeneticsAnalysis, PrescriptionItem, PatientVitals, ChatMessage } from "../types";
 
-const getAiClient = () => {
-  let apiKey: string | undefined;
-
-  // 1. Try Vite's import.meta.env (Primary for Vercel/Frontend)
-  // We prioritize VITE_GOOGLE_GENAI_TOKEN to avoid Vercel "sensitive key" warnings
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-    const envKey = (import.meta as any).env.VITE_GOOGLE_GENAI_TOKEN || 
-             (import.meta as any).env.VITE_API_KEY || 
-             (import.meta as any).env.API_KEY;
-    if (envKey) apiKey = envKey;
-  }
-
-  // 2. Fallback to standard process.env
-  if (!apiKey && typeof process !== 'undefined' && process.env) {
-    const envKey = process.env.API_KEY || process.env.VITE_API_KEY;
-    if (envKey) apiKey = envKey;
-  }
-
-  if (!apiKey) {
-    console.error("API Key is missing.");
-    throw new Error("کلید ارتباط با هوش مصنوعی یافت نشد. لطفاً کلید جدید را در تنظیمات Environment Variables وارد کنید.");
-  }
-  
-  // Log the interaction
-  useStore.getState().logAiInteraction();
-  return new GoogleGenAI({ apiKey });
-};
-
-// --- NEW: Universal Medical Document Extractor ---
-export const extractClinicalData = async (imageFile: File): Promise<string> => {
-    try {
-        const ai = getAiClient();
-        
-        const base64Data = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(imageFile);
-            reader.onload = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = error => reject(error);
-        });
-
-        const prompt = `
-            ACT AS A SENIOR MEDICAL DATA ANALYST.
-            
-            TASK: 
-            Analyze the attached medical document (it could be an X-Ray report, MRI report, Lab Result, ECG strip, or handwritten doctor's note).
-            
-            GOAL:
-            Extract the KEY CLINICAL FINDINGS into a concise, professional Persian summary.
-            
-            INSTRUCTIONS:
-            1. If it's a REPORT (text), summarize the "Impression" or "Conclusion".
-            2. If it's a LAB SHEET, list ONLY the abnormal values.
-            3. If it's an IMAGE (X-Ray/MRI), describe the visible pathology briefly.
-            4. Output ONLY the summary text in PERSIAN. Do not add introductory phrases like "Here is the summary".
-            5. If the image is unreadable, say "تصویر ناخوانا است".
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                temperature: 0.1,
-            }
-        });
-
-        return response.text || "";
-
-    } catch (error) {
-        console.error("Clinical Extraction Failed", error);
-        throw error;
-    }
-};
-
-// --- NEW: Lab Report Parser (OCR) ---
-export const parseLabReport = async (imageFile: File): Promise<LabResultItem[]> => {
-    try {
-        const ai = getAiClient();
-        
-        // Convert File to Base64
-        const base64Data = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(imageFile);
-            reader.onload = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = error => reject(error);
-        });
-
-        const prompt = `
-            ACT AS A MEDICAL DATA ENTRY SPECIALIST.
-            
-            TASK: 
-            Look at the attached medical lab report image.
-            Extract the test results into a structured JSON array.
-            
-            FIELDS TO EXTRACT:
-            1. testName: Name of the analyte (e.g., "Hemoglobin", "WBC", "Fasting Blood Sugar").
-            2. result: The numerical value found.
-            3. unit: The unit of measurement (e.g., "mg/dL", "g/dL", "%").
-            4. normalRange: The reference range printed on the paper.
-            5. flag: 'H' if marked High/High, 'L' if marked Low, 'A' if marked Abnormal, otherwise 'N'.
-            
-            INSTRUCTIONS:
-            - If a value is missing, use empty string "".
-            - Be extremely accurate with numbers.
-            - Output JSON ONLY. No markdown.
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-                    { text: prompt }
-                ]
-            },
-            config: {
-                temperature: 0.1,
-                responseMimeType: "application/json"
-            }
-        });
-
-        const text = response.text || "[]";
-        return JSON.parse(text);
-
-    } catch (error) {
-        console.error("Lab Parsing Failed", error);
-        throw error;
-    }
-};
-
-// --- AI Librarian & RAG ---
-
-// This function now acts as a "Consultant" finding best books
-export const recommendBooks = async (query: string): Promise<Partial<Book>[]> => {
-  try {
-    const ai = getAiClient();
-    const prompt = `
-      Act as a senior Medical Librarian and Researcher.
-      The doctor is asking: "${query}".
-      
-      TASK:
-      1. Search the web (using Google Search) to find the most authoritative medical resources.
-      2. Suggest 3-4 distinct resources.
-      3. **CRITICAL**: Determine if the resource is likely "FREE" (Open Access, WHO Guidelines, PDF available) or "PAID" (Commercial Textbook, Paid Journal).
-      4. If FREE: Find a direct PDF link or a page with a free download.
-      5. If PAID: Find the official publisher page (Elsevier, Amazon, Springer).
-      
-      OUTPUT FORMAT:
-      You must output ONLY a valid JSON Array. Do not add conversational text or markdown blocks.
-      Items structure: 
-      { 
-        "title": "string", 
-        "author": "string", 
-        "summary": "string (in Persian)", 
-        "category": "string (in Persian)", 
-        "sourceUrl": "string (URL)",
-        "accessType": "FREE" or "PAID"
-      }
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1, // Low temperature for factual accuracy
-        // NOTE: responseMimeType: "application/json" is NOT supported with tools in the current API version
-      }
-    });
-    
-    let text = response.text || "[]";
-    // Clean markdown formatting if present
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    // Ensure we only parse the array part if extra text exists
-    const firstBracket = text.indexOf('[');
-    const lastBracket = text.lastIndexOf(']');
-    if (firstBracket !== -1 && lastBracket !== -1) {
-        text = text.substring(firstBracket, lastBracket + 1);
-    }
-    
-    return JSON.parse(text);
-  } catch (error) {
-    console.error("Book recommendation failed", error);
-    return [];
-  }
-};
-
-export const analyzeBookContent = async (bookTitle: string): Promise<string> => {
-    try {
-        const ai = getAiClient();
-        const prompt = `
-        Act as an expert medical summarizer.
-        Target Book: "${bookTitle}"
-        
-        TASK:
-        Search the web for the key clinical protocols, diagnostic criteria, and treatment guidelines found in this specific book.
-        Compile a "Comprehensive Knowledge Summary" that can be used by an AI to diagnose patients based on this book's philosophy.
-        
-        OUTPUT LANGUAGE: PERSIAN (FARSI).
-        Structure:
-        1. Key Concepts
-        2. Diagnostic Criteria
-        3. Common Treatments
-        4. Important Tables/Rules
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: { 
-              tools: [{ googleSearch: {} }],
-              temperature: 0.2
-            }
-        });
-
-        return response.text || "محتوایی یافت نشد.";
-    } catch (e) {
-        throw e;
-    }
-};
-
-export const askBookQuestion = async (book: Book, question: string): Promise<string> => {
-  try {
-    const ai = getAiClient();
-    
-    const contentContext = book.content ? book.content.substring(0, 50000) : book.summary;
-
-    const prompt = `
-      You are an expert medical assistant.
-      The user is asking a question about the following medical document/book.
-      
-      DOCUMENT TITLE: ${book.title}
-      AUTHOR: ${book.author}
-      
-      DOCUMENT CONTENT:
-      """
-      ${contentContext}
-      """
-      
-      USER QUESTION:
-      ${question}
-      
-      INSTRUCTIONS:
-      - Answer ONLY based on the provided document content.
-      - If the answer is not in the document, state "این اطلاعات در متن سند موجود نیست."
-      - Output Language: PERSIAN (Farsi).
-      - Be concise and clinical.
-    `;
-
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: { temperature: 0.1 }
-    });
-    return response.text || "خطا در دریافت پاسخ.";
-  } catch (error) {
-    console.error("Chat with book failed", error);
-    return "خطا در ارتباط با هوش مصنوعی.";
-  }
-};
-
-// --- AI Diagnostician ---
-
-interface DiagnosisInput {
-  patient: Patient;
-  symptoms: string;
-  vitals: Vitals;
-  labImagesBase64?: string[]; 
-  extractedClinicalData?: string; // New Field: Summarized text from images
-  selectedBooks: Book[];
-  useWebSearch: boolean;
-  pastPrescriptions: Prescription[]; 
+// --- Client-Side Key Stats Interface (Mocked for Proxy Mode) ---
+export interface KeyStats {
+  key: string;
+  maskedKey: string;
+  usageCount: number;
+  errorCount: number;
+  lastUsed: number;
+  status: 'active' | 'cooldown';
 }
 
-export const performDiagnosis = async (input: DiagnosisInput) => {
-  const ai = getAiClient();
-
-  // Build Context from Past Labs
-  let historyContext = "";
-  if (input.pastPrescriptions.length > 0) {
-      historyContext = "--- PAST MEDICAL HISTORY & LAB FINDINGS ---\n";
-      input.pastPrescriptions.forEach(rx => {
-          if (rx.diagnosis || rx.labFindings) {
-              historyContext += `Date: ${new Date(rx.date).toLocaleDateString()}\n`;
-              if (rx.diagnosis) historyContext += `Diagnosis: ${rx.diagnosis}\n`;
-              if (rx.labFindings) historyContext += `Lab Findings: ${rx.labFindings}\n`;
-              historyContext += "----------------\n";
-          }
-      });
+// --- Key Manager (Proxy Stub) ---
+// This class is kept to prevent breaking Layout.tsx which expects keyManager.getStatistics()
+class KeyManager {
+  public getStatistics(): KeyStats[] {
+    return [{
+      key: 'proxy',
+      maskedKey: 'SERVER-SIDE-PROXY',
+      usageCount: 999,
+      errorCount: 0,
+      lastUsed: Date.now(),
+      status: 'active'
+    }];
   }
-
-  // Add Extracted Data Context
-  let extractedDataContext = "";
-  if (input.extractedClinicalData) {
-      extractedDataContext = `
-      --- EXTRACTED CLINICAL DATA FROM SCANS/DOCUMENTS ---
-      ${input.extractedClinicalData}
-      ----------------------------------------------------
-      `;
+  
+  public hasKeys() {
+    return true; // Always true as keys are on server
   }
+}
 
-  let contextString = `
-    Patient Profile (CRITICAL CONTEXT):
-    - Age: ${input.patient.age}
-    - Gender: ${input.patient.gender}
-    - Medical History: ${input.patient.medicalHistory} (Check for pregnancy, heart disease, diabetes, etc.)
-    - Allergies: ${input.patient.allergies} (Check for general contraindications)
+export const keyManager = new KeyManager();
 
-    ${historyContext}
-    ${extractedDataContext}
-
-    Current Vitals:
-    - BP: ${input.vitals.bloodPressure}
-    - Glucose (BS): ${input.vitals.glucose}
-    - HR: ${input.vitals.heartRate}
-    - Temp: ${input.vitals.temperature}
-    - O2: ${input.vitals.oxygenLevel}
-    - Weight: ${input.vitals.weight}
-
-    Clinical Symptoms:
-    ${input.symptoms}
-  `;
-
-  if (input.selectedBooks.length > 0) {
-    contextString += `\n\n--- CONSULTED REFERENCE DOCUMENTS (PRIORITY: HIGH) ---\n`;
-    input.selectedBooks.forEach(b => {
-      // Only use content if it exists (downloaded/uploaded)
-      if (b.content) {
-          const contentToUse = b.content.substring(0, 20000);
-          contextString += `\n[SOURCE: ${b.title}]\nCONTENT:\n${contentToUse}\n----------------\n`;
-      }
-    });
-    contextString += `\nNOTE: You MUST prioritize the "CONSULTED REFERENCE DOCUMENTS" above. If the answer is in these documents, use it. Do not hallucinate outside of these facts if possible.\n`;
-  }
-
-  const parts: any[] = [{ text: contextString }];
-
-  if (input.labImagesBase64 && input.labImagesBase64.length > 0) {
-    input.labImagesBase64.forEach((imgData, index) => {
-        parts.push({
-            inlineData: {
-                mimeType: "image/jpeg",
-                data: imgData
-            }
-        });
-        parts.push({ text: `\n[Image ${index + 1}]: Analyze this attached Lab Report/X-Ray image.` });
-    });
-    parts.push({ text: "\nTASK: Extract all numerical data, abnormal findings, and key clinical indicators from these images into the 'labAnalysis' field." });
-  }
-
-  parts.push({ text: `
-    Act as a Senior Specialist Doctor (Fogh-e-Takhasos) and Academic Researcher.
-    
-    >>> ANTI-HALLUCINATION & SAFETY PROTOCOL <<<
-    1. **Thinking Phase**: Before generating the JSON, you MUST internally reason about the case. Verify drug names, dosages, and interactions.
-    2. **Evidence Priority**: If 'CONSULTED REFERENCE DOCUMENTS' are provided, base your diagnosis 90% on them.
-    3. **Strict Fact-Checking**: Do NOT invent medications. If you are unsure about a dosage, do not suggest it.
-    4. **Source Filtering**: Use Google Search to verify clinical data. ONLY use high-impact medical sources (PubMed, NIH, Mayo Clinic, UpToDate, WHO).
-    5. **Contraindication Check**: Explicitly check the patient's allergies and history (Pregnancy, Diabetes, Cardiac) against suggested drugs.
-
-    DIAGNOSIS INSTRUCTIONS:
-    1. **Lab Analysis**: If images are provided, extract findings into 'labAnalysis'.
-    2. **Diagnosis**: Provide the most likely diagnosis and differential diagnoses based on evidence.
-    3. **Reasoning**: Explain WHY this diagnosis was reached, citing specific symptoms or lab values.
-    4. **Simplified Summary**: In 'simplifiedExplanation', provide a 2-3 sentence summary in plain language suitable for a general practitioner or the patient.
-    5. **Suggestions**: Suggest medications with STANDARD dosages.
-    6. **TRADITIONAL MEDICINE & LIFESTYLE**: Based on the symptoms, determine the likely 'Temperament' (Mizaj) in Traditional Persian Medicine (e.g., Cold & Wet, Hot & Dry). Provide 'traditionalMedicine' advice including foods to eat/avoid, herbal teas (safe ones), and lifestyle tips.
-    
-    OUTPUT LANGUAGE: PERSIAN (FARSI).
-    
-    REQUIRED OUTPUT FORMAT:
-    Return ONLY a valid JSON object. Do NOT wrap in markdown code blocks or add explanations outside JSON.
-    JSON Structure:
-    {
-      "diagnosis": "Name of the disease",
-      "confidence": number (0-100),
-      "reasoning": "Detailed medical explanation",
-      "simplifiedExplanation": "Simple summary in plain Persian",
-      "labAnalysis": "Detailed extraction and analysis of uploaded lab reports/images (string)",
-      "safetyWarnings": ["List of general patient condition warnings"],
-      "suggestedMedications": [
-         { "name": "Drug Name", "dosage": "Dosage Info", "reason": "Why this drug?" }
-      ],
-      "dietaryAdvice": {
-        "recommended": ["Food Item"],
-        "avoid": ["Food Item"]
-      },
-      "traditionalMedicine": {
-          "temperament": "Diagnosis of Mizaj (e.g. Ghalabe-ye-Sard-o-Tar)",
-          "recommendedFoods": ["Specific beneficial foods"],
-          "forbiddenFoods": ["Foods that worsen the condition"],
-          "herbalRemedies": ["Safe herbal teas or plants"],
-          "lifestyleTips": ["Lifestyle/Sleep/Environment advice"]
-      }
-    }
-  `});
-
-  const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
-
+// --- PROXY CALLER FUNCTION ---
+// This replaces the direct ai.models.generateContent call
+async function callProxy(payload: { model: string; contents: any[]; config?: any }): Promise<any> {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts },
-      config: {
-        tools: tools,
-        temperature: 0.1, // Drastically reduced for safety
-        thinkingConfig: { thinkingBudget: 2048 } // Allocate tokens for internal reasoning to reduce hallucinations
-      }
+    const response = await fetch('/api/proxy', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
-    let text = response.text || "{}";
-    
-    // Clean markdown formatting if present
-    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // Attempt to extract JSON if there is extra text
-    const firstBrace = text.indexOf('{');
-    const lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-        text = text.substring(firstBrace, lastBrace + 1);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Proxy Error (${response.status}): ${errText}`);
     }
 
-    const resultJson = JSON.parse(text);
-
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-      ?.map((chunk: any) => ({
-        title: chunk.web?.title || "منبع معتبر پزشکی",
-        uri: chunk.web?.uri || "#"
-      }))
-      .filter((s: any) => s.uri !== "#") || [];
-
-    return {
-      ...resultJson,
-      sources
-    };
-
+    const data = await response.json();
+    
+    // Add a helper getter for .text to mimic SDK behavior
+    // The raw JSON won't have the getter method, so we inject the property if missing
+    if (data && data.candidates && !data.text) {
+        const text = data.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join('') || "";
+        data.text = text;
+    }
+    
+    return data;
   } catch (error) {
-    console.error("Diagnosis failed", error);
+    console.error("AI Proxy Call Failed:", error);
     throw error;
   }
+}
+
+// --- Helper: Chat Session Shim ---
+// Since we can't use the SDK's chat object on client without a key, we mock it via proxy
+class ProxyChatSession {
+  private history: Content[] = [];
+  private model: string;
+  private config: any;
+
+  constructor(model: string, config: any, systemInstruction?: string) {
+     this.model = model;
+     this.config = config || {};
+     // If system instruction exists, we should conceptually treat it as context, 
+     // but the API supports it in config.
+     if (systemInstruction) {
+        this.config.systemInstruction = systemInstruction;
+     }
+  }
+
+  async sendMessage(params: { message: string }): Promise<{ text: string }> {
+     // 1. Add user message
+     const userContent: Content = { role: 'user', parts: [{ text: params.message }] };
+     this.history.push(userContent);
+
+     // 2. Call proxy with full history
+     const response = await callProxy({
+        model: this.model,
+        contents: this.history, // Send full history
+        config: this.config
+     });
+
+     // 3. Extract text
+     const modelText = response.text || "";
+
+     // 4. Add model response to history
+     const modelContent: Content = { role: 'model', parts: [{ text: modelText }] };
+     this.history.push(modelContent);
+
+     return { text: modelText };
+  }
+}
+
+const fileToGenerativePart = async (file: File | Blob) => {
+  return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+          const base64String = reader.result.split(',')[1];
+          resolve({
+            inlineData: {
+              data: base64String,
+              mimeType: file.type || 'image/jpeg',
+            },
+          });
+      } else {
+          reject(new Error("Failed to read file as base64 string"));
+      }
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 };
 
-// --- Smart Clinical Supervisor (NAZER HOOSHMAND) ---
-
-export const performClinicalSupervision = async (
-    input: DiagnosisInput,
-    currentDiagnosis: DiagnosisResult
-): Promise<SupervisorResult> => {
-    const ai = getAiClient();
-
-    // Prepare Context similar to Diagnosis
-    let contextString = `
-    PATIENT DATA:
-    - Age/Gender: ${input.patient.age} / ${input.patient.gender}
-    - Symptoms: ${input.symptoms}
-    - Medical History: ${input.patient.medicalHistory}
-    - Allergies: ${input.patient.allergies}
-    - Vitals: BP=${input.vitals.bloodPressure}, Glucose=${input.vitals.glucose}, HR=${input.vitals.heartRate}, Temp=${input.vitals.temperature}
-    
-    CURRENT PROPOSED DIAGNOSIS (By Junior AI Doctor):
-    - Diagnosis: ${currentDiagnosis.diagnosis}
-    - Reasoning: ${currentDiagnosis.reasoning}
-    - Proposed Meds: ${currentDiagnosis.suggestedMedications.map(m => m.name).join(', ')}
-    `;
-
-    const prompt = `
-      Act as the "SUPREME CLINICAL SUPERVISOR" (Nazer Arshad Pezeshki).
-      You represent the collective knowledge of ALL medical specialties (Uber-Doctor).
-      You are strict, critical, and have zero tolerance for diagnostic errors.
-
-      TASK:
-      Review the provided "CURRENT PROPOSED DIAGNOSIS" for the given "PATIENT DATA".
-      
-      >>> PRIORITY WEIGHTING <<<
-      1. **90% FOCUS ON DIAGNOSTIC ACCURACY & LOGIC**:
-         - Is the diagnosis logically sound based on the symptoms?
-         - Are there missing differential diagnoses?
-         - Is the reasoning flawed?
-         - Did the junior doctor miss a red flag in the vitals or history?
-      2. **10% FOCUS ON SAFETY & INTERACTIONS**:
-         - Are there major drug interactions?
-         - Is the dosage appropriate (if mentioned)?
-
-      INSTRUCTIONS:
-      - Critique the diagnosis ruthlessly.
-      - If it is excellent, say so. If it is flawed, explain exactly why.
-      - In 'suggestedAction', write a concise, authoritative paragraph that I can feed back into the diagnosis system to correct it.
-      
-      OUTPUT LANGUAGE: PERSIAN (FARSI).
-      
-      OUTPUT JSON FORMAT ONLY:
-      {
-        "verdict": "APPROVED" | "REJECTED" | "NEEDS_REFINEMENT",
-        "score": number (0-100),
-        "critiqueSummary": "Short but powerful summary of your review",
-        "diagnosticFlaws": ["List of logical/diagnostic errors (90% importance)"],
-        "safetyConcerns": ["List of safety/interaction issues (10% importance)"],
-        "suggestedAction": "Text to auto-fill into the correction box for the next iteration"
-      }
-    `;
-
-    const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
-
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [{ text: contextString }, { text: prompt }],
-            config: {
-                tools: tools,
-                temperature: 0.05, // Extremely low for maximum critical logic
-                thinkingConfig: { thinkingBudget: 4096 } // High thinking budget for deep supervision
-            }
-        });
-
-        let text = response.text || "{}";
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1) {
-            text = text.substring(firstBrace, lastBrace + 1);
-        }
-
-        return JSON.parse(text);
-    } catch (error) {
-        console.error("Supervision failed", error);
-        throw error;
-    }
+const blobToBase64 = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      const base64String = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64String);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 };
 
-// --- Deep Review & Debate Function ---
-
-export const performDeepReview = async (
-    input: DiagnosisInput, 
-    originalDiagnosis: string, 
-    doctorFeedback?: string
-): Promise<DiagnosisResult> => {
-    const ai = getAiClient();
-    
-    const prompt = `
-      Act as a "Medical Board Supervisor" and "Senior Clinical Critic".
-      
-      CONTEXT:
-      A junior AI doctor has made a diagnosis. The human physician has requested a "DEEP REVIEW" and may have provided objections.
-      
-      PATIENT DATA:
-      - Age/Gender: ${input.patient.age} / ${input.patient.gender}
-      - Symptoms: ${input.symptoms}
-      - History: ${input.patient.medicalHistory}
-      - Allergies: ${input.patient.allergies}
-      - Vitals: Glucose: ${input.vitals.glucose}
-      
-      ORIGINAL AI DIAGNOSIS:
-      "${originalDiagnosis}"
-      
-      PHYSICIAN'S FEEDBACK / OBJECTION:
-      "${doctorFeedback || "No specific objection, but requested deep verification."}"
-      
-      TASK:
-      1. **DEEP THINKING**: You must spend significant computational effort to verify the diagnosis.
-      2. **CRITIQUE**: 
-         - If the physician provided an objection, valid scientific evidence to support OR refute it.
-         - If the physician is correct, humbly apologize and correct the diagnosis.
-         - If the physician is incorrect, respectfully defend the original diagnosis with stronger evidence (citations).
-      3. **OUTPUT**:
-         - Generate a conversational "Debate Response" (debateResponse).
-         - Generate a "Simplified Explanation" for the non-specialist.
-         - Generate a FULL Updated Diagnosis Object, INCLUDING the 'traditionalMedicine' section based on the new findings.
-      
-      OUTPUT LANGUAGE: PERSIAN (FARSI).
-      
-      REQUIRED JSON STRUCTURE:
-      {
-        "diagnosis": "Updated Name of the disease",
-        "confidence": number (0-100),
-        "reasoning": "Deeply reasoned medical explanation",
-        "simplifiedExplanation": "Simple summary in plain Persian",
-        "debateResponse": "Direct conversational reply to the doctor",
-        "debateOutcome": "AGREE" (if you changed diagnosis based on feedback) or "DEFEND" (if you kept original),
-        "labAnalysis": "...",
-        "safetyWarnings": ["..."],
-        "suggestedMedications": [ ... ],
-        "dietaryAdvice": { ... },
-        "traditionalMedicine": {
-          "temperament": "...",
-          "recommendedFoods": ["..."],
-          "forbiddenFoods": ["..."],
-          "herbalRemedies": ["..."],
-          "lifestyleTips": ["..."]
-        }
-      }
-    `;
-    
-    const tools = input.useWebSearch ? [{ googleSearch: {} }] : [];
-    
-    try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: prompt,
-          config: {
-            tools: tools,
-            temperature: 0.15, // Slightly higher to allow for conversational nuance in debateResponse
-            thinkingConfig: { thinkingBudget: 10000 } 
-          }
-        });
-    
-        let text = response.text || "{}";
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const firstBrace = text.indexOf('{');
-        const lastBrace = text.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1) {
-            text = text.substring(firstBrace, lastBrace + 1);
-        }
-    
-        const resultJson = JSON.parse(text);
-        
-        const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks
-          ?.map((chunk: any) => ({
-            title: chunk.web?.title || "منبع معتبر پزشکی",
-            uri: chunk.web?.uri || "#"
-          }))
-          .filter((s: any) => s.uri !== "#") || [];
-    
-        return {
-          ...resultJson,
-          sources
-        };
-    
-      } catch (error) {
-        console.error("Deep Review failed", error);
-        throw error;
-      }
-};
-
-export const checkPrescriptionSafety = async (patient: Patient, medications: { name: string; dosage: string }[]): Promise<SafetyCheckResult> => {
+// Safe JSON parser
+const safeParseJSON = (text: string) => {
   try {
-    const ai = getAiClient();
-
-    const prompt = `
-      ACT AS A CLINICAL PHARMACIST AND SAFETY SYSTEM.
-      
-      Analyze the following prescription for SAFETY ISSUES.
-      
-      PATIENT:
-      - Age: ${patient.age}
-      - Gender: ${patient.gender}
-      - History: ${patient.medicalHistory} (Pay attention to PREGNANCY, HEART ISSUES, DIABETES, KIDNEY/LIVER issues)
-      - Allergies: ${patient.allergies}
-
-      MEDICATIONS TO CHECK:
-      ${medications.map(m => `- ${m.name} (${m.dosage})`).join('\n')}
-
-      TASKS:
-      1. Check for DRUG-DRUG Interactions between the listed medications.
-      2. Check for PATIENT-DRUG Contraindications.
-      3. Check for Dose appropriateness.
-
-      OUTPUT:
-      Return JSON. If no issues, return empty list.
-      Output Language: PERSIAN (Farsi).
-    `;
-
-    // This function does NOT use tools, so we CAN use responseMimeType
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        temperature: 0.1, // Strict mode
-        responseMimeType: "application/json",
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                hasIssues: { type: Type.BOOLEAN },
-                interactions: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            type: { type: Type.STRING, enum: ['DRUG-DRUG', 'PATIENT-RISK'] },
-                            severity: { type: Type.STRING, enum: ['HIGH', 'MODERATE'] },
-                            description: { type: Type.STRING }
-                        }
-                    }
-                }
-            }
-        }
-      }
-    });
-
-    return JSON.parse(response.text || `{"hasIssues": false, "interactions": []}`);
-  } catch (error) {
-    console.error("Safety check failed", error);
-    return { hasIssues: false, interactions: [] };
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("Failed to parse JSON:", text);
+    return {};
   }
 };
+
+// --- CORE ANALYSIS FUNCTIONS ---
+
+export const analyzePatient = async (data: PatientData | PatientRecord): Promise<DualDiagnosis> => {
+    const parts: any[] = [];
+    const promptText = `
+      Patient Information:
+      Name: ${data.name}, Age: ${data.age}, Gender: ${data.gender}
+      Complaint: ${data.chiefComplaint}
+      History: ${data.history}
+      
+      Vitals:
+      - BP: ${data.vitals.bloodPressure}
+      - HR: ${data.vitals.heartRate}
+      - Temp: ${data.vitals.temperature}
+      - RR: ${data.vitals.respiratoryRate}
+      - SpO2: ${data.vitals.spO2}
+      - Glucose: ${data.vitals.bloodSugar}
+      - Weight: ${data.vitals.weight}kg
+      
+      Task: You are two expert doctors analyzing this patient simultaneously.
+      1. A Modern Medical Specialist (Internal Medicine).
+      2. A Master of Iranian Traditional Medicine (Hakim).
+      
+      CRITICAL INSTRUCTION: 
+      ALL OUTPUT TEXT MUST BE IN PERSIAN (FARSI).
+      The structure must be JSON, but the values inside the JSON strings must be Persian.
+      
+      RETURN RAW JSON ONLY. NO MARKDOWN.
+      {
+        "modern": {
+          "diagnosis": "تشخیص (Persian)",
+          "reasoning": "استدلال (Persian)",
+          "treatmentPlan": ["طرح درمان (Persian)"],
+          "lifestyle": ["سبک زندگی (Persian)"],
+          "warnings": ["هشدارها (Persian)"]
+        },
+        "traditional": {
+          "diagnosis": "تشخیص مزاج/اخلاط (Persian)",
+          "reasoning": "استدلال (Persian)",
+          "treatmentPlan": ["تدابیر گیاهی (Persian)"],
+          "lifestyle": ["سته ضروریه (Persian)"],
+          "warnings": ["پرهیزات (Persian)"]
+        }
+      }
+    `;
+
+    parts.push({ text: promptText });
+
+    const imgData = data.image || (data as PatientRecord).imageBlob;
+    if (imgData) {
+      try {
+        const imgPart = await fileToGenerativePart(imgData);
+        parts.push(imgPart);
+        parts.push({ text: "Also analyze the attached image of the patient for visual signs." });
+      } catch(e) { console.warn("Failed to process image", e); }
+    }
+
+    const labData = data.labReport || (data as PatientRecord).labReportBlob;
+    if (labData) {
+      try {
+        const labPart = await fileToGenerativePart(labData);
+        parts.push(labPart);
+        parts.push({ text: "Review the attached lab report." });
+      } catch(e) { console.warn("Failed to process lab report", e); }
+    }
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash", 
+      contents: [{ parts }], 
+      config: {}
+    });
+
+    const parsedData = safeParseJSON(response.text || "{}");
+
+    if (!parsedData || !parsedData.modern || !parsedData.traditional) {
+        throw new Error("Invalid or incomplete AI response structure.");
+    }
+
+    return parsedData as DualDiagnosis;
+};
+
+export const generateConsensus = async (modern: DoctorDiagnosis, traditional: DoctorDiagnosis): Promise<string> => {
+    const prompt = `
+      Act as a Medical Board Director. Review these two opinions:
+      Modern: ${JSON.stringify(modern)}
+      Traditional: ${JSON.stringify(traditional)}
+
+      1. Identify conflicts (e.g., drug-herb interactions).
+      2. Create a unified, safe plan.
+      3. Simulate a brief dialogue between the two doctors where they agree on the final path.
+      
+      Output structured markdown in Persian.
+    `;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {}
+    });
+
+    return response.text || "خطا در جمع‌بندی";
+};
+
+export const generateAudioSummary = async (text: string): Promise<string> => {
+    const prompt = `Read this medical summary in a professional, reassuring Persian (Farsi) voice: ${text.substring(0, 1000)}`;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Kore' },
+          },
+        },
+      },
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    return base64Audio || "";
+};
+
+export const createMedicalChat = (patientData: PatientData, diagnosis: DualDiagnosis, consensus: string) => {
+  const systemContext = `
+    You are the "Smart Physician Medical Council". 
+    You have analyzed patient: ${patientData.name}.
+    
+    Current Diagnosis Context:
+    Modern View: ${diagnosis.modern.diagnosis}
+    Traditional View: ${diagnosis.traditional.diagnosis}
+    Consensus: ${consensus}
+
+    Your goal is to answer the doctor's follow-up questions in Persian.
+    Maintain a professional, collaborative tone.
+  `;
+
+  // Return local proxy chat instance
+  // @ts-ignore - Mimics Chat interface partially
+  return new ProxyChatSession("gemini-2.5-flash", {}, systemContext);
+};
+
+export const analyzeCulture = async (image: File, type: string, notes: string): Promise<LabAnalysis> => {
+    const imgPart = await fileToGenerativePart(image);
+    const prompt = `
+      You are an expert Microbiologist. Analyze this image of a ${type} culture.
+      Notes: ${notes}
+      Identify colony morphology, hemolysis, lactose fermentation, and likely organism.
+      
+      RETURN RAW JSON ONLY (Values in Persian):
+      {
+        "sampleType": "string",
+        "visualFindings": "string",
+        "suspectedOrganism": "string",
+        "recommendations": ["string"],
+        "severity": "low" | "medium" | "high"
+      }
+    `;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
+    });
+
+    return safeParseJSON(response.text || "{}") as LabAnalysis;
+};
+
+export const analyzeRadiology = async (image: File, modality: string, region: string): Promise<RadiologyAnalysis> => {
+    const imgPart = await fileToGenerativePart(image);
+    const prompt = `
+      You are an expert Radiologist. Analyze this ${modality} of ${region}.
+      Provide findings, impression, severity, and anatomical location.
+      
+      RETURN RAW JSON ONLY (Values in Persian):
+      {
+        "modality": "string",
+        "region": "string",
+        "findings": ["string"],
+        "impression": "string",
+        "severity": "normal" | "abnormal" | "critical",
+        "anatomicalLocation": "string"
+      }
+    `;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
+    });
+
+    return safeParseJSON(response.text || "{}") as RadiologyAnalysis;
+};
+
+export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongue' | 'face'): Promise<PhysicalExamAnalysis> => {
+    const imgPart = await fileToGenerativePart(image);
+    const prompt = `
+      Analyze this physical exam image. Type: ${examType}. 
+      Return findings, diagnosis, severity, traditional analysis.
+      
+      RETURN RAW JSON ONLY (Values in Persian):
+      {
+        "examType": "string",
+        "findings": ["string"],
+        "diagnosis": "string",
+        "severity": "low" | "medium" | "high",
+        "traditionalAnalysis": "string",
+        "recommendations": ["string"]
+      }
+    `;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
+    });
+
+    return safeParseJSON(response.text || "{}") as PhysicalExamAnalysis;
+};
+
+export const digitizePrescription = async (image: File): Promise<{ items: PrescriptionItem[], diagnosis?: string, vitals?: PatientVitals }> => {
+    const imgPart = await fileToGenerativePart(image);
+    const prompt = `
+      You are an expert Senior Pharmacist (Dr. Darusaz).
+      Analyze this prescription image to extract data.
+
+      RULES:
+      1. Drug Name includes Strength (e.g. "Amoxicillin 500mg").
+      2. Dosage = Quantity/Count (e.g. "N=20" -> "20").
+      3. Translate instructions to Persian (BID -> هر ۱۲ ساعت).
+      
+      RETURN RAW JSON ONLY:
+      {
+        "items": [
+          { "drug": "string", "dosage": "string", "instruction": "string" }
+        ],
+        "diagnosis": "string",
+        "vitals": {
+          "bloodPressure": "string",
+          "heartRate": "string",
+          "temperature": "string",
+          "spO2": "string",
+          "weight": "string",
+          "height": "string",
+          "respiratoryRate": "string",
+          "bloodSugar": "string"
+        }
+      }
+    `;
+
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [imgPart, { text: prompt }] }],
+      config: {}
+    });
+
+    return safeParseJSON(response.text || "{}");
+};
+
+export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
+    const base64Audio = await blobToBase64(audio);
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [
+          { inlineData: { mimeType: "audio/mp3", data: base64Audio } },
+          { text: "Listen to this medical dictation (Persian/Farsi). Transcribe it exactly in Persian." }
+        ]
+      }],
+      config: {}
+    });
+    return response.text || "";
+};
+
+export const generateTimelineAnalysis = async (current: any, history: any[]): Promise<string> => {
+    const prompt = `
+      Analyze the patient's history to identify trends.
+      Current Visit: ${JSON.stringify(current)}
+      Past History: ${JSON.stringify(history)}
+      Output a brief Persian report.
+    `;
+    const response = await callProxy({
+        model: "gemini-2.5-flash",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {}
+    });
+    return response.text || "عدم توانایی در تحلیل روند.";
+};
+
+// Generic placeholder wrapper
+const wrapPlaceholder = async (fn: Function) => Promise.resolve({});
+
+export const analyzeECG = async (image: File, context: string) => wrapPlaceholder(() => {});
+export const analyzeHeartSound = async (audio: Blob) => wrapPlaceholder(() => {});
+export const calculateCardiacRisk = async (profile: string) => wrapPlaceholder(() => {});
+export const analyzeNeurologyVideo = async (video: File, type: string) => wrapPlaceholder(() => {});
+export const analyzeCognitiveSpeech = async (audio: Blob) => wrapPlaceholder(() => {});
+export const analyzePsychologyImage = async (image: File) => wrapPlaceholder(() => {});
+export const analyzeDream = async (text: string) => wrapPlaceholder(() => {});
+export const analyzeSentiment = async (audio: Blob) => wrapPlaceholder(() => {});
+export const analyzeOphthalmology = async (image: File, type: string) => wrapPlaceholder(() => {});
+export const analyzeBabyCry = async (audio: Blob) => wrapPlaceholder(() => {});
+export const analyzeChildDevelopment = async (video: File) => wrapPlaceholder(() => {});
+export const calculateGrowthProjection = async (data: any) => wrapPlaceholder(() => {});
+export const analyzeOrthopedics = async (image: File, type: string) => wrapPlaceholder(() => {});
+export const analyzeDentistry = async (image: File, type: string) => wrapPlaceholder(() => {});
+export const analyzeGynecology = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzePulmonology = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeGastroenterology = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeUrology = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeHematology = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeEmergency = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeGenetics = async (input: any, type: string) => wrapPlaceholder(() => {});

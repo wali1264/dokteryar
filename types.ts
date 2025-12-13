@@ -1,202 +1,306 @@
 
-export enum Gender {
-  Male = 'Male',
-  Female = 'Female',
-  Other = 'Other'
-}
-
-export type UserRole = 'admin' | 'doctor' | 'nurse' | 'receptionist' | 'accountant' | 'lab_tech';
-
-export interface Patient {
-  id: string;
-  fullName: string;
-  age: number;
-  gender: Gender;
-  phone: string;
-  medicalHistory: string; 
-  allergies: string; 
-  registeredAt: string;
-  national_id?: string;
-}
-
-export interface Vitals {
+export interface PatientVitals {
   bloodPressure: string;
   heartRate: string;
   temperature: string;
-  oxygenLevel: string;
+  spO2: string;
   weight: string;
-  glucose: string;
+  height: string;
+  respiratoryRate?: string; // RR
+  bloodSugar?: string; // Glu
+  bmi?: string;
+  bsa?: string;
 }
 
-export type VisitStatus = 'waiting' | 'pending_lab' | 'lab_ready' | 'completed' | 'pending_review' | 'reviewed';
+export interface PatientData {
+  id?: string;
+  name: string;
+  age: string;
+  gender: 'male' | 'female';
+  phoneNumber?: string;
+  chiefComplaint: string;
+  history: string;
+  allergies?: string;
+  vitals: PatientVitals;
+  image?: File | null;
+  labReport?: File | null;
+}
 
-export interface Visit {
+export interface PatientRecord extends PatientData {
   id: string;
-  patientId: string;
-  doctorId: string;
-  visitDate: string;
-  vitals: Vitals;
-  symptoms: string;
-  status: VisitStatus;
-  paymentStatus?: 'paid' | 'unpaid';
-  doctorName?: string; 
-  patientName?: string; 
-  patientAge?: number; 
-  aiAnalysis?: string; 
-  diagnosisId?: string;
-  fullPatientData?: Patient;
-  extractedClinicalData?: string; // New: To store extracted text from scans/docs
+  visitDate: number;
+  status: 'waiting' | 'diagnosed' | 'completed';
+  diagnosis?: DualDiagnosis;
+  consensus?: string;
+  imageBlob?: Blob;
+  labReportBlob?: Blob;
+  prescriptions?: PrescriptionRecord[];
 }
 
-// New: Structured Lab Result Item
-export interface LabResultItem {
-  testName: string;
-  result: string;
-  unit: string;
-  normalRange: string;
-  flag: 'H' | 'L' | 'N' | 'A'; // High, Low, Normal, Abnormal
+export interface PrescriptionItem {
+  drug: string;
+  dosage: string;
+  instruction: string;
 }
 
-export interface LabRequest {
+export interface PrescriptionRecord {
   id: string;
-  visitId: string;
-  patientId: string;
-  doctorId: string;
-  testName: string;
-  price: number;
-  status: 'pending_payment' | 'paid' | 'processing' | 'completed';
-  resultFiles?: string[];
-  aiAnalysis?: string; // JSON string (Used for structured results now)
-  technicianNotes?: string;
-  createdAt: string;
-  patientName?: string; 
-  doctorName?: string; 
-  structuredResults?: LabResultItem[]; // Helper for UI
-}
-
-export interface Payment {
-  id: string;
-  patientId?: string; // Optional for misc income
-  cashierId: string;
-  amount: number;
-  paymentType: 'VISIT_FEE' | 'LAB_TEST' | 'OTHER';
-  description?: string; // New: For misc income (e.g. "Injection")
-  referenceId?: string;
-  createdAt: string;
-  patientName?: string; 
-  cashierName?: string;
-  queueNumber?: number; // Added for Receipt
-}
-
-export interface Book {
-  id: string;
-  title: string;
-  author: string;
-  summary: string;
-  category: string;
-  isDownloaded: boolean; 
-  isPlaceholder?: boolean;
-  sourceUrl?: string; 
-  accessType?: 'FREE' | 'PAID';
-  contentSnippets: string[]; 
-  content?: string; 
-  fileType?: 'PDF' | 'TXT' | 'WEB' | 'MANUAL';
-  dateAdded?: string;
-}
-
-export interface Prescription {
-  id: string;
-  patientId: string;
-  date: string;
-  diagnosis?: string; 
-  medications: {
-    name: string;
-    dosage: string;
-    instructions: string;
-  }[];
-  notes: string; 
-  labFindings?: string; 
+  date: number;
+  items: PrescriptionItem[];
+  notes?: string;
+  manualDiagnosis?: string;
+  manualVitals?: PatientVitals;
 }
 
 export interface PrescriptionTemplate {
   id: string;
-  name: string; 
-  medications: {
-    name: string;
-    dosage: string;
-    instructions: string;
-  }[];
-  notes: string;
-  diagnosis: string; 
+  name: string;
+  items: PrescriptionItem[];
+}
+
+// Phase 24: Advanced Layout Types
+export interface LayoutElement {
+  id: string;
+  type: 'text' | 'list' | 'container';
+  label: string;
+  x: number; // pixels
+  y: number; // pixels
+  width: number; // pixels
+  height?: number; // pixels (optional for auto-height text)
+  fontSize: number; // pt
+  rotation: number; // degrees
+  visible: boolean;
+  align?: 'right' | 'center' | 'left';
+}
+
+export interface PrescriptionSettings {
+  // Legacy fields (kept for backward compatibility if needed)
+  topPadding: number; 
+  fontFamily: string;
+  fontSize: number;
+  
+  // Phase 24 fields
+  paperSize: 'A4' | 'A5';
+  backgroundImage?: string; // Base64
+  printBackground: boolean; // Toggle to print the bg image or not
+  elements: LayoutElement[]; // The coordinates for everything
 }
 
 export interface DoctorProfile {
-  id?: string;
-  fullName: string;
+  name: string;
   specialty: string;
-  medicalSystemNumber: string;
+  medicalCouncilNumber: string;
   phone: string;
   address: string;
-  headerImage?: string; 
-  role?: UserRole; 
-  permissions?: string[]; 
-  isApproved?: boolean;
+  logo?: string;
+  digitalSignature?: string;
 }
 
-export interface BackupSettings {
-  enabled: boolean;
-  intervalHours: number; 
-  lastBackupAt: string | null; 
-}
-
-// AI Types
-export interface SafetyCheckResult {
-  hasIssues: boolean;
-  interactions: {
-    type: 'DRUG-DRUG' | 'PATIENT-RISK';
-    severity: 'HIGH' | 'MODERATE';
-    description: string;
-  }[];
-}
-
-export interface TraditionalMedicine {
-    temperament: string;
-    recommendedFoods: string[];
-    forbiddenFoods: string[];
-    herbalRemedies: string[];
-    lifestyleTips: string[];
-}
-
-export interface SupervisorResult {
-  verdict: 'APPROVED' | 'REJECTED' | 'NEEDS_REFINEMENT';
-  score: number;
-  critiqueSummary: string;
-  diagnosticFlaws: string[];
-  safetyConcerns: string[];
-  suggestedAction: string;
-}
-
-export interface DiagnosisResult {
+export interface DoctorDiagnosis {
   diagnosis: string;
-  confidence: number;
   reasoning: string;
-  simplifiedExplanation?: string;
-  labAnalysis?: string;
-  safetyWarnings: string[];
-  suggestedMedications: {
-    name: string;
-    dosage: string;
-    reason: string;
-  }[];
   treatmentPlan: string[];
-  dietaryAdvice: {
-    recommended: string[];
-    avoid: string[];
-  };
-  traditionalMedicine?: TraditionalMedicine;
-  sources: { title: string; uri: string }[];
-  debateResponse?: string;
-  debateOutcome?: 'AGREE' | 'DEFEND';
+  lifestyle: string[];
+  warnings: string[];
 }
 
-export type PageView = 'DASHBOARD' | 'PATIENTS' | 'DIAGNOSIS' | 'LIBRARY' | 'PRESCRIPTIONS' | 'SETTINGS' | 'MISSION_CONTROL' | 'CASHIER' | 'LAB';
+export interface DualDiagnosis {
+  modern: DoctorDiagnosis;
+  traditional: DoctorDiagnosis;
+  consensus?: string;
+}
+
+export interface LabAnalysis {
+  sampleType: string;
+  visualFindings: string;
+  suspectedOrganism: string;
+  recommendations: string[];
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface RadiologyAnalysis {
+  modality: string;
+  region: string;
+  findings: string[];
+  impression: string;
+  severity: 'normal' | 'abnormal' | 'critical';
+  anatomicalLocation?: string;
+}
+
+export interface PhysicalExamAnalysis {
+  examType: 'skin' | 'tongue' | 'face';
+  findings: string[];
+  diagnosis: string;
+  severity: 'low' | 'medium' | 'high';
+  traditionalAnalysis?: string;
+  recommendations: string[];
+}
+
+export interface CardiologyAnalysis {
+  type: 'ecg' | 'sound' | 'risk';
+  findings: string[];
+  impression: string;
+  severity: 'normal' | 'abnormal' | 'critical';
+  metrics?: {
+    rate?: string;
+    rhythm?: string;
+    intervals?: string;
+  };
+  recommendations: string[];
+}
+
+export interface NeurologyAnalysis {
+  type: 'tremor' | 'gait' | 'speech';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'abnormal' | 'critical';
+  confidenceScore?: string;
+  recommendations: string[];
+}
+
+export interface PsychologyAnalysis {
+  type: 'art' | 'dream' | 'sentiment';
+  findings: string[];
+  interpretation: string;
+  modernAnalysis?: string;
+  traditionalAnalysis?: string;
+  severity?: 'normal' | 'concern' | 'critical';
+  recommendations: string[];
+}
+
+export interface OphthalmologyAnalysis {
+  type: 'fundus' | 'external' | 'vision_test';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'abnormal' | 'critical';
+  systemicIndicators?: string[];
+  recommendations: string[];
+}
+
+export interface PediatricsAnalysis {
+  type: 'cry' | 'development' | 'growth';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  confidenceScore?: string;
+  recommendations: string[];
+}
+
+export interface OrthopedicsAnalysis {
+  type: 'posture' | 'joints';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  angles?: string[];
+  recommendations: string[];
+}
+
+export interface DentistryAnalysis {
+  type: 'caries' | 'opg' | 'smile';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  toothNumbers?: string[];
+  recommendations: string[];
+}
+
+export interface GynecologyAnalysis {
+  type: 'ultrasound' | 'mammography' | 'fertility';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  measurements?: string[];
+  recommendations: string[];
+}
+
+export interface PulmonologyAnalysis {
+  type: 'cough' | 'breath' | 'spirometry';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  metrics?: string[];
+  recommendations: string[];
+}
+
+export interface GastroenterologyAnalysis {
+  type: 'meal' | 'endoscopy' | 'pain';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  mizaj?: string;
+  nutrients?: string[];
+  organ?: string;
+  recommendations: string[];
+}
+
+export interface UrologyAnalysis {
+  type: 'dipstick' | 'stone' | 'function';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  dipstickValues?: { parameter: string; value: string; status: string }[];
+  stoneDetails?: { size: string; location: string; passability: string };
+  kidneyFunction?: { gfr: string; stage: string; mizaj: string };
+  recommendations: string[];
+}
+
+export interface HematologyAnalysis {
+  type: 'smear' | 'pathology' | 'markers';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  cellTypes?: { name: string; count: string; status: string }[];
+  markersTrend?: { name: string; trend: string; significance: string }[];
+  recommendations: string[];
+}
+
+export interface EmergencyAnalysis {
+  type: 'wound' | 'toxicology' | 'triage';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'urgent' | 'critical';
+  actions: string[];
+  triageLevel?: string;
+  antidote?: string;
+}
+
+export interface GeneticsAnalysis {
+  type: 'report' | 'pharma' | 'family';
+  findings: string[];
+  diagnosis: string;
+  severity: 'normal' | 'concern' | 'critical';
+  risks?: { condition: string; probability: string }[];
+  drugCompatibility?: { drug: string; status: string; recommendation: string };
+  recommendations: string[];
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+}
+
+export enum AppRoute {
+  DASHBOARD = 'dashboard',
+  INTAKE = 'intake',
+  DIAGNOSIS = 'diagnosis',
+  LABORATORY = 'laboratory',
+  RADIOLOGY = 'radiology',
+  PHYSICAL_EXAM = 'physical_exam',
+  CARDIOLOGY = 'cardiology',
+  NEUROLOGY = 'neurology',
+  PSYCHOLOGY = 'psychology',
+  OPHTHALMOLOGY = 'ophthalmology',
+  PEDIATRICS = 'pediatrics',
+  ORTHOPEDICS = 'orthopedics',
+  DENTISTRY = 'dentistry',
+  GYNECOLOGY = 'gynecology',
+  PULMONOLOGY = 'pulmonology',
+  GASTROENTEROLOGY = 'gastroenterology',
+  UROLOGY = 'urology',
+  HEMATOLOGY = 'hematology',
+  EMERGENCY = 'emergency',
+  GENETICS = 'genetics',
+  PRESCRIPTION = 'prescription',
+  SETTINGS = 'settings'
+}

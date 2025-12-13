@@ -1,55 +1,472 @@
 
-import React from 'react';
-import { Sidebar } from './Sidebar';
-import { useStore } from '../store';
-import { LayoutDashboard, Users, Stethoscope, BookOpen, FileText } from 'lucide-react';
-import { PageView } from '../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid, LogOut } from 'lucide-react';
+import { AppRoute } from '../types';
+import { keyManager, KeyStats } from '../services/geminiService';
+import { supabase } from '../services/supabase';
 
-export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentPage, setPage } = useStore();
+interface LayoutProps {
+  currentRoute: AppRoute;
+  onNavigate: (route: AppRoute) => void;
+  children: React.ReactNode;
+}
 
-  const MobileNavItem = ({ page, icon: Icon, label }: { page: PageView; icon: any; label: string }) => (
-    <button
-      onClick={() => setPage(page)}
-      className={`flex flex-col items-center justify-center p-2 rounded-xl transition-all ${
-        currentPage === page 
-          ? 'text-medical-600 bg-medical-50 scale-105' 
-          : 'text-gray-400 hover:text-gray-600'
-      }`}
+const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) => {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+
+  // --- Admin Mode Logic ---
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
+  const clickCountRef = useRef(0);
+  const lastClickTimeRef = useRef(0);
+  const [keyStats, setKeyStats] = useState<KeyStats[]>([]);
+
+  // --- PWA Install Logic ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // PWA Install Prompt Capture
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setShowInstallBtn(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    // App.tsx listener will handle the redirect to AuthPage
+  };
+
+  // Trigger Logic
+  const handleLogoClick = () => {
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < 800) { // < 1s threshold (800ms)
+      clickCountRef.current++;
+    } else {
+      clickCountRef.current = 1;
+    }
+    lastClickTimeRef.current = now;
+
+    if (clickCountRef.current === 5) {
+      setShowAdminLogin(true);
+      clickCountRef.current = 0;
+    }
+  };
+
+  const handleAdminLogin = () => {
+    if (adminPassword === 'admin') { // Hardcoded for demo/frontend-only protection
+      setShowAdminLogin(false);
+      setShowAdminDashboard(true);
+      setKeyStats(keyManager.getStatistics()); // Load stats
+      setAdminPassword('');
+      setLoginError(false);
+    } else {
+      setLoginError(true);
+    }
+  };
+
+  const NavItem = ({ route, icon: Icon, label, onClick }: { route?: AppRoute; icon: any; label: string, onClick?: () => void }) => {
+    const isActive = currentRoute === route;
+    return (
+      <button
+        onClick={() => {
+          if (onClick) onClick();
+          else if (route) {
+             onNavigate(route);
+             setIsSidebarOpen(false);
+             setIsMoreMenuOpen(false);
+          }
+        }}
+        className={`flex items-center w-full p-4 space-x-3 space-x-reverse rounded-xl transition-all duration-200 ${
+          isActive
+            ? 'bg-blue-600 text-white shadow-lg'
+            : 'text-gray-600 hover:bg-blue-50 hover:text-blue-600'
+        }`}
+      >
+        <Icon size={24} />
+        <span className="font-medium text-lg">{label}</span>
+      </button>
+    );
+  };
+
+  // Mobile Bottom Nav Item
+  const BottomNavItem = ({ route, icon: Icon, label, isActive, onClick }: { route?: AppRoute, icon: any, label: string, isActive?: boolean, onClick?: () => void }) => (
+    <button 
+      onClick={() => onClick ? onClick() : (route && onNavigate(route))}
+      className={`flex flex-col items-center justify-center gap-1 p-2 rounded-xl transition-all duration-300 ${isActive ? 'text-blue-600 -translate-y-2' : 'text-gray-400'}`}
     >
-      <Icon size={24} strokeWidth={currentPage === page ? 2.5 : 2} />
-      <span className="text-[10px] font-bold mt-1">{label}</span>
+      <div className={`p-2 rounded-full transition-all ${isActive ? 'bg-blue-100 shadow-md' : 'bg-transparent'}`}>
+        <Icon size={isActive ? 24 : 22} strokeWidth={isActive ? 2.5 : 2} />
+      </div>
+      <span className={`text-[10px] font-bold ${isActive ? 'opacity-100' : 'opacity-70'}`}>{label}</span>
     </button>
   );
 
-  return (
-    <div className="h-screen bg-gray-50 font-sans flex flex-col md:flex-row-reverse overflow-hidden">
-      {/* Desktop Sidebar */}
-      <div className="hidden md:block">
-         <Sidebar />
-      </div>
+  // Derived Stats
+  const totalRequests = keyStats.reduce((acc, curr) => acc + curr.usageCount, 0);
+  const activeKeys = keyStats.filter(k => k.status === 'active').length;
+  const sortedByUsage = [...keyStats].sort((a, b) => b.usageCount - a.usageCount);
+  const mostUsed = sortedByUsage[0];
+  const leastUsed = sortedByUsage[sortedByUsage.length - 1];
 
-      {/* Main Content Area */}
-      <main className="flex-1 h-full overflow-y-auto transition-all duration-300 md:mr-64 pb-20 md:pb-0">
-        {children}
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      
+      {/* ================= DESKTOP SIDEBAR (Hidden on Mobile) ================= */}
+      <aside className={`
+        hidden lg:flex fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl flex-col
+      `}>
+        <div className="p-6 border-b border-gray-100 flex justify-between items-center cursor-pointer select-none" onClick={handleLogoClick}>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white relative overflow-hidden">
+              <Activity className="animate-pulse" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">طبیب هوشمند</h1>
+          </div>
+        </div>
+
+        <div className={`px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 transition-colors ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+           {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+           {isOnline ? 'شبکه متصل است (AI فعال)' : 'حالت آفلاین (دستی)'}
+        </div>
+
+        <nav className="p-4 space-y-2 mt-2 overflow-y-auto flex-1 custom-scrollbar">
+          <NavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار دکتر" />
+          <NavItem route={AppRoute.INTAKE} icon={User} label="مشاوره هوشمند" />
+          <NavItem route={AppRoute.DIAGNOSIS} icon={Stethoscope} label="اتاق تشخیص" />
+          <NavItem route={AppRoute.DASHBOARD} icon={Archive} label="بایگانی" />
+          
+          <div className="border-t my-4 border-gray-100 pt-4">
+            <p className="text-xs font-bold text-gray-400 px-4 mb-2">دپارتمان‌های تخصصی</p>
+            <NavItem route={AppRoute.EMERGENCY} icon={Ambulance} label="اورژانس" />
+            <NavItem route={AppRoute.CARDIOLOGY} icon={HeartPulse} label="قلب و عروق" />
+            <NavItem route={AppRoute.PULMONOLOGY} icon={Wind} label="ریه و تنفس" />
+            <NavItem route={AppRoute.GASTROENTEROLOGY} icon={Utensils} label="گوارش" />
+            <NavItem route={AppRoute.NEUROLOGY} icon={BrainCircuit} label="مغز و اعصاب" />
+            <NavItem route={AppRoute.GENETICS} icon={Dna} label="ژنتیک" />
+            <NavItem route={AppRoute.UROLOGY} icon={Droplets} label="ارولوژی" />
+            <NavItem route={AppRoute.GYNECOLOGY} icon={Flower} label="زنان" />
+            <NavItem route={AppRoute.PEDIATRICS} icon={Baby} label="کودکان" />
+            <NavItem route={AppRoute.HEMATOLOGY} icon={Droplet} label="خون" />
+            <NavItem route={AppRoute.ORTHOPEDICS} icon={Bone} label="ارتوپدی" />
+            <NavItem route={AppRoute.OPHTHALMOLOGY} icon={Glasses} label="چشم" />
+            <NavItem route={AppRoute.DENTISTRY} icon={Smile} label="دندانپزشکی" />
+            <NavItem route={AppRoute.PSYCHOLOGY} icon={Sparkles} label="روانشناسی" />
+            <NavItem route={AppRoute.RADIOLOGY} icon={ScanEye} label="رادیولوژی" />
+            <NavItem route={AppRoute.LABORATORY} icon={Beaker} label="آزمایشگاه" />
+            <NavItem route={AppRoute.PHYSICAL_EXAM} icon={Eye} label="معاینه" />
+          </div>
+          <NavItem route={AppRoute.SETTINGS} icon={SettingsIcon} label="تنظیمات" />
+        </nav>
+
+        {/* Profile & Logout Section (Desktop) */}
+        <div className="p-6 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <img src="https://picsum.photos/100/100" className="w-12 h-12 rounded-full border-2 border-blue-200" alt="Dr Profile" />
+            <div>
+              <p className="font-bold text-gray-800">دکتر متخصص</p>
+              <p className="text-xs text-blue-600">مدیر سیستم</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleSignOut} 
+            title="خروج امن از سیستم"
+            className="p-2 bg-white text-red-500 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
+          >
+            <LogOut size={20} />
+          </button>
+        </div>
+      </aside>
+
+      {/* ================= MAIN CONTENT AREA ================= */}
+      <main className="flex-1 flex flex-col h-screen overflow-hidden relative lg:mr-72 transition-all duration-300">
+        
+        {/* Mobile Modern Header */}
+        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200 flex items-center justify-between px-4 lg:hidden fixed top-0 left-0 right-0 z-40 shadow-sm">
+          <div className="flex items-center gap-2">
+             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white" onClick={handleLogoClick}>
+                <Activity size={18} />
+             </div>
+             <span className="font-black text-lg text-gray-800 tracking-tight">طبیب هوشمند</span>
+          </div>
+          <div className="flex items-center gap-3">
+             <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-red-500'}`}></div>
+             {showInstallBtn && (
+                <button onClick={handleInstallClick} className="bg-blue-50 text-blue-600 p-2 rounded-full">
+                   <Download size={18} />
+                </button>
+             )}
+             
+             {/* Logout Button Mobile */}
+             <button onClick={handleSignOut} className="bg-red-50 text-red-500 p-2 rounded-full hover:bg-red-100 transition-colors" title="خروج">
+                <LogOut size={18} />
+             </button>
+
+             <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
+                <img src="https://picsum.photos/100/100" className="w-full h-full object-cover" alt="Profile" />
+             </div>
+          </div>
+        </header>
+        
+        {/* Content Scroll Area */}
+        <div className="flex-1 overflow-y-auto pt-20 pb-28 lg:pt-8 lg:pb-8 p-4 lg:p-8 scroll-smooth">
+          <div className="max-w-7xl mx-auto h-full">
+            {children}
+          </div>
+        </div>
+
+        {/* ================= MOBILE BOTTOM NAVIGATION ================= */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around items-end pb-safe px-2 py-2 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-2xl">
+           <BottomNavItem 
+             route={AppRoute.DASHBOARD} 
+             icon={FolderOpen} 
+             label="بایگانی" 
+             isActive={currentRoute === AppRoute.DASHBOARD} 
+           />
+           <BottomNavItem 
+             route={AppRoute.INTAKE} 
+             icon={UserPlus} 
+             label="مشاوره" 
+             isActive={currentRoute === AppRoute.INTAKE} 
+           />
+           {/* SWAPPED: Prescription is now centered (Index 2) */}
+           <BottomNavItem 
+             route={AppRoute.PRESCRIPTION} 
+             icon={FileSignature} 
+             label="میز کار" 
+             isActive={currentRoute === AppRoute.PRESCRIPTION} 
+           />
+           {/* SWAPPED: Diagnosis moved to the right (Index 3) */}
+           <BottomNavItem 
+             route={AppRoute.DIAGNOSIS} 
+             icon={Activity} 
+             label="تشخیص" 
+             isActive={currentRoute === AppRoute.DIAGNOSIS} 
+           />
+           <BottomNavItem 
+             icon={Grid} 
+             label="بیشتر" 
+             isActive={isMoreMenuOpen} 
+             onClick={() => setIsMoreMenuOpen(true)}
+           />
+        </nav>
+
+        {/* ================= MOBILE "MORE" SHEET (Bottom Sheet) ================= */}
+        {isMoreMenuOpen && (
+           <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsMoreMenuOpen(false)}></div>
+              <div className="bg-white rounded-t-3xl p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up">
+                 <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                 
+                 <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <Grid className="text-blue-600" />
+                    دپارتمان‌های تخصصی
+                 </h3>
+                 
+                 <div className="grid grid-cols-3 gap-3 mb-6">
+                    {[
+                      { r: AppRoute.EMERGENCY, i: Ambulance, l: 'اورژانس', c: 'bg-red-50 text-red-600' },
+                      { r: AppRoute.CARDIOLOGY, i: HeartPulse, l: 'قلب', c: 'bg-rose-50 text-rose-600' },
+                      { r: AppRoute.PEDIATRICS, i: Baby, l: 'کودکان', c: 'bg-pink-50 text-pink-600' },
+                      { r: AppRoute.GYNECOLOGY, i: Flower, l: 'زنان', c: 'bg-purple-50 text-purple-600' },
+                      { r: AppRoute.NEUROLOGY, i: BrainCircuit, l: 'مغز', c: 'bg-violet-50 text-violet-600' },
+                      { r: AppRoute.ORTHOPEDICS, i: Bone, l: 'ارتوپدی', c: 'bg-orange-50 text-orange-600' },
+                      { r: AppRoute.DENTISTRY, i: Smile, l: 'دندان', c: 'bg-cyan-50 text-cyan-600' },
+                      { r: AppRoute.OPHTHALMOLOGY, i: Glasses, l: 'چشم', c: 'bg-teal-50 text-teal-600' },
+                      { r: AppRoute.PSYCHOLOGY, i: Sparkles, l: 'روان', c: 'bg-indigo-50 text-indigo-600' },
+                      { r: AppRoute.GASTROENTEROLOGY, i: Utensils, l: 'گوارش', c: 'bg-emerald-50 text-emerald-600' },
+                      { r: AppRoute.PULMONOLOGY, i: Wind, l: 'ریه', c: 'bg-sky-50 text-sky-600' },
+                      { r: AppRoute.UROLOGY, i: Droplets, l: 'کلیه', c: 'bg-blue-50 text-blue-600' },
+                      { r: AppRoute.HEMATOLOGY, i: Droplet, l: 'خون', c: 'bg-red-50 text-red-700' },
+                      { r: AppRoute.GENETICS, i: Dna, l: 'ژنتیک', c: 'bg-fuchsia-50 text-fuchsia-600' },
+                      { r: AppRoute.LABORATORY, i: Beaker, l: 'آزمایشگاه', c: 'bg-gray-50 text-gray-600' },
+                      { r: AppRoute.RADIOLOGY, i: ScanEye, l: 'رادیولوژی', c: 'bg-gray-50 text-gray-600' },
+                      { r: AppRoute.PHYSICAL_EXAM, i: Eye, l: 'معاینه', c: 'bg-gray-50 text-gray-600' },
+                    ].map(item => (
+                       <button 
+                         key={item.l}
+                         onClick={() => { onNavigate(item.r); setIsMoreMenuOpen(false); }}
+                         className={`${item.c} p-4 rounded-2xl flex flex-col items-center gap-2 transition-transform active:scale-95`}
+                       >
+                          <item.i size={24} />
+                          <span className="text-xs font-bold">{item.l}</span>
+                       </button>
+                    ))}
+                 </div>
+
+                 <div className="border-t border-gray-100 pt-4">
+                    <button 
+                      onClick={() => { onNavigate(AppRoute.SETTINGS); setIsMoreMenuOpen(false); }}
+                      className="w-full bg-gray-50 text-gray-700 p-4 rounded-xl flex items-center justify-between font-bold"
+                    >
+                       <span className="flex items-center gap-2"><SettingsIcon size={20} /> تنظیمات و مدیریت</span>
+                       <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-xs">➜</div>
+                    </button>
+                 </div>
+              </div>
+           </div>
+        )}
+
       </main>
 
-      {/* Mobile Bottom Navigation */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 flex justify-between items-center z-50 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] safe-area-bottom">
-         <MobileNavItem page="DASHBOARD" icon={LayoutDashboard} label="خانه" />
-         <MobileNavItem page="PATIENTS" icon={Users} label="بیماران" />
-         {/* Center Action Button */}
-         <div className="-mt-8">
-             <button 
-                onClick={() => setPage('DIAGNOSIS')}
-                className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl transition-transform ${currentPage === 'DIAGNOSIS' ? 'bg-amber-500 scale-110' : 'bg-medical-600'}`}
-             >
-                 <Stethoscope size={28} className="text-white" />
-             </button>
-         </div>
-         <MobileNavItem page="LIBRARY" icon={BookOpen} label="منابع" />
-         <MobileNavItem page="PRESCRIPTIONS" icon={FileText} label="نسخ" />
-      </div>
+      {/* ADMIN LOGIN MODAL (Unchanged) */}
+      {showAdminLogin && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminLogin(false)}>
+           <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
+              <div className="flex justify-center mb-6 text-emerald-500">
+                 <Shield size={48} />
+              </div>
+              <h3 className="text-xl font-bold text-center mb-2">ورود به اتاق فرمان</h3>
+              <p className="text-gray-400 text-sm text-center mb-6">لطفا رمز عبور مدیریتی را وارد کنید</p>
+              
+              <div className="space-y-4">
+                 <div className="relative">
+                    <input 
+                      type="password" 
+                      autoFocus
+                      className={`w-full bg-gray-800 border ${loginError ? 'border-red-500' : 'border-gray-600'} rounded-xl p-3 pl-10 text-center outline-none focus:border-emerald-500 transition-colors`}
+                      placeholder="• • • • •"
+                      value={adminPassword}
+                      onChange={e => setAdminPassword(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && handleAdminLogin()}
+                    />
+                    <Key className="absolute left-3 top-3.5 text-gray-500" size={18} />
+                 </div>
+                 {loginError && <p className="text-red-500 text-xs text-center">رمز عبور اشتباه است</p>}
+                 
+                 <button onClick={handleAdminLogin} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-900/20">
+                    ورود
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* ADMIN CONTROL ROOM DASHBOARD (Unchanged) */}
+      {showAdminDashboard && (
+        <div className="fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4 overflow-y-auto">
+           <div className="w-full max-w-5xl bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh]">
+              
+              {/* Header */}
+              <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-950">
+                 <div className="flex items-center gap-4">
+                    <div className="p-2 bg-emerald-500/10 rounded-lg">
+                       <BarChart3 className="text-emerald-500" size={28} />
+                    </div>
+                    <div>
+                       <h2 className="text-2xl font-bold text-white">اتاق فرمان</h2>
+                       <p className="text-gray-400 text-xs uppercase tracking-widest">سیستم نظارت بر کلیدها و ترافیک</p>
+                    </div>
+                 </div>
+                 <button onClick={() => setShowAdminDashboard(false)} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 text-gray-400 transition-colors">
+                    <X size={24} />
+                 </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-8 flex-1 overflow-y-auto">
+                 {/* Stats Cards */}
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+                       <p className="text-gray-400 text-xs mb-1">کل درخواست‌ها</p>
+                       <p className="text-3xl font-bold text-white">{totalRequests}</p>
+                    </div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+                       <p className="text-gray-400 text-xs mb-1">کلیدهای فعال</p>
+                       <p className="text-3xl font-bold text-emerald-400">{activeKeys} <span className="text-sm text-gray-500 font-normal">/ {keyStats.length}</span></p>
+                    </div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+                       <p className="text-gray-400 text-xs mb-1">پرکارترین کلید</p>
+                       <p className="text-lg font-bold text-blue-400 truncate">{mostUsed ? mostUsed.maskedKey : '---'}</p>
+                       <p className="text-xs text-gray-500">{mostUsed ? `${mostUsed.usageCount} request` : ''}</p>
+                    </div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
+                       <p className="text-gray-400 text-xs mb-1">کم‌کارترین کلید</p>
+                       <p className="text-lg font-bold text-orange-400 truncate">{leastUsed ? leastUsed.maskedKey : '---'}</p>
+                       <p className="text-xs text-gray-500">{leastUsed ? `${leastUsed.usageCount} request` : ''}</p>
+                    </div>
+                 </div>
+
+                 {/* Usage Chart (Visual Bar) */}
+                 <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 mb-8">
+                    <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Activity size={16} className="text-emerald-500"/> توزیع بار (Load Balancing)</h4>
+                    <div className="flex h-4 rounded-full overflow-hidden bg-gray-900">
+                       {keyStats.map((k, i) => {
+                          const percent = totalRequests > 0 ? (k.usageCount / totalRequests) * 100 : 0;
+                          if (percent === 0) return null;
+                          const colors = ['bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'];
+                          return (
+                             <div key={k.key} style={{ width: `${percent}%` }} className={`${colors[i % colors.length]} hover:opacity-80 transition-opacity`} title={`${k.maskedKey}: ${k.usageCount}`}></div>
+                          );
+                       })}
+                    </div>
+                 </div>
+
+                 {/* Detailed List */}
+                 <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
+                    <table className="w-full text-right text-gray-300">
+                       <thead className="bg-gray-900 text-gray-500 text-xs uppercase">
+                          <tr>
+                             <th className="p-4">شناسه کلید</th>
+                             <th className="p-4">تعداد درخواست</th>
+                             <th className="p-4">خطاها</th>
+                             <th className="p-4">آخرین استفاده</th>
+                             <th className="p-4">وضعیت</th>
+                          </tr>
+                       </thead>
+                       <tbody className="divide-y divide-gray-700">
+                          {keyStats.map(k => (
+                             <tr key={k.key} className="hover:bg-gray-750 transition-colors">
+                                <td className="p-4 font-mono text-emerald-400">{k.maskedKey}</td>
+                                <td className="p-4">{k.usageCount}</td>
+                                <td className="p-4 text-red-400">{k.errorCount}</td>
+                                <td className="p-4 text-sm text-gray-500">{k.lastUsed ? new Date(k.lastUsed).toLocaleTimeString() : '-'}</td>
+                                <td className="p-4">
+                                   <span className={`px-2 py-1 rounded text-xs font-bold ${k.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                                      {k.status === 'active' ? 'ACTIVE' : 'COOLDOWN'}
+                                   </span>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
+
+export default Layout;
