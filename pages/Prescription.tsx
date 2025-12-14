@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RefreshCcw } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -41,8 +41,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [videoDevices, setVideoDevices] = useState<MediaDeviceInfo[]>([]);
-  const [currentDeviceIndex, setCurrentDeviceIndex] = useState(0);
 
   // New Patient Form
   const [newPatientName, setNewPatientName] = useState('');
@@ -160,60 +158,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const startCamera = async () => {
     setShowCamera(true);
     try {
-      // 1. Initial request to get permissions and default camera (usually front or env)
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+        video: { facingMode: 'environment' } // Prefer rear camera on mobile
       });
-      
       setCameraStream(stream);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-
-      // 2. Enumerate devices to allow switching later
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter(device => device.kind === 'videoinput');
-      setVideoDevices(videoInputs);
-      
-      // Attempt to set current index based on the active track if possible, otherwise default 0
-      const activeTrack = stream.getVideoTracks()[0];
-      const activeId = activeTrack.getSettings().deviceId;
-      const index = videoInputs.findIndex(d => d.deviceId === activeId);
-      setCurrentDeviceIndex(index >= 0 ? index : 0);
-
     } catch (err) {
       console.error("Camera Error:", err);
       alert("دسترسی به دوربین امکان‌پذیر نیست. لطفا از دکمه آپلود فایل استفاده کنید.");
-      setShowCamera(false);
-    }
-  };
-
-  const switchCamera = async () => {
-    if (videoDevices.length < 2) return;
-
-    // 1. Stop current stream
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-    }
-
-    // 2. Calculate next device index
-    const nextIndex = (currentDeviceIndex + 1) % videoDevices.length;
-    const nextDevice = videoDevices[nextIndex];
-
-    try {
-      // 3. Request new stream with specific deviceId
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: nextDevice.deviceId } }
-      });
-
-      setCurrentDeviceIndex(nextIndex);
-      setCameraStream(newStream);
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream;
-      }
-    } catch (err) {
-      console.error("Failed to switch camera", err);
-      alert("خطا در تعویض دوربین.");
     }
   };
 
@@ -909,14 +863,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         <div className="fixed inset-0 z-[60] bg-black flex flex-col">
            {/* Header */}
            <div className="flex justify-between items-center p-4 bg-black/50 text-white absolute top-0 left-0 right-0 z-10">
-              <div className="flex items-center gap-3">
-                 <h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3>
-                 {videoDevices.length > 1 && (
-                    <button onClick={switchCamera} className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-all text-white" title="تغییر دوربین">
-                        <RefreshCcw size={18} />
-                    </button>
-                 )}
-              </div>
+              <h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3>
               <button onClick={stopCamera} className="p-2 bg-white/20 rounded-full"><X /></button>
            </div>
            
