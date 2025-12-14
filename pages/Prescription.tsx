@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -38,6 +38,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   // Camera Logic State
   const [showCamera, setShowCamera] = useState(false);
+  const [scanOrientation, setScanOrientation] = useState<'portrait' | 'landscape'>('portrait');
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
@@ -159,7 +160,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setShowCamera(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } // Prefer rear camera on mobile
+        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } 
       });
       setCameraStream(stream);
       if (videoRef.current) {
@@ -540,7 +541,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      </div>
                   </div>
 
-                  {/* Footer Action - Now properly at the bottom of the flex column */}
+                  {/* Footer Action */}
                   <div className="p-4 lg:p-6 border-t border-gray-100 bg-white lg:rounded-b-3xl">
                      <button 
                        onClick={handleRegisterPatient} 
@@ -873,31 +874,54 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 ref={videoRef} 
                 autoPlay 
                 playsInline 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
               />
-              {/* Target Box Overlay */}
-              <div className="absolute inset-0 border-[50px] border-black/50 pointer-events-none flex items-center justify-center">
-                 <div className="w-full h-full border-2 border-white/50 rounded-lg relative">
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl"></div>
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl"></div>
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl"></div>
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl"></div>
+              
+              {/* Smart A4/A5 Template Overlay */}
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                 <div 
+                    className="relative border-2 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.7)] transition-all duration-500 ease-in-out"
+                    style={{
+                       aspectRatio: scanOrientation === 'portrait' ? '210/297' : '297/210',
+                       height: scanOrientation === 'portrait' ? '85%' : 'auto',
+                       width: scanOrientation === 'landscape' ? '85%' : 'auto',
+                       maxHeight: '90vh',
+                       maxWidth: '90vw'
+                    }}
+                 >
+                    {/* Guide Markers */}
+                    <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-teal-500 -mt-[2px] -ml-[2px]"></div>
+                    <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-teal-500 -mt-[2px] -mr-[2px]"></div>
+                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-teal-500 -mb-[2px] -ml-[2px]"></div>
+                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-teal-500 -mb-[2px] -mr-[2px]"></div>
+                    
+                    {/* Center Label */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                       <div className="bg-black/50 text-white px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm border border-white/10 flex items-center gap-2">
+                          <ScanLine size={14} />
+                          <span>قالب {scanOrientation === 'portrait' ? 'عمودی' : 'افقی'} (A4/A5)</span>
+                       </div>
+                    </div>
                  </div>
               </div>
+              
               <canvas ref={canvasRef} className="hidden" />
            </div>
 
            {/* Controls */}
            <div className="bg-black p-6 pb-10 flex justify-between items-center">
-              <div className="w-12"></div> {/* Spacer */}
+              <button onClick={() => setScanOrientation(prev => prev === 'portrait' ? 'landscape' : 'portrait')} className="text-white flex flex-col items-center gap-1 text-xs hover:text-teal-400 transition-colors">
+                 <RotateCw size={24} />
+                 <span>چرخش قالب</span>
+              </button>
               
-              <button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition-transform">
-                 <div className="w-16 h-16 rounded-full bg-white border-2 border-black"></div>
+              <button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition-transform hover:border-teal-500 hover:scale-105">
+                 <div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div>
               </button>
 
               <div className="w-12 relative overflow-hidden">
                  <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleFileUpload} />
-                 <button className="text-white flex flex-col items-center gap-1 text-xs">
+                 <button className="text-white flex flex-col items-center gap-1 text-xs hover:text-teal-400 transition-colors">
                     <ImageIcon size={24} />
                     <span>گالری</span>
                  </button>
