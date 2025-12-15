@@ -147,7 +147,13 @@ const safeParseJSON = (text: string) => {
     return JSON.parse(cleaned);
   } catch (e) {
     console.error("Failed to parse JSON:", text);
-    return {};
+    // Return a dummy object structure to prevent UI crashes (undefined errors)
+    return {
+       findings: [],
+       recommendations: [],
+       actions: [],
+       treatmentPlan: []
+    };
   }
 };
 
@@ -453,27 +459,198 @@ export const generateTimelineAnalysis = async (current: any, history: any[]): Pr
     return response.text || "عدم توانایی در تحلیل روند.";
 };
 
-// Generic placeholder wrapper
-const wrapPlaceholder = async (fn: Function) => Promise.resolve({});
+// --- SPECIALIZED IMPLEMENTATIONS ---
 
-export const analyzeECG = async (image: File, context: string) => wrapPlaceholder(() => {});
-export const analyzeHeartSound = async (audio: Blob) => wrapPlaceholder(() => {});
-export const calculateCardiacRisk = async (profile: string) => wrapPlaceholder(() => {});
-export const analyzeNeurologyVideo = async (video: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeCognitiveSpeech = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzePsychologyImage = async (image: File) => wrapPlaceholder(() => {});
-export const analyzeDream = async (text: string) => wrapPlaceholder(() => {});
-export const analyzeSentiment = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzeOphthalmology = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeBabyCry = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzeChildDevelopment = async (video: File) => wrapPlaceholder(() => {});
-export const calculateGrowthProjection = async (data: any) => wrapPlaceholder(() => {});
-export const analyzeOrthopedics = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeDentistry = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeGynecology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzePulmonology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeGastroenterology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeUrology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeHematology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeEmergency = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeGenetics = async (input: any, type: string) => wrapPlaceholder(() => {});
+export const analyzeECG = async (image: File, context: string): Promise<CardiologyAnalysis> => {
+  const imgPart = await fileToGenerativePart(image);
+  const prompt = `Analyze this ECG image. Context: ${context}. Return RAW JSON (Persian values): { "type": "ecg", "findings": ["string"], "impression": "string", "severity": "normal"|"abnormal"|"critical", "metrics": { "rate": "string", "rhythm": "string", "intervals": "string" }, "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeHeartSound = async (audio: Blob): Promise<CardiologyAnalysis> => {
+  const audioPart = await fileToGenerativePart(audio);
+  const prompt = `Analyze this heart sound (Phonocardiogram). Return RAW JSON (Persian): { "type": "sound", "findings": ["string"], "impression": "string", "severity": "normal"|"abnormal"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [audioPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const calculateCardiacRisk = async (profile: string): Promise<CardiologyAnalysis> => {
+  const prompt = `Calculate 10-year ASCVD Risk based on: ${profile}. Return RAW JSON (Persian): { "type": "risk", "findings": ["string"], "impression": "string", "severity": "normal"|"abnormal"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeNeurologyVideo = async (video: File, type: string): Promise<NeurologyAnalysis> => {
+  const vidPart = await fileToGenerativePart(video);
+  const prompt = `Analyze this neurology video for ${type} (tremor/gait). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"abnormal"|"critical", "confidenceScore": "string", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [vidPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeCognitiveSpeech = async (audio: Blob): Promise<NeurologyAnalysis> => {
+  const audioPart = await fileToGenerativePart(audio);
+  const prompt = `Analyze speech patterns for cognitive decline/aphasia. Return RAW JSON (Persian): { "type": "speech", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"abnormal"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [audioPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzePsychologyImage = async (image: File): Promise<PsychologyAnalysis> => {
+  const imgPart = await fileToGenerativePart(image);
+  const prompt = `Analyze this drawing (Art Therapy/CDT/HTP). Return RAW JSON (Persian): { "type": "art", "findings": ["string"], "interpretation": "string", "severity": "normal"|"concern"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeDream = async (text: string): Promise<PsychologyAnalysis> => {
+  const prompt = `Interpret this dream: "${text}". Provide Modern (Psychoanalytic) and Traditional (Spiritual) analysis. Return RAW JSON (Persian): { "type": "dream", "findings": ["string"], "interpretation": "string", "modernAnalysis": "string", "traditionalAnalysis": "string", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeSentiment = async (audio: Blob): Promise<PsychologyAnalysis> => {
+  const audioPart = await fileToGenerativePart(audio);
+  const prompt = `Analyze emotional tone/sentiment. Return RAW JSON (Persian): { "type": "sentiment", "findings": ["string"], "interpretation": "string", "severity": "normal"|"concern"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [audioPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeOphthalmology = async (image: File, type: string): Promise<OphthalmologyAnalysis> => {
+  const imgPart = await fileToGenerativePart(image);
+  const prompt = `Analyze this eye image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"abnormal"|"critical", "systemicIndicators": ["string"], "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeBabyCry = async (audio: Blob): Promise<PediatricsAnalysis> => {
+  const audioPart = await fileToGenerativePart(audio);
+  const prompt = `Translate this baby cry. Return RAW JSON (Persian): { "type": "cry", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "confidenceScore": "string", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [audioPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeChildDevelopment = async (video: File): Promise<PediatricsAnalysis> => {
+  const vidPart = await fileToGenerativePart(video);
+  const prompt = `Analyze child movement/behavior. Return RAW JSON (Persian): { "type": "development", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [vidPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const calculateGrowthProjection = async (data: any): Promise<PediatricsAnalysis> => {
+  const prompt = `Calculate growth projection based on: ${JSON.stringify(data)}. Return RAW JSON (Persian): { "type": "growth", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeOrthopedics = async (image: File, type: string): Promise<OrthopedicsAnalysis> => {
+  const imgPart = await fileToGenerativePart(image);
+  const prompt = `Analyze this orthopedic image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "angles": ["string"], "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeDentistry = async (image: File, type: string): Promise<DentistryAnalysis> => {
+  const imgPart = await fileToGenerativePart(image);
+  const prompt = `Analyze this dental image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "toothNumbers": ["string"], "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeGynecology = async (input: File | any, type: string): Promise<GynecologyAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (type === 'fertility') {
+     prompt = `Analyze fertility/PCOS based on: ${JSON.stringify(input)}. Return RAW JSON (Persian): { "type": "fertility", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "recommendations": ["string"] }`;
+  } else {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze this ${type} image. Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "measurements": ["string"], "recommendations": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzePulmonology = async (input: Blob | File, type: string): Promise<PulmonologyAnalysis> => {
+  const part = await fileToGenerativePart(input);
+  const prompt = `Analyze this pulmonary input (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "metrics": ["string"], "recommendations": ["string"] }`;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [part, { text: prompt }] }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeGastroenterology = async (input: File | string, type: string): Promise<GastroenterologyAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (typeof input === 'string') {
+     prompt = `Analyze abdominal pain: ${input}. Return RAW JSON (Persian): { "type": "pain", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "organ": "string", "recommendations": ["string"] }`;
+  } else {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze this GI image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "mizaj": "string", "nutrients": ["string"], "recommendations": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeUrology = async (input: File | any, type: string): Promise<UrologyAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (type === 'function') {
+     prompt = `Calculate Kidney Function/GFR: ${JSON.stringify(input)}. Return RAW JSON (Persian): { "type": "function", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "kidneyFunction": {"gfr": "string", "stage": "string", "mizaj": "string"}, "recommendations": ["string"] }`;
+  } else {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze this urology image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "dipstickValues": [{"parameter": "string", "value": "string", "status": "string"}], "stoneDetails": {"size": "string", "location": "string", "passability": "string"}, "recommendations": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeHematology = async (input: File | any, type: string): Promise<HematologyAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (type === 'markers') {
+     prompt = `Analyze Tumor Markers: ${JSON.stringify(input)}. Return RAW JSON (Persian): { "type": "markers", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "markersTrend": [{"name": "string", "trend": "string", "significance": "string"}], "recommendations": ["string"] }`;
+  } else {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze this blood/pathology image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "cellTypes": [{"name": "string", "count": "string", "status": "string"}], "recommendations": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeEmergency = async (input: File | any, type: string): Promise<EmergencyAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (type === 'triage') {
+     prompt = `Perform ESI Triage for: ${JSON.stringify(input)}. Return RAW JSON (Persian): { "type": "triage", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"urgent"|"critical", "triageLevel": "string", "actions": ["string"] }`;
+  } else {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze this emergency image (${type}). Return RAW JSON (Persian): { "type": "${type}", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"urgent"|"critical", "antidote": "string", "actions": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};
+
+export const analyzeGenetics = async (input: File | any, type: string): Promise<GeneticsAnalysis> => {
+  const parts: any[] = [];
+  let prompt = "";
+  if (type === 'report') {
+     const imgPart = await fileToGenerativePart(input as File);
+     parts.push(imgPart);
+     prompt = `Analyze Genetics Report. Return RAW JSON (Persian): { "type": "report", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "risks": [{"condition": "string", "probability": "string"}], "recommendations": ["string"] }`;
+  } else if (type === 'pharma') {
+     prompt = `Analyze Pharmacogenetics for: ${JSON.stringify(input)}. Return RAW JSON (Persian): { "type": "pharma", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "drugCompatibility": {"drug": "string", "status": "string", "recommendation": "string"}, "recommendations": ["string"] }`;
+  } else {
+     prompt = `Analyze Family History: ${input}. Return RAW JSON (Persian): { "type": "family", "findings": ["string"], "diagnosis": "string", "severity": "normal"|"concern"|"critical", "risks": [{"condition": "string", "probability": "string"}], "recommendations": ["string"] }`;
+  }
+  parts.push({ text: prompt });
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts }] });
+  return safeParseJSON(response.text || "{}");
+};

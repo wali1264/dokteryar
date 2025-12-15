@@ -106,7 +106,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         }));
         setItems(aiItems);
     } else {
-        setDiagnosis(patient.chiefComplaint || '');
+        const cp = patient.chiefComplaint || '';
+        setDiagnosis(cp === 'ثبت نام اولیه (مستقیم)' ? '' : cp);
     }
 
     setVitals(patient.vitals || { bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: '' });
@@ -120,7 +121,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       age: newPatientAge,
       gender: newPatientGender,
       phoneNumber: newPatientPhone,
-      chiefComplaint: 'ثبت نام اولیه (مستقیم)',
+      chiefComplaint: '', // Default empty for new patients in desk
       history: newPatientHistory,
       allergies: newPatientAllergies,
       vitals: { 
