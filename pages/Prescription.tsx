@@ -284,12 +284,50 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const handlePrint = (mode: 'plain' | 'custom') => {
      saveToPatientRecord();
 
-     const win = window.open('', '', 'width=900,height=1200');
-     if (!win) return;
+     const win = window.open('', '_blank', 'width=900,height=1200');
+     if (!win) {
+       alert('لطفا اجازه باز شدن پاپ-آپ را بدهید.');
+       return;
+     }
 
      let style = `
        @page { size: ${settings.paperSize || 'A4'}; margin: 0; }
-       body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; }
+       body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 80px; }
+       
+       /* Control Bar - Hidden on Print */
+       .control-bar {
+          position: fixed; top: 0; left: 0; right: 0;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          padding: 12px;
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+          z-index: 9999;
+          border-bottom: 1px solid #eee;
+       }
+       .btn {
+          padding: 10px 24px;
+          border-radius: 12px;
+          border: none;
+          font-family: '${settings.fontFamily}', sans-serif;
+          font-weight: bold;
+          cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: transform 0.1s;
+       }
+       .btn:active { transform: scale(0.95); }
+       .btn-print { background: #2563eb; color: white; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2); }
+       .btn-close { background: #fee2e2; color: #ef4444; }
+
+       @media print {
+          .no-print { display: none !important; }
+          body { padding-top: 0; }
+       }
        
        /* Digital Mode Styles */
        .rx-container { padding: 40px; }
@@ -306,6 +344,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      `;
 
      let content = '';
+
+     // Add Control Bar
+     const controlHtml = `
+        <div class="control-bar no-print">
+           <button class="btn btn-print" onclick="window.print()">
+              <span>🖨️</span> چاپ نهایی
+           </button>
+           <button class="btn btn-close" onclick="window.close()">
+              <span>✖</span> بستن
+           </button>
+        </div>
+     `;
 
      if (mode === 'plain') {
         content = `
@@ -350,8 +400,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            style += `
              .custom-container { 
                 background-image: url('${settings.backgroundImage}'); 
-                background-size: cover; 
-                background-position: top center;
+                background-size: 100% 100%; 
+                background-position: center;
                 background-repeat: no-repeat;
              }
            `;
@@ -405,14 +455,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      win.document.write(`
        <html dir="rtl">
          <head>
+           <title>پیش‌نمایش چاپ</title>
+           <meta name="viewport" content="width=device-width, initial-scale=1.0">
            <link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet">
            <style>${style}</style>
          </head>
          <body>
+           ${controlHtml}
            ${content}
-           <script>
-             window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
-           </script>
          </body>
        </html>
      `);

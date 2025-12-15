@@ -410,21 +410,31 @@ const Settings: React.FC = () => {
                       width: dims.w + 'px',
                       height: dims.h + 'px',
                       transform: `translate(${mobileOffset.x}px, ${mobileOffset.y}px) scale(${mobileScale})`,
-                      backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none',
+                      // Removed backgroundImage here to use the img tag below for better quality
                       backgroundColor: 'white',
-                      backgroundSize: '100% 100%', // FORCE FIT TO PAPER SIZE
-                      backgroundPosition: 'center',
                       boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)', // Enhanced Shadow
                       transformOrigin: 'center center',
-                      transition: touchStartRef.current ? 'none' : 'transform 0.1s ease-out'
+                      transition: touchStartRef.current ? 'none' : 'transform 0.1s ease-out',
+                      position: 'relative',
+                      overflow: 'hidden' // Ensure nothing spills out of A4/A5
                    }}
                    className="relative"
                 >
-                   {/* Frame Border/Shadow for Visibility - Reduced to border only */}
-                   <div className="absolute inset-0 border border-gray-300 pointer-events-none"></div>
+                   {/* High Quality Background Image */}
+                   {paperSettings.backgroundImage && (
+                      <img 
+                        src={paperSettings.backgroundImage} 
+                        className="absolute inset-0 w-full h-full object-fill z-0 pointer-events-none" 
+                        alt="Background"
+                        style={{ imageRendering: 'high-quality' }} // Hint for browser
+                      />
+                   )}
+
+                   {/* Frame Border/Shadow for Visibility */}
+                   <div className="absolute inset-0 border border-gray-300 pointer-events-none z-10"></div>
 
                    {!paperSettings.backgroundImage && (
-                      <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                      <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none z-0">
                          <span className="text-6xl font-black transform -rotate-45 text-gray-400">PAPER</span>
                       </div>
                    )}
@@ -442,7 +452,7 @@ const Settings: React.FC = () => {
                             fontSize: el.fontSize + 'pt',
                             transform: `rotate(${el.rotation}deg)`,
                             textAlign: el.align || 'right',
-                            zIndex: selectedElementId === el.id ? 20 : 1,
+                            zIndex: selectedElementId === el.id ? 20 : 10, // Higher than BG (0)
                          }}
                          className={`select-none transition-colors duration-200 ${
                             selectedElementId === el.id 
