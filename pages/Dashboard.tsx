@@ -68,47 +68,63 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   };
 
   const handleReprint = (record: PatientRecord, prescriptionIndex: number = 0) => {
-     // Logic to generate HTML and print based on this specific historical record
      const pres = record.prescriptions && record.prescriptions[prescriptionIndex];
      
-     // Use manualVitals and manualDiagnosis from the prescription record if available (Snapshot of that time)
-     // Fallback to record vitals if not found (backward compatibility)
      const snapshotVitals = pres?.manualVitals || record.vitals;
      const snapshotDiagnosis = pres?.manualDiagnosis || (record.diagnosis ? record.diagnosis.modern.diagnosis : record.chiefComplaint);
-     const items = pres?.items || []; // Should use items from prescription record
+     const items = pres?.items || []; 
 
      const win = window.open('', '', 'width=900,height=1200');
      if (!win) return;
 
-     // Use existing settings or defaults
      const fontFamily = settings?.fontFamily || 'Vazirmatn';
      const paperSize = settings?.paperSize || 'A4';
      
      let content = '';
      let style = `
-       @page { size: ${paperSize}; margin: 0; }
-       body { font-family: '${fontFamily}', sans-serif; margin: 0; direction: rtl; }
+       @page { size: ${paperSize} portrait; margin: 0; }
+       body { font-family: '${fontFamily}', sans-serif; margin: 0; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
        .rx-container { padding: 40px; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
        .rx-symbol { font-size: 32px; font-weight: bold; margin: 20px 0; font-family: serif; }
        .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+       
+       .control-bar {
+          position: fixed; top: 0; left: 0; right: 0;
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(10px);
+          padding: 12px;
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+          z-index: 9999;
+          border-bottom: 1px solid #eee;
+       }
+       .btn { padding: 10px 24px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; }
+       .btn-print { background: #2563eb; color: white; }
+       .btn-close { background: #fee2e2; color: #ef4444; }
+
+       @media print {
+          .no-print { display: none !important; }
+          .custom-container { height: 100vh; page-break-after: avoid; overflow: hidden; }
+       }
      `;
 
-     // Check if custom design is enabled
+     const controlHtml = `
+        <div class="control-bar no-print">
+           <button class="btn btn-print" onclick="window.print()">چاپ مجدد</button>
+           <button class="btn btn-close" onclick="window.close()">بستن</button>
+        </div>
+     `;
+
      if (settings?.printBackground && settings?.elements && settings.elements.length > 0) {
+         let bgHtml = '';
          if (settings.backgroundImage) {
-            style += `
-                .custom-container { 
-                    position: relative; width: 100%; height: 100vh; overflow: hidden;
-                    background-image: url('${settings.backgroundImage}'); 
-                    background-size: cover; 
-                    background-position: top center;
-                    background-repeat: no-repeat;
-                }
-                .print-element { position: absolute; }
-            `;
+            bgHtml = `<img src="${settings.backgroundImage}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: fill; z-index:-1;" />`;
+            style += `.custom-container { position: relative; width: 100%; min-height: 100vh; overflow: hidden; } .print-element { position: absolute; white-space: nowrap; }`;
          } else {
              style += `.custom-container { position: relative; width: 100%; height: 100vh; overflow: hidden; } .print-element { position: absolute; }`;
          }
@@ -152,10 +168,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               </div>
             `;
          }).join('');
-         content = `<div class="custom-container">${elementsHtml}</div>`;
+         content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
 
      } else {
-         // Plain Digital Layout
+         // Plain Digital Layout (Same as Prescription.tsx)
          content = `
           <div class="rx-container">
              <div class="digital-header">
@@ -176,8 +192,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
              <div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">
                 ${snapshotVitals?.bloodPressure ? `<span><strong>BP:</strong> ${snapshotVitals.bloodPressure}</span>` : ''}
                 ${snapshotVitals?.heartRate ? `<span><strong>HR:</strong> ${snapshotVitals.heartRate}</span>` : ''}
-                ${snapshotVitals?.respiratoryRate ? `<span><strong>RR:</strong> ${snapshotVitals.respiratoryRate}</span>` : ''}
-                ${snapshotVitals?.weight ? `<span><strong>Wt:</strong> ${snapshotVitals.weight}kg</span>` : ''}
              </div>
 
              ${(snapshotDiagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${snapshotDiagnosis}</div>` : ''}
@@ -202,10 +216,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
            <style>${style}</style>
          </head>
          <body>
+           ${controlHtml}
            ${content}
-           <script>
-             window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };
-           </script>
          </body>
        </html>
      `);
@@ -217,8 +229,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       
       {/* ==================== MOBILE LAYOUT (Archive View) ==================== */}
       <div className="lg:hidden space-y-4">
-         
-         {/* Simple Header */}
          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
             <h1 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                <Archive size={24} className="text-blue-600" />
@@ -229,7 +239,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
          </div>
 
-         {/* Search */}
          <div className="relative">
             <input 
                className="w-full p-4 pl-12 bg-white rounded-2xl shadow-sm border border-gray-100 outline-none focus:border-blue-500 transition-all text-gray-700"
@@ -240,7 +249,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <Search className="absolute left-4 top-4 text-gray-400" />
          </div>
 
-         {/* Mobile Patient List */}
          <div className="space-y-3">
             {loading ? (
                <div className="flex justify-center p-4"><div className="animate-spin w-6 h-6 border-2 border-blue-500 rounded-full border-t-transparent"></div></div>
@@ -272,7 +280,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
       {/* ==================== DESKTOP LAYOUT (Archive View) ==================== */}
       <div className="hidden lg:block space-y-8">
-        {/* Header */}
+        {/* ... (Desktop Code Unchanged) ... */}
         <div className="flex justify-between items-center border-b border-gray-200 pb-6">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
@@ -286,7 +294,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* Search */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 max-w-2xl">
            <Search className="text-gray-400" />
            <input 
@@ -298,7 +305,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
            />
         </div>
 
-        {/* Patient List Grid */}
         <div>
            {loading ? (
              <div className="flex justify-center p-10">
@@ -314,7 +320,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 {filteredPatientNames.map((name) => {
                    const patientRecords = groupedPatients[name];
                    const latest = patientRecords[0]; 
-                   
                    return (
                       <div key={name} onClick={() => openPatientFile(name)} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md hover:border-blue-200 transition-all cursor-pointer group">
                           <div className="flex items-center gap-4">
@@ -339,8 +344,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       </div>
 
       {/* ==================== SHARED MODALS / SHEETS ==================== */}
-      
-      {/* DESKTOP MODAL */}
       <div className={`hidden lg:flex fixed inset-0 z-50 bg-black/50 backdrop-blur-sm items-center justify-center p-4 transition-opacity ${selectedPatientName ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           {selectedPatientName && (
             <div className="bg-white w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-fade-in relative">
@@ -379,10 +382,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                         <span className="text-xs text-gray-400">{new Date(record.visitDate).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</span>
                                     </div>
                                     <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-                                        <div className="md:hidden flex items-center gap-2 mb-4 text-gray-500 text-sm">
-                                            <Clock size={16} />
-                                            <span>{new Date(record.visitDate).toLocaleDateString('fa-IR')}</span>
-                                        </div>
                                         <div className="flex flex-col md:flex-row justify-between gap-6">
                                             <div className="flex-1 space-y-4">
                                                 <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 grid grid-cols-4 gap-2 text-center">
@@ -395,17 +394,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                                     <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2"><Activity size={16} className="text-orange-500" />تشخیص پزشک</h4>
                                                     <p className="text-gray-600 bg-gray-50 p-3 rounded-lg text-sm leading-relaxed">{record.diagnosis?.modern.diagnosis || record.prescriptions?.[0]?.manualDiagnosis || record.chiefComplaint || '---'}</p>
                                                 </div>
-                                                {record.prescriptions && record.prescriptions.length > 0 && (
-                                                    <div>
-                                                        <h4 className="font-bold text-gray-700 flex items-center gap-2 mb-2"><Pill size={16} className="text-green-500" />اقلام دارویی</h4>
-                                                        <ul className="text-sm space-y-1">
-                                                            {record.prescriptions[0].items.slice(0, 3).map((item, i) => (
-                                                                <li key={i} className="text-gray-600 flex justify-between border-b border-gray-50 py-1 last:border-0"><span>{item.drug}</span><span className="text-gray-400 font-mono text-xs">{item.dosage}</span></li>
-                                                            ))}
-                                                            {record.prescriptions[0].items.length > 3 && (<li className="text-xs text-blue-500 pt-1">و {record.prescriptions[0].items.length - 3} مورد دیگر...</li>)}
-                                                        </ul>
-                                                    </div>
-                                                )}
                                             </div>
                                             <div className="flex flex-col gap-2 justify-center border-r border-gray-100 pr-6 mr-2">
                                                  <button onClick={() => handleReprint(record)} className="flex items-center gap-2 bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl font-bold hover:bg-indigo-100 transition-colors text-sm"><Printer size={16} />چاپ مجدد نسخه</button>
@@ -421,13 +409,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           )}
       </div>
 
-      {/* MOBILE BOTTOM SHEET */}
       {selectedPatientName && (
          <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closePatientFile}></div>
              <div className="bg-white rounded-t-[2.5rem] p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up">
                  <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
-                 
                  <div className="flex items-center gap-4 mb-6">
                     <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white font-bold text-3xl shadow-lg ${selectedPatientHistory[0].gender === 'male' ? 'bg-blue-600' : 'bg-pink-600'}`}>
                        {selectedPatientName.charAt(0)}
@@ -437,7 +423,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                        <p className="text-gray-500 text-sm">{selectedPatientHistory[0].age} ساله • {selectedPatientHistory[0].phoneNumber}</p>
                     </div>
                  </div>
-
                  <div className="space-y-4">
                     {selectedPatientHistory.map((record) => (
                        <div key={record.id} className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
@@ -448,16 +433,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                              <button onClick={() => handleReprint(record)} className="text-blue-600 bg-blue-50 p-2 rounded-lg"><Printer size={18} /></button>
                           </div>
                           <p className="text-sm font-bold text-gray-800 mb-2">{record.diagnosis?.modern.diagnosis || 'بدون تشخیص نهایی'}</p>
-                          {record.prescriptions?.[0]?.items && (
-                             <div className="text-xs text-gray-500 flex items-center gap-1">
-                                <Pill size={12} />
-                                {record.prescriptions[0].items.length} قلم دارو تجویز شده
-                             </div>
-                          )}
                        </div>
                     ))}
                  </div>
-                 
                  <button onClick={closePatientFile} className="w-full bg-gray-100 text-gray-600 font-bold py-4 rounded-2xl mt-6">بستن پرونده</button>
              </div>
          </div>
