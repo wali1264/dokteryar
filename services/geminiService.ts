@@ -151,6 +151,17 @@ const safeParseJSON = (text: string) => {
   }
 };
 
+// Helper to ensure critical array fields exist to prevent UI crashes
+const ensureArrays = (data: any, fields: string[]) => {
+  const clean = { ...data };
+  fields.forEach(field => {
+    if (!clean[field] || !Array.isArray(clean[field])) {
+      clean[field] = [];
+    }
+  });
+  return clean;
+};
+
 // --- CORE ANALYSIS FUNCTIONS ---
 
 export const analyzePatient = async (data: PatientData | PatientRecord): Promise<DualDiagnosis> => {
@@ -316,7 +327,8 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
       config: {}
     });
 
-    return safeParseJSON(response.text || "{}") as LabAnalysis;
+    const result = safeParseJSON(response.text || "{}");
+    return ensureArrays(result, ['recommendations']) as LabAnalysis;
 };
 
 export const analyzeRadiology = async (image: File, modality: string, region: string): Promise<RadiologyAnalysis> => {
@@ -342,7 +354,8 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
       config: {}
     });
 
-    return safeParseJSON(response.text || "{}") as RadiologyAnalysis;
+    const result = safeParseJSON(response.text || "{}");
+    return ensureArrays(result, ['findings']) as RadiologyAnalysis;
 };
 
 export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongue' | 'face'): Promise<PhysicalExamAnalysis> => {
@@ -368,7 +381,8 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
       config: {}
     });
 
-    return safeParseJSON(response.text || "{}") as PhysicalExamAnalysis;
+    const result = safeParseJSON(response.text || "{}");
+    return ensureArrays(result, ['findings', 'recommendations']) as PhysicalExamAnalysis;
 };
 
 export const digitizePrescription = async (image: File): Promise<{ items: PrescriptionItem[], diagnosis?: string, vitals?: PatientVitals }> => {
@@ -453,27 +467,344 @@ export const generateTimelineAnalysis = async (current: any, history: any[]): Pr
     return response.text || "عدم توانایی در تحلیل روند.";
 };
 
-// Generic placeholder wrapper
-const wrapPlaceholder = async (fn: Function) => Promise.resolve({});
+// --- SPECIALIZED DEPARTMENTS IMPLEMENTATION ---
 
-export const analyzeECG = async (image: File, context: string) => wrapPlaceholder(() => {});
-export const analyzeHeartSound = async (audio: Blob) => wrapPlaceholder(() => {});
-export const calculateCardiacRisk = async (profile: string) => wrapPlaceholder(() => {});
-export const analyzeNeurologyVideo = async (video: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeCognitiveSpeech = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzePsychologyImage = async (image: File) => wrapPlaceholder(() => {});
-export const analyzeDream = async (text: string) => wrapPlaceholder(() => {});
-export const analyzeSentiment = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzeOphthalmology = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeBabyCry = async (audio: Blob) => wrapPlaceholder(() => {});
-export const analyzeChildDevelopment = async (video: File) => wrapPlaceholder(() => {});
-export const calculateGrowthProjection = async (data: any) => wrapPlaceholder(() => {});
-export const analyzeOrthopedics = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeDentistry = async (image: File, type: string) => wrapPlaceholder(() => {});
-export const analyzeGynecology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzePulmonology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeGastroenterology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeUrology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeHematology = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeEmergency = async (input: any, type: string) => wrapPlaceholder(() => {});
-export const analyzeGenetics = async (input: any, type: string) => wrapPlaceholder(() => {});
+// Generic internal helper for standard image+prompt tasks to ensure JSON safety
+async function analyzeSpecialized(
+  input: File | Blob | string | object, 
+  prompt: string, 
+  requiredArrays: string[] = ['findings', 'recommendations']
+) {
+  const parts: any[] = [];
+  
+  if (input instanceof File || input instanceof Blob) {
+    const mediaPart = await fileToGenerativePart(input);
+    parts.push(mediaPart);
+  } else if (typeof input === 'object') {
+    prompt += `\nData Context: ${JSON.stringify(input)}`;
+  } else if (typeof input === 'string') {
+    prompt += `\nContext: ${input}`;
+  }
+
+  parts.push({ text: prompt });
+
+  const response = await callProxy({
+    model: "gemini-2.5-flash",
+    contents: [{ parts }],
+    config: {}
+  });
+
+  const parsed = safeParseJSON(response.text || "{}");
+  return ensureArrays(parsed, requiredArrays);
+}
+
+// 1. CARDIOLOGY
+export const analyzeECG = async (image: File, context: string) => {
+  const prompt = `You are a Cardiologist. Analyze this ECG image. Context: ${context}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "ecg",
+    "findings": ["string"],
+    "impression": "string",
+    "severity": "normal" | "abnormal" | "critical",
+    "metrics": { "rate": "string", "rhythm": "string", "intervals": "string" },
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(image, prompt);
+};
+
+export const analyzeHeartSound = async (audio: Blob) => {
+  const prompt = `You are a Cardiologist. Analyze this Phonocardiogram audio.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "sound",
+    "findings": ["string"],
+    "impression": "string",
+    "severity": "normal" | "abnormal" | "critical",
+    "metrics": { "rate": "string", "rhythm": "string" },
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(audio, prompt);
+};
+
+export const calculateCardiacRisk = async (profile: string) => {
+  const prompt = `You are a Cardiologist. Calculate cardiovascular risk based on: ${profile}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "risk",
+    "findings": ["Risk Factors..."],
+    "impression": "Score (e.g. 15% 10-year risk)",
+    "severity": "normal" | "abnormal" | "critical",
+    "recommendations": ["Lifestyle changes...", "Medications..."]
+  }`;
+  return analyzeSpecialized(profile, prompt);
+};
+
+// 2. NEUROLOGY
+export const analyzeNeurologyVideo = async (video: File, type: string) => {
+  const prompt = `You are a Neurologist. Analyze this video for ${type} (tremor/gait/motion).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "abnormal" | "critical",
+    "confidenceScore": "e.g. 85%",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(video, prompt);
+};
+
+export const analyzeCognitiveSpeech = async (audio: Blob) => {
+  const prompt = `You are a Neurologist/Psychiatrist. Analyze speech patterns for cognitive decline (Alzheimer's/Aphasia).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "speech",
+    "findings": ["Fluency...", "Vocabulary..."],
+    "diagnosis": "string",
+    "severity": "normal" | "abnormal" | "critical",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(audio, prompt);
+};
+
+// 3. PSYCHOLOGY
+export const analyzePsychologyImage = async (image: File) => {
+  const prompt = `You are a Psychologist (Art Therapist). Analyze this drawing (e.g., Clock Drawing Test or House-Tree-Person).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "art",
+    "findings": ["string"],
+    "interpretation": "string",
+    "severity": "normal" | "concern" | "critical",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(image, prompt);
+};
+
+export const analyzeDream = async (text: string) => {
+  const prompt = `You are a Psychoanalyst and Traditional Dream Interpreter. Analyze this dream: "${text}".
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "dream",
+    "findings": ["Symbolism..."],
+    "interpretation": "Summary",
+    "modernAnalysis": "Freudian/Jungian view",
+    "traditionalAnalysis": "Ibn Sirin view",
+    "severity": "normal",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(text, prompt);
+};
+
+export const analyzeSentiment = async (audio: Blob) => {
+  const prompt = `You are a Psychologist. Analyze voice tone and sentiment for mood disorders (Depression/Anxiety).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "sentiment",
+    "findings": ["Tone...", "Speed..."],
+    "interpretation": "Mood assessment",
+    "severity": "normal" | "concern" | "critical",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(audio, prompt);
+};
+
+// 4. OPHTHALMOLOGY
+export const analyzeOphthalmology = async (image: File, type: string) => {
+  const prompt = `You are an Ophthalmologist. Analyze this eye image (${type}).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "abnormal" | "critical",
+    "systemicIndicators": ["Signs of Diabetes/BP..."],
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(image, prompt, ['findings', 'systemicIndicators', 'recommendations']);
+};
+
+// 5. PEDIATRICS
+export const analyzeBabyCry = async (audio: Blob) => {
+  const prompt = `You are a Pediatrician. Analyze this baby cry audio. Identify cause (Hunger, Pain, Tiredness, Colic).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "cry",
+    "findings": ["Pitch...", "Pattern..."],
+    "diagnosis": "Likely cause",
+    "severity": "normal" | "concern" | "critical",
+    "confidenceScore": "string",
+    "recommendations": ["Soothing techniques..."]
+  }`;
+  return analyzeSpecialized(audio, prompt);
+};
+
+export const analyzeChildDevelopment = async (video: File) => {
+  const prompt = `You are a Pediatrician. Analyze this video for child developmental milestones (Motor/Social).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "development",
+    "findings": ["Movement quality..."],
+    "diagnosis": "Milestone assessment",
+    "severity": "normal" | "concern" | "critical",
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(video, prompt);
+};
+
+export const calculateGrowthProjection = async (data: any) => {
+  const prompt = `You are a Pediatrician. Calculate growth projection. Data: ${JSON.stringify(data)}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "growth",
+    "findings": ["Percentiles..."],
+    "diagnosis": "Growth Trajectory",
+    "severity": "normal" | "concern",
+    "confidenceScore": "Based on genetic potential",
+    "recommendations": ["Nutrition..."]
+  }`;
+  return analyzeSpecialized(data, prompt);
+};
+
+// 6. ORTHOPEDICS
+export const analyzeOrthopedics = async (image: File, type: string) => {
+  const prompt = `You are an Orthopedist. Analyze this image (${type} - Posture/Joint).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "angles": ["Cobb angle...", "Q-angle..."],
+    "recommendations": ["Exercises...", "Ergonomics..."]
+  }`;
+  return analyzeSpecialized(image, prompt, ['findings', 'angles', 'recommendations']);
+};
+
+// 7. DENTISTRY
+export const analyzeDentistry = async (image: File, type: string) => {
+  const prompt = `You are a Dentist. Analyze this image (${type}).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["Caries...", "Gum health..."],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "toothNumbers": ["18", "24"...],
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(image, prompt, ['findings', 'toothNumbers', 'recommendations']);
+};
+
+// 8. GYNECOLOGY
+export const analyzeGynecology = async (input: any, type: string) => {
+  const prompt = `You are a Gynecologist. Analyze this ${type}. 
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "measurements": ["Size...", "Volume..."],
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'measurements', 'recommendations']);
+};
+
+// 9. PULMONOLOGY
+export const analyzePulmonology = async (input: any, type: string) => {
+  const prompt = `You are a Pulmonologist. Analyze this ${type} (Audio/Video/Image).
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "metrics": ["Rate...", "Flow..."],
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'metrics', 'recommendations']);
+};
+
+// 10. GASTROENTEROLOGY
+export const analyzeGastroenterology = async (input: any, type: string) => {
+  const prompt = `You are a Gastroenterologist and Nutritionist (Traditional). Analyze this ${type}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "mizaj": "Hot/Cold/Dry/Wet",
+    "nutrients": ["Calories...", "Vitamins..."],
+    "organ": "Stomach/Liver...",
+    "recommendations": ["Diet...", "Herbs..."]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'nutrients', 'recommendations']);
+};
+
+// 11. UROLOGY
+export const analyzeUrology = async (input: any, type: string) => {
+  const prompt = `You are a Urologist. Analyze this ${type}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "dipstickValues": [{"parameter": "pH", "value": "val", "status": "Normal/Abnormal"}],
+    "stoneDetails": {"size": "mm", "location": "loc", "passability": "High/Low"},
+    "kidneyFunction": {"gfr": "val", "stage": "stage", "mizaj": "string"},
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'recommendations', 'dipstickValues']);
+};
+
+// 12. HEMATOLOGY
+export const analyzeHematology = async (input: any, type: string) => {
+  const prompt = `You are a Hematologist/Pathologist. Analyze this ${type}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "cellTypes": [{"name": "Cell", "count": "val", "status": "Normal"}],
+    "markersTrend": [{"name": "Marker", "trend": "Up/Down", "significance": "string"}],
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'cellTypes', 'markersTrend', 'recommendations']);
+};
+
+// 13. EMERGENCY
+export const analyzeEmergency = async (input: any, type: string) => {
+  const prompt = `You are an Emergency Physician. Analyze this ${type}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "urgent" | "critical",
+    "actions": ["Immediate Step 1", "Step 2"],
+    "triageLevel": "ESI Level 1-5",
+    "antidote": "If toxicology"
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'actions']);
+};
+
+// 14. GENETICS
+export const analyzeGenetics = async (input: any, type: string) => {
+  const prompt = `You are a Geneticist. Analyze this ${type}.
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["string"],
+    "diagnosis": "string",
+    "severity": "normal" | "concern" | "critical",
+    "risks": [{"condition": "Name", "probability": "High/Low"}],
+    "drugCompatibility": {"drug": "Name", "status": "Safe/Caution", "recommendation": "string"},
+    "recommendations": ["string"]
+  }`;
+  return analyzeSpecialized(input, prompt, ['findings', 'risks', 'recommendations']);
+};
