@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DoctorProfile, PrescriptionSettings, LayoutElement } from '../types';
 import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase } from '../services/db';
-import { User, FileImage, Database, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, Move, RotateCw, Type, Trash, Grid, Monitor, Printer, Settings as SettingsIcon, ToggleLeft, ToggleRight, FileText, Smartphone, ZoomIn, ZoomOut, Maximize, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Layers, Hand } from 'lucide-react';
+import { User, FileImage, Database, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, Move, RotateCw, Type, Trash, Grid, Monitor, Printer, Settings as SettingsIcon, ToggleLeft, ToggleRight, FileText, Smartphone, ZoomIn, ZoomOut, Maximize, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Layers, Hand, FileCog, Image as ImageIcon, Trash2, ArrowRightCircle } from 'lucide-react';
 
 type Tab = 'profile' | 'paper' | 'backup';
 
@@ -45,10 +45,11 @@ const Settings: React.FC = () => {
   // --- MOBILE POCKET STUDIO STATE ---
   const [mobileScale, setMobileScale] = useState(0.4);
   const [mobileOffset, setMobileOffset] = useState({ x: 0, y: 0 });
-  const touchStartRef = useRef<{ x: number, y: number, dist: number } | null>(null);
+  const touchStartRef = useRef<{ x: number, y: number, dist: number, mode: 'pan' | 'drag' | 'zoom' } | null>(null);
   const lastOffsetRef = useRef({ x: 0, y: 0 });
   const lastScaleRef = useRef(0.4);
   const [showLayerList, setShowLayerList] = useState(false);
+  const [showMobileSetup, setShowMobileSetup] = useState(false);
 
   // Load Data
   useEffect(() => {
@@ -59,7 +60,6 @@ const Settings: React.FC = () => {
         
         const s = await getSettings();
         if (s) {
-           // Merge with defaults to ensure all fields exist if schema updated
            setPaperSettings(prev => ({
              ...prev, 
              ...s, 
@@ -70,6 +70,37 @@ const Settings: React.FC = () => {
     };
     load();
   }, []);
+
+  // --- AUTO FIT ENGINE (SMART FIT) ---
+  const fitToScreen = () => {
+    const dims = getCanvasDimensions();
+    // Mobile viewport dimensions (approximate safe area)
+    const viewportW = window.innerWidth;
+    const viewportH = window.innerHeight - 140; // Subtract header space
+
+    if (viewportW > 0 && viewportH > 0) {
+      const padding = 20; // Margin
+      const scaleW = (viewportW - padding) / dims.w;
+      const scaleH = (viewportH - padding) / dims.h;
+      
+      // Choose the scale that fits the whole paper
+      const fitScale = Math.min(scaleW, scaleH, 0.85); 
+      
+      setMobileScale(fitScale);
+      setMobileOffset({ x: 0, y: 0 }); // Center it (Flexbox handles alignment)
+      lastScaleRef.current = fitScale;
+      lastOffsetRef.current = { x: 0, y: 0 };
+    }
+  };
+
+  // Trigger Auto-Fit on Entry or Image Change
+  useEffect(() => {
+    if (activeTab === 'paper') {
+      // Small timeout to ensure DOM is ready
+      setTimeout(fitToScreen, 100);
+    }
+  }, [activeTab, paperSettings.paperSize, paperSettings.backgroundImage]);
+
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -105,7 +136,11 @@ const Settings: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
-      reader.onload = () => setter(reader.result as string);
+      reader.onload = () => {
+        setter(reader.result as string);
+        // Force Auto-Fit after upload so user sees the whole image
+        setTimeout(fitToScreen, 500); 
+      };
       reader.readAsDataURL(e.target.files[0]);
     }
   };
@@ -160,7 +195,7 @@ const Settings: React.FC = () => {
   const selectedEl = paperSettings.elements.find(e => e.id === selectedElementId);
   const dims = getCanvasDimensions();
 
-  // --- MOBILE TOUCH LOGIC (POCKET STUDIO) ---
+  // --- MOBILE TOUCH LOGIC (HYBRID) ---
   
   const getDistance = (touches: React.TouchList) => {
     if (touches.length < 2) return 0;
@@ -177,36 +212,42 @@ const Settings: React.FC = () => {
     };
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    // If selecting an element directly (tap)
-    // We let the element's onClick handle selection, but here we capture for drag/pan
-    
+  const handleTouchStart = (e: React.TouchEvent, elId?: string) => {
     if (e.touches.length === 2) {
-      // Pinch Zoom Mode
+      // ZOOM Mode
       touchStartRef.current = { 
         x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
         y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-        dist: getDistance(e.touches) 
+        dist: getDistance(e.touches),
+        mode: 'zoom'
       };
       lastScaleRef.current = mobileScale;
       lastOffsetRef.current = { ...mobileOffset };
     } else if (e.touches.length === 1) {
-      // Pan or Drag Mode
-      touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dist: 0 };
-      lastOffsetRef.current = { ...mobileOffset };
+      // Check if we touched an element or background
+      if (elId) {
+         // DRAG ELEMENT Mode
+         e.stopPropagation(); // Stop bubbling to canvas
+         setSelectedElementId(elId); // Auto-select on touch
+         touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dist: 0, mode: 'drag' };
+      } else {
+         // PAN CANVAS Mode
+         touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dist: 0, mode: 'pan' };
+         lastOffsetRef.current = { ...mobileOffset };
+      }
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!touchStartRef.current) return;
-    e.preventDefault(); // Prevent scrolling
+    e.preventDefault(); // Prevent browser scroll
 
-    if (e.touches.length === 2) {
-      // --- ZOOM & PAN (VIEW MODE) ---
+    if (e.touches.length === 2 && touchStartRef.current.mode === 'zoom') {
+      // ZOOM Logic
       const newDist = getDistance(e.touches);
       const scaleFactor = newDist / touchStartRef.current.dist;
       let newScale = lastScaleRef.current * scaleFactor;
-      newScale = Math.min(Math.max(newScale, 0.2), 2.0); // Clamp zoom
+      newScale = Math.min(Math.max(newScale, 0.2), 2.5); // Cap zoom
 
       const newMid = getMidpoint(e.touches);
       const dx = newMid.x - touchStartRef.current.x;
@@ -222,10 +263,9 @@ const Settings: React.FC = () => {
       const dx = e.touches[0].clientX - touchStartRef.current.x;
       const dy = e.touches[0].clientY - touchStartRef.current.y;
 
-      if (selectedElementId) {
-        // --- VIRTUAL JOYSTICK MODE (Edit Element) ---
-        // Move the element, NOT the canvas
-        // Adjust dx/dy by scale to ensure consistent movement speed regardless of zoom
+      if (touchStartRef.current.mode === 'drag' && selectedElementId) {
+        // DRAG ELEMENT Logic
+        // Adjust dx/dy by scale so element moves 1:1 with finger
         const adjustedDx = dx / mobileScale;
         const adjustedDy = dy / mobileScale;
 
@@ -239,11 +279,11 @@ const Settings: React.FC = () => {
           })
         }));
         
-        // Reset reference to avoid accumulation (Relative movement)
-        touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dist: 0 };
+        // Reset ref for continuous relative movement
+        touchStartRef.current = { ...touchStartRef.current, x: e.touches[0].clientX, y: e.touches[0].clientY };
 
-      } else {
-        // --- PAN MODE (Move Canvas) ---
+      } else if (touchStartRef.current.mode === 'pan') {
+        // PAN CANVAS Logic
         setMobileOffset({
           x: lastOffsetRef.current.x + dx,
           y: lastOffsetRef.current.y + dy
@@ -254,11 +294,6 @@ const Settings: React.FC = () => {
 
   const handleTouchEnd = () => {
     touchStartRef.current = null;
-  };
-
-  const handleElementTap = (e: React.MouseEvent | React.TouchEvent, id: string) => {
-    e.stopPropagation();
-    setSelectedElementId(id);
   };
 
   // Nudge function for precision dock
@@ -320,33 +355,51 @@ const Settings: React.FC = () => {
          {activeTab === 'paper' ? (
            <>
              {/* Studio Header */}
-             <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm p-4 z-20 flex justify-between items-center shadow-sm border-b border-gray-200">
+             <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md p-4 z-[70] flex justify-between items-center shadow-md border-b border-gray-200">
                 <div className="flex items-center gap-3">
-                   <button onClick={() => setActiveTab('profile')} className="p-2 rounded-full hover:bg-gray-100 text-gray-600"><ArrowRight /></button>
+                   {/* Back Button Fix: High Z-Index & Stop Propagation */}
+                   <button 
+                      onClick={(e) => { 
+                         e.stopPropagation(); 
+                         setActiveTab('profile'); 
+                         setMobileScale(0.4); 
+                      }} 
+                      className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 text-gray-600 transition-colors"
+                   >
+                      <ArrowRight size={24} />
+                   </button>
                    <div>
                       <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1">
                          <Grid size={14} className="text-purple-600"/> 
-                         استودیوی طراحی نسخه
+                         استودیوی طراحی
                       </h3>
                       <p className="text-[10px] text-gray-500">
-                         {selectedElementId ? 'ویرایش المان' : 'حرکت و زوم'}
+                         {selectedElementId ? 'ویرایش المان' : 'حرکت و زوم (Auto-Fit)'}
                       </p>
                    </div>
                 </div>
                 <div className="flex gap-2">
-                   <button onClick={() => setPaperSettings(p => ({ ...p, printBackground: !p.printBackground }))} className={`p-2 rounded-xl transition-all ${paperSettings.printBackground ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
-                      <FileImage size={18} />
+                   <button onClick={() => setShowMobileSetup(true)} className="p-2 rounded-xl bg-gray-100 text-gray-600 active:scale-95 transition-transform border border-gray-200">
+                      <FileCog size={20} />
                    </button>
-                   <button onClick={handleSavePaper} className="bg-purple-600 text-white p-2 rounded-xl shadow-lg shadow-purple-200">
-                      {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                   <button onClick={handleSavePaper} className="bg-purple-600 text-white p-2 px-3 rounded-xl shadow-lg shadow-purple-200 active:scale-95 transition-transform flex items-center gap-1">
+                      {loading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20} /><span className="text-xs font-bold">ذخیره</span></>}
                    </button>
                 </div>
              </div>
 
+             {/* Message Toast */}
+             {message && (
+                <div className={`absolute top-24 left-1/2 transform -translate-x-1/2 z-[80] px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 animate-fade-in ${message.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+                   {message.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                   {message.text}
+                </div>
+             )}
+
              {/* Interactive Canvas Viewport */}
              <div 
                className="w-full h-full relative overflow-hidden bg-gray-200 touch-none flex items-center justify-center"
-               onTouchStart={handleTouchStart}
+               onTouchStart={(e) => handleTouchStart(e)} // Background touch
                onTouchMove={handleTouchMove}
                onTouchEnd={handleTouchEnd}
                onClick={() => setSelectedElementId(null)} // Click empty space to deselect
@@ -360,12 +413,16 @@ const Settings: React.FC = () => {
                       backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none',
                       backgroundColor: 'white',
                       backgroundSize: 'cover',
-                      boxShadow: '0 10px 50px -12px rgba(0, 0, 0, 0.5)',
+                      backgroundPosition: 'center',
+                      boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)', // Enhanced Shadow
                       transformOrigin: 'center center',
-                      transition: isDragging || touchStartRef.current ? 'none' : 'transform 0.1s ease-out'
+                      transition: touchStartRef.current ? 'none' : 'transform 0.1s ease-out'
                    }}
                    className="relative"
                 >
+                   {/* Frame Border/Shadow for Visibility */}
+                   <div className="absolute inset-0 border border-gray-300 pointer-events-none"></div>
+
                    {!paperSettings.backgroundImage && (
                       <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
                          <span className="text-6xl font-black transform -rotate-45 text-gray-400">PAPER</span>
@@ -376,7 +433,7 @@ const Settings: React.FC = () => {
                    {paperSettings.elements.filter(el => el.visible).map(el => (
                       <div
                          key={el.id}
-                         onClick={(e) => handleElementTap(e, el.id)}
+                         onTouchStart={(e) => handleTouchStart(e, el.id)} // Specific Element Touch
                          style={{
                             position: 'absolute',
                             left: el.x + 'px',
@@ -389,8 +446,8 @@ const Settings: React.FC = () => {
                          }}
                          className={`select-none transition-colors duration-200 ${
                             selectedElementId === el.id 
-                               ? 'ring-4 ring-blue-500 bg-blue-500/10' 
-                               : 'hover:bg-black/5'
+                               ? 'ring-4 ring-blue-500 bg-blue-500/10 cursor-move' 
+                               : ''
                          }`}
                       >
                          {/* Drag Handle Visual (Only when selected) */}
@@ -407,7 +464,7 @@ const Settings: React.FC = () => {
                 {/* Floating Hint */}
                 {!selectedElementId && (
                    <div className="absolute bottom-24 bg-black/60 text-white px-4 py-2 rounded-full text-xs backdrop-blur-md pointer-events-none">
-                      برای انتخاب المان ضربه بزنید • برای جابجایی دو انگشت
+                      لمس المان برای جابجایی • دو انگشت برای زوم
                    </div>
                 )}
              </div>
@@ -418,7 +475,7 @@ const Settings: React.FC = () => {
                    <div className="flex justify-between items-center mb-4">
                       <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
                          <Type size={16} className="text-blue-500" />
-                         {selectedEl.label}
+                         ویرایش: {selectedEl.label}
                       </h4>
                       <button onClick={() => setSelectedElementId(null)} className="p-1 bg-gray-100 rounded-full"><X size={16} /></button>
                    </div>
@@ -427,25 +484,29 @@ const Settings: React.FC = () => {
                       {/* Nudge Pad */}
                       <div className="bg-gray-50 p-2 rounded-2xl grid grid-cols-3 gap-1 aspect-square justify-items-center items-center">
                          <div/>
-                         <button onTouchStart={() => nudgeElement(0, -1)} className="p-2 bg-white rounded-lg shadow-sm active:bg-blue-100"><ArrowUp size={16}/></button>
+                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(0, -1); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowUp size={18}/></button>
                          <div/>
-                         <button onTouchStart={() => nudgeElement(-1, 0)} className="p-2 bg-white rounded-lg shadow-sm active:bg-blue-100"><ArrowLeft size={16}/></button>
+                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(-1, 0); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowLeft size={18}/></button>
                          <div className="w-2 h-2 bg-gray-300 rounded-full"/>
-                         <button onTouchStart={() => nudgeElement(1, 0)} className="p-2 bg-white rounded-lg shadow-sm active:bg-blue-100"><ArrowRight size={16}/></button>
+                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(1, 0); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowRight size={18}/></button>
                          <div/>
-                         <button onTouchStart={() => nudgeElement(0, 1)} className="p-2 bg-white rounded-lg shadow-sm active:bg-blue-100"><ArrowDown size={16}/></button>
+                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(0, 1); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowDown size={18}/></button>
                          <div/>
                       </div>
 
                       {/* Sliders */}
                       <div className="space-y-4 flex flex-col justify-center">
                          <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-gray-500"><span>چرخش</span><span>{selectedEl.rotation}°</span></div>
-                            <input type="range" min="-90" max="90" value={selectedEl.rotation} onChange={e => updateSelectedElement('rotation', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                            <div className="flex justify-between text-xs text-gray-500"><span>عرض (mm)</span><span>{selectedEl.width}</span></div>
+                            <input type="range" min="50" max="700" value={selectedEl.width} onChange={e => updateSelectedElement('width', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
                          </div>
                          <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-gray-500"><span>سایز</span><span>{selectedEl.fontSize}pt</span></div>
-                            <input type="range" min="8" max="32" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                            <div className="flex justify-between text-xs text-gray-500"><span>سایز (pt)</span><span>{selectedEl.fontSize}</span></div>
+                            <input type="range" min="8" max="48" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
+                         </div>
+                         <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-gray-500"><span>چرخش</span><span>{selectedEl.rotation}°</span></div>
+                            <input type="range" min="-90" max="90" value={selectedEl.rotation} onChange={e => updateSelectedElement('rotation', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
                          </div>
                          <div className="flex bg-gray-100 p-1 rounded-lg">
                             {['right', 'center', 'left'].map((align: any) => (
@@ -455,9 +516,6 @@ const Settings: React.FC = () => {
                             ))}
                          </div>
                       </div>
-                   </div>
-                   <div className="text-center text-[10px] text-gray-400">
-                      برای جابجایی دقیق، انگشت خود را در فضای خالی بکشید (تاچ‌پد)
                    </div>
                 </div>
              )}
@@ -470,6 +528,64 @@ const Settings: React.FC = () => {
                 >
                    <Layers size={24} />
                 </button>
+             )}
+
+             {/* Setup Sheet (Mobile Paper Settings) */}
+             {showMobileSetup && (
+                <div className="absolute inset-0 bg-black/60 z-[60] flex flex-col justify-end" onClick={() => setShowMobileSetup(false)}>
+                   <div className="bg-white rounded-t-3xl p-6 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
+                      <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+                      <h3 className="font-bold text-gray-800 text-lg mb-6 flex items-center gap-2">
+                         <FileCog className="text-purple-600" />
+                         تنظیمات کاغذ و سربرگ
+                      </h3>
+
+                      {/* Paper Size */}
+                      <div className="mb-6">
+                         <label className="text-xs font-bold text-gray-500 mb-2 block">سایز کاغذ</label>
+                         <div className="flex bg-gray-100 p-1 rounded-xl">
+                            <button onClick={() => setPaperSettings(p => ({...p, paperSize: 'A4'}))} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${paperSettings.paperSize === 'A4' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>A4</button>
+                            <button onClick={() => setPaperSettings(p => ({...p, paperSize: 'A5'}))} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${paperSettings.paperSize === 'A5' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>A5</button>
+                         </div>
+                      </div>
+
+                      {/* Background Image */}
+                      <div className="mb-6">
+                         <label className="text-xs font-bold text-gray-500 mb-2 block">عکس سربرگ (پس‌زمینه)</label>
+                         <div className="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-32 flex items-center justify-center overflow-hidden">
+                            {paperSettings.backgroundImage ? (
+                               <>
+                                  <img src={paperSettings.backgroundImage} className="w-full h-full object-cover opacity-50" />
+                                  <div className="absolute inset-0 flex items-center justify-center gap-2">
+                                     <button onClick={() => setPaperSettings(p => ({...p, backgroundImage: ''}))} className="bg-red-500 text-white p-2 rounded-full shadow-lg"><Trash2 size={20}/></button>
+                                  </div>
+                               </>
+                            ) : (
+                               <div className="text-center text-gray-400">
+                                  <ImageIcon size={24} className="mx-auto mb-1" />
+                                  <span className="text-xs font-bold">آپلود عکس</span>
+                               </div>
+                            )}
+                            {/* Hidden Input covering the area for easy tap */}
+                            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} />
+                         </div>
+                      </div>
+
+                      {/* Print Background Toggle */}
+                      <div className="mb-8 bg-gray-50 p-4 rounded-xl flex items-center justify-between">
+                         <div>
+                            <span className="text-sm font-bold text-gray-700 block">چاپ پس‌زمینه</span>
+                            <span className="text-[10px] text-gray-400">آیا عکس سربرگ در چاپ نهایی دیده شود؟</span>
+                         </div>
+                         <div className="relative">
+                            <input type="checkbox" className="sr-only peer" checked={paperSettings.printBackground} onChange={e => setPaperSettings(p => ({ ...p, printBackground: e.target.checked }))} />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                         </div>
+                      </div>
+
+                      <button onClick={() => setShowMobileSetup(false)} className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-purple-200">تایید و بازگشت</button>
+                   </div>
+                </div>
              )}
 
              {/* Layer List Modal */}
@@ -491,14 +607,6 @@ const Settings: React.FC = () => {
                                </button>
                             </div>
                          ))}
-                      </div>
-                      
-                      <div className="mt-6 pt-6 border-t border-gray-100">
-                         <div className="relative border-2 border-dashed border-gray-300 rounded-xl p-4 text-center">
-                            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} />
-                            <Upload className="mx-auto text-gray-400 mb-1" size={20} />
-                            <span className="text-xs text-gray-500">تغییر پس‌زمینه</span>
-                         </div>
                       </div>
                    </div>
                 </div>
