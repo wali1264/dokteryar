@@ -83,8 +83,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      let content = '';
      let style = `
        @page { size: ${paperSize} portrait; margin: 0; }
-       body { font-family: '${fontFamily}', sans-serif; margin: 0; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-       .rx-container { padding: 40px; }
+       html, body { height: 100%; }
+       body { font-family: '${fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 60px; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+       .rx-container { padding: 40px; box-sizing: border-box; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
@@ -109,7 +110,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
        @media print {
           .no-print { display: none !important; }
-          .custom-container { height: 100vh; page-break-after: avoid; overflow: hidden; }
+          html, body { 
+             height: 100%; 
+             margin: 0 !important; 
+             padding: 0 !important; 
+             overflow: hidden; 
+          }
+          .custom-container, .rx-container { 
+             width: 100%;
+             height: 100%;
+             max-height: 100%;
+             page-break-after: avoid; 
+             page-break-inside: avoid;
+             break-inside: avoid;
+             overflow: hidden; 
+             transform: scale(0.98); 
+             transform-origin: top center;
+          }
        }
      `;
 
@@ -124,9 +141,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
          let bgHtml = '';
          if (settings.backgroundImage) {
             bgHtml = `<img src="${settings.backgroundImage}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: fill; z-index:-1;" />`;
-            style += `.custom-container { position: relative; width: 100%; min-height: 100vh; overflow: hidden; } .print-element { position: absolute; white-space: nowrap; }`;
+            style += `.custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; } .print-element { position: absolute; white-space: nowrap; }`;
          } else {
-             style += `.custom-container { position: relative; width: 100%; height: 100vh; overflow: hidden; } .print-element { position: absolute; }`;
+             style += `.custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; } .print-element { position: absolute; }`;
          }
 
          const elementsHtml = settings.elements.filter(el => el.visible).map(el => {

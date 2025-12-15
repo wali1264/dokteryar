@@ -268,9 +268,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        return;
      }
 
+     // Updated CSS for single page enforcement on mobile
      let style = `
        @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
-       body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 80px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+       html, body { height: 100%; }
+       body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 80px; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
        
        /* Control Bar - Hidden on Print */
        .control-bar {
@@ -304,18 +306,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
        @media print {
           .no-print { display: none !important; }
-          body { padding-top: 0; }
-          .custom-container {
+          html, body { 
+             height: 100%; 
+             margin: 0 !important; 
+             padding: 0 !important; 
+             overflow: hidden; 
+          }
+          
+          .rx-container, .custom-container {
              width: 100%;
-             height: 100vh; /* Lock height to enforce single page if possible */
+             height: 100%;
+             max-height: 100%;
              page-break-after: avoid;
+             page-break-inside: avoid;
              break-inside: avoid;
              overflow: hidden;
+             transform: scale(0.98); /* Safety scale for mobile margins */
+             transform-origin: top center;
           }
        }
        
        /* Digital Mode Styles */
-       .rx-container { padding: 40px; }
+       .rx-container { padding: 40px; box-sizing: border-box; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
@@ -323,7 +335,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
        
        /* Custom Layout Mode Styles */
-       .custom-container { position: relative; width: 100%; min-height: 100vh; overflow: hidden; }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
        .print-element { position: absolute; white-space: nowrap; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
