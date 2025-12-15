@@ -79,12 +79,12 @@ const Settings: React.FC = () => {
     const viewportH = window.innerHeight - 140; // Subtract header space
 
     if (viewportW > 0 && viewportH > 0) {
-      const padding = 20; // Margin
+      const padding = 10; // Reduced margin for fuller view
       const scaleW = (viewportW - padding) / dims.w;
       const scaleH = (viewportH - padding) / dims.h;
       
       // Choose the scale that fits the whole paper
-      const fitScale = Math.min(scaleW, scaleH, 0.85); 
+      const fitScale = Math.min(scaleW, scaleH, 0.95); 
       
       setMobileScale(fitScale);
       setMobileOffset({ x: 0, y: 0 }); // Center it (Flexbox handles alignment)
@@ -412,7 +412,7 @@ const Settings: React.FC = () => {
                       transform: `translate(${mobileOffset.x}px, ${mobileOffset.y}px) scale(${mobileScale})`,
                       backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none',
                       backgroundColor: 'white',
-                      backgroundSize: 'cover',
+                      backgroundSize: '100% 100%', // FORCE FIT TO PAPER SIZE
                       backgroundPosition: 'center',
                       boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)', // Enhanced Shadow
                       transformOrigin: 'center center',
@@ -420,7 +420,7 @@ const Settings: React.FC = () => {
                    }}
                    className="relative"
                 >
-                   {/* Frame Border/Shadow for Visibility */}
+                   {/* Frame Border/Shadow for Visibility - Reduced to border only */}
                    <div className="absolute inset-0 border border-gray-300 pointer-events-none"></div>
 
                    {!paperSettings.backgroundImage && (
