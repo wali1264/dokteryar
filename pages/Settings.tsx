@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DoctorProfile, PrescriptionSettings, LayoutElement } from '../types';
 import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase } from '../services/db';
-import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, Move, RotateCw, Type, Grid, Settings as SettingsIcon, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Layers, FileCog, Image as ImageIcon, Trash2, Database } from 'lucide-react';
+import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database } from 'lucide-react';
 
 type Tab = 'profile' | 'paper' | 'backup';
 
@@ -42,13 +42,6 @@ const Settings: React.FC = () => {
   const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // --- MOBILE POCKET STUDIO STATE ---
-  // Using a simpler scale state that is calculated on mount/resize
-  const [studioScale, setStudioScale] = useState(1);
-  const [showLayerList, setShowLayerList] = useState(false);
-  const [showMobileSetup, setShowMobileSetup] = useState(false);
-  const touchStartRef = useRef<{ x: number, y: number } | null>(null);
-
   useEffect(() => {
     const load = async () => {
       try {
@@ -66,25 +59,6 @@ const Settings: React.FC = () => {
     };
     load();
   }, []);
-
-  // --- ISO PRECISION SCALING ---
-  // Calculates the exact scale needed to fit the A4/A5 paper into the mobile width
-  useEffect(() => {
-    const handleResize = () => {
-      const dims = paperSettings.paperSize === 'A4' ? A4_DIMS : A5_DIMS;
-      const screenWidth = window.innerWidth;
-      const padding = 32; // Safety margin
-      const availableWidth = screenWidth - padding;
-      const scale = availableWidth / dims.w;
-      setStudioScale(scale);
-    };
-
-    if (activeTab === 'paper') {
-      handleResize();
-      window.addEventListener('resize', handleResize);
-    }
-    return () => window.removeEventListener('resize', handleResize);
-  }, [activeTab, paperSettings.paperSize]);
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -131,18 +105,17 @@ const Settings: React.FC = () => {
     return paperSettings.paperSize === 'A4' ? A4_DIMS : A5_DIMS;
   };
 
-  // --- DESKTOP MOUSE HANDLERS ---
-  const handleMouseDown = (e: React.MouseEvent, elId: string) => {
-    e.stopPropagation();
+  // --- MOUSE & TOUCH HANDLERS ---
+  const handleStart = (clientX: number, clientY: number, elId: string) => {
     setSelectedElementId(elId);
     setIsDragging(true);
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    dragStartRef.current = { x: clientX, y: clientY };
   };
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMove = (clientX: number, clientY: number) => {
     if (!isDragging || !selectedElementId || !dragStartRef.current) return;
-    const dx = e.clientX - dragStartRef.current.x;
-    const dy = e.clientY - dragStartRef.current.y;
+    const dx = clientX - dragStartRef.current.x;
+    const dy = clientY - dragStartRef.current.y;
     setPaperSettings(prev => ({
       ...prev,
       elements: prev.elements.map(el => {
@@ -152,13 +125,36 @@ const Settings: React.FC = () => {
         return el;
       })
     }));
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    dragStartRef.current = { x: clientX, y: clientY };
   };
 
-  const handleMouseUp = () => {
+  const handleEnd = () => {
     setIsDragging(false);
     dragStartRef.current = null;
   };
+
+  // Mouse Wrappers
+  const handleMouseDown = (e: React.MouseEvent, elId: string) => {
+    e.stopPropagation();
+    handleStart(e.clientX, e.clientY, elId);
+  };
+  const handleMouseMove = (e: React.MouseEvent) => handleMove(e.clientX, e.clientY);
+  const handleMouseUp = () => handleEnd();
+
+  // Touch Wrappers
+  const handleTouchStart = (e: React.TouchEvent, elId: string) => {
+    e.stopPropagation();
+    if (e.touches.length === 1) {
+      handleStart(e.touches[0].clientX, e.touches[0].clientY, elId);
+    }
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isDragging) e.preventDefault(); // Prevent scrolling while dragging
+    if (e.touches.length === 1) {
+      handleMove(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+  const handleTouchEnd = () => handleEnd();
 
   const updateSelectedElement = (key: keyof LayoutElement, value: any) => {
     if (!selectedElementId) return;
@@ -170,49 +166,6 @@ const Settings: React.FC = () => {
 
   const selectedEl = paperSettings.elements.find(e => e.id === selectedElementId);
   const dims = getCanvasDimensions();
-
-  // --- MOBILE TOUCH HANDLERS (ISO) ---
-  const handleTouchStart = (e: React.TouchEvent, elId?: string) => {
-    if (elId && e.touches.length === 1) {
-      e.stopPropagation();
-      setSelectedElementId(elId);
-      touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-    } else {
-      setSelectedElementId(null);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || !selectedElementId) return;
-    e.preventDefault(); 
-    
-    const dx = e.touches[0].clientX - touchStartRef.current.x;
-    const dy = e.touches[0].clientY - touchStartRef.current.y;
-
-    // Adjust movement by scale factor to keep 1:1 finger tracking
-    const adjustedDx = dx / studioScale;
-    const adjustedDy = dy / studioScale;
-
-    setPaperSettings(prev => ({
-      ...prev,
-      elements: prev.elements.map(el => {
-        if (el.id === selectedElementId) {
-          return { ...el, x: el.x + adjustedDx, y: el.y + adjustedDy };
-        }
-        return el;
-      })
-    }));
-
-    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  };
-
-  const nudgeElement = (dx: number, dy: number) => {
-    if (!selectedElementId) return;
-    setPaperSettings(prev => ({
-      ...prev,
-      elements: prev.elements.map(el => el.id === selectedElementId ? { ...el, x: el.x + dx, y: el.y + dy } : el)
-    }));
-  };
 
   const handleExport = async () => {
     setLoading(true);
@@ -255,334 +208,34 @@ const Settings: React.FC = () => {
   };
 
   return (
-    <div className="animate-fade-in pb-20 h-full" onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
-      
-      {/* ======================= MOBILE POCKET STUDIO ======================= */}
-      <div className="lg:hidden flex flex-col h-full fixed inset-0 z-50 bg-gray-100 overflow-hidden">
-         
-         {activeTab === 'paper' ? (
-           <>
-             {/* Studio Header */}
-             <div className="absolute top-0 left-0 right-0 bg-white/95 backdrop-blur-md p-4 z-[70] flex justify-between items-center shadow-md border-b border-gray-200">
-                <div className="flex items-center gap-3">
-                   <button 
-                      onClick={(e) => { 
-                         e.stopPropagation(); 
-                         setActiveTab('profile'); 
-                      }} 
-                      className="p-2 -ml-2 rounded-full hover:bg-gray-100 active:bg-gray-200 text-gray-600 transition-colors"
-                   >
-                      <ArrowRight size={24} />
-                   </button>
-                   <div>
-                      <h3 className="font-bold text-gray-800 text-sm flex items-center gap-1">
-                         <Grid size={14} className="text-purple-600"/> 
-                         استودیوی طراحی {paperSettings.paperSize}
-                      </h3>
-                      <p className="text-[10px] text-gray-500">
-                         {selectedElementId ? 'ویرایش المان' : 'جابجایی المان‌ها'}
-                      </p>
-                   </div>
-                </div>
-                <div className="flex gap-2">
-                   <button onClick={() => setShowMobileSetup(true)} className="p-2 rounded-xl bg-gray-100 text-gray-600 active:scale-95 transition-transform border border-gray-200">
-                      <FileCog size={20} />
-                   </button>
-                   <button onClick={handleSavePaper} className="bg-purple-600 text-white p-2 px-3 rounded-xl shadow-lg shadow-purple-200 active:scale-95 transition-transform flex items-center gap-1">
-                      {loading ? <Loader2 size={20} className="animate-spin" /> : <><Save size={20} /><span className="text-xs font-bold">ذخیره</span></>}
-                   </button>
-                </div>
-             </div>
-
-             {/* Message Toast */}
-             {message && (
-                <div className={`absolute top-24 left-1/2 transform -translate-x-1/2 z-[80] px-4 py-2 rounded-full text-xs font-bold shadow-lg flex items-center gap-2 animate-fade-in ${message.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
-                   {message.type === 'success' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                   {message.text}
-                </div>
-             )}
-
-             {/* ISO Interactive Canvas Viewport */}
-             <div 
-               className="w-full h-full relative overflow-hidden bg-gray-200 touch-none flex items-center justify-center"
-               onTouchMove={handleTouchMove}
-               onTouchEnd={() => touchStartRef.current = null}
-               onClick={() => setSelectedElementId(null)}
-             >
-                {/* The Paper Frame */}
-                <div 
-                   style={{
-                      width: `${dims.w}px`,
-                      height: `${dims.h}px`,
-                      transform: `scale(${studioScale})`,
-                      transformOrigin: 'center center',
-                      backgroundColor: 'white',
-                      boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.5)',
-                      position: 'relative',
-                      overflow: 'hidden' 
-                   }}
-                   className="relative"
-                >
-                   {/* Background Image - FORCED FIT */}
-                   {paperSettings.backgroundImage && (
-                      <img 
-                        src={paperSettings.backgroundImage} 
-                        className="absolute inset-0 w-full h-full" 
-                        style={{ objectFit: 'fill' }} // Key fix: Force stretch to paper corners
-                        alt="Background"
-                      />
-                   )}
-
-                   {/* Border Guide */}
-                   <div className="absolute inset-0 border border-gray-300 pointer-events-none z-10"></div>
-
-                   {!paperSettings.backgroundImage && (
-                      <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none z-0">
-                         <span className="text-6xl font-black transform -rotate-45 text-gray-400">{paperSettings.paperSize}</span>
-                      </div>
-                   )}
-
-                   {/* Render Elements */}
-                   {paperSettings.elements.filter(el => el.visible).map(el => (
-                      <div
-                         key={el.id}
-                         onTouchStart={(e) => handleTouchStart(e, el.id)}
-                         style={{
-                            position: 'absolute',
-                            left: el.x + 'px',
-                            top: el.y + 'px',
-                            width: el.width + 'px',
-                            fontSize: el.fontSize + 'pt',
-                            transform: `rotate(${el.rotation}deg)`,
-                            textAlign: el.align || 'right',
-                            zIndex: selectedElementId === el.id ? 20 : 10,
-                         }}
-                         className={`select-none transition-colors duration-200 ${
-                            selectedElementId === el.id 
-                               ? 'ring-4 ring-blue-500 bg-blue-500/10' 
-                               : ''
-                         }`}
-                      >
-                         {selectedElementId === el.id && (
-                            <div className="absolute -top-3 -right-3 w-6 h-6 bg-blue-500 rounded-full shadow-md flex items-center justify-center z-30">
-                               <Move size={12} className="text-white" />
-                            </div>
-                         )}
-                         {el.label}
-                      </div>
-                   ))}
-                </div>
-             </div>
-
-             {/* Precision Dock */}
-             {selectedElementId && selectedEl && (
-                <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-[0_-5px_30px_rgba(0,0,0,0.1)] p-5 z-30 animate-slide-up">
-                   <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
-                         <Type size={16} className="text-blue-500" />
-                         ویرایش: {selectedEl.label}
-                      </h4>
-                      <button onClick={() => setSelectedElementId(null)} className="p-1 bg-gray-100 rounded-full"><X size={16} /></button>
-                   </div>
-
-                   <div className="grid grid-cols-2 gap-4 mb-4">
-                      <div className="bg-gray-50 p-2 rounded-2xl grid grid-cols-3 gap-1 aspect-square justify-items-center items-center">
-                         <div/>
-                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(0, -5); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowUp size={18}/></button>
-                         <div/>
-                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(-5, 0); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowLeft size={18}/></button>
-                         <div className="w-2 h-2 bg-gray-300 rounded-full"/>
-                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(5, 0); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowRight size={18}/></button>
-                         <div/>
-                         <button onTouchStart={(e) => { e.preventDefault(); nudgeElement(0, 5); }} className="p-3 bg-white rounded-lg shadow-sm active:bg-blue-100 active:scale-95"><ArrowDown size={18}/></button>
-                         <div/>
-                      </div>
-
-                      <div className="space-y-4 flex flex-col justify-center">
-                         <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-gray-500"><span>عرض</span><span>{selectedEl.width}</span></div>
-                            <input type="range" min="50" max="700" value={selectedEl.width} onChange={e => updateSelectedElement('width', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                         </div>
-                         <div className="space-y-1">
-                            <div className="flex justify-between text-xs text-gray-500"><span>سایز</span><span>{selectedEl.fontSize}</span></div>
-                            <input type="range" min="8" max="48" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', parseInt(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" />
-                         </div>
-                         <div className="flex bg-gray-100 p-1 rounded-lg">
-                            {['right', 'center', 'left'].map((align: any) => (
-                               <button key={align} onClick={() => updateSelectedElement('align', align)} className={`flex-1 text-[10px] py-1 rounded ${selectedEl.align === align ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>
-                                  {align === 'right' ? 'R' : align === 'center' ? 'C' : 'L'}
-                               </button>
-                            ))}
-                         </div>
-                      </div>
-                   </div>
-                </div>
-             )}
-
-             {/* Layer List FAB */}
-             {!selectedElementId && (
-                <button 
-                   onClick={() => setShowLayerList(true)}
-                   className="absolute bottom-6 right-6 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center text-gray-600 z-20"
-                >
-                   <Layers size={24} />
-                </button>
-             )}
-
-             {/* Setup Sheet */}
-             {showMobileSetup && (
-                <div className="absolute inset-0 bg-black/60 z-[60] flex flex-col justify-end" onClick={() => setShowMobileSetup(false)}>
-                   <div className="bg-white rounded-t-3xl p-6 shadow-2xl animate-slide-up" onClick={e => e.stopPropagation()}>
-                      <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
-                      <h3 className="font-bold text-gray-800 text-lg mb-6 flex items-center gap-2">
-                         <FileCog className="text-purple-600" />
-                         تنظیمات کاغذ و سربرگ
-                      </h3>
-
-                      <div className="mb-6">
-                         <label className="text-xs font-bold text-gray-500 mb-2 block">سایز کاغذ</label>
-                         <div className="flex bg-gray-100 p-1 rounded-xl">
-                            <button onClick={() => setPaperSettings(p => ({...p, paperSize: 'A4'}))} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${paperSettings.paperSize === 'A4' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>A4 (210x297mm)</button>
-                            <button onClick={() => setPaperSettings(p => ({...p, paperSize: 'A5'}))} className={`flex-1 py-3 rounded-lg font-bold text-sm transition-all ${paperSettings.paperSize === 'A5' ? 'bg-white shadow text-purple-600' : 'text-gray-500'}`}>A5 (148x210mm)</button>
-                         </div>
-                      </div>
-
-                      <div className="mb-6">
-                         <label className="text-xs font-bold text-gray-500 mb-2 block">عکس سربرگ</label>
-                         <div className="relative border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 h-32 flex items-center justify-center overflow-hidden">
-                            {paperSettings.backgroundImage ? (
-                               <>
-                                  <img src={paperSettings.backgroundImage} className="w-full h-full object-cover opacity-50" />
-                                  <div className="absolute inset-0 flex items-center justify-center gap-2">
-                                     <button onClick={() => setPaperSettings(p => ({...p, backgroundImage: ''}))} className="bg-red-500 text-white p-2 rounded-full shadow-lg"><Trash2 size={20}/></button>
-                                  </div>
-                               </>
-                            ) : (
-                               <div className="text-center text-gray-400">
-                                  <ImageIcon size={24} className="mx-auto mb-1" />
-                                  <span className="text-xs font-bold">آپلود عکس (Fit to {paperSettings.paperSize})</span>
-                               </div>
-                            )}
-                            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} />
-                         </div>
-                      </div>
-
-                      <div className="mb-8 bg-gray-50 p-4 rounded-xl flex items-center justify-between">
-                         <div>
-                            <span className="text-sm font-bold text-gray-700 block">چاپ پس‌زمینه</span>
-                            <span className="text-[10px] text-gray-400">در چاپ نهایی عکس دیده شود؟</span>
-                         </div>
-                         <div className="relative">
-                            <input type="checkbox" className="sr-only peer" checked={paperSettings.printBackground} onChange={e => setPaperSettings(p => ({ ...p, printBackground: e.target.checked }))} />
-                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                         </div>
-                      </div>
-
-                      <button onClick={() => setShowMobileSetup(false)} className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-purple-200">تایید و بازگشت</button>
-                   </div>
-                </div>
-             )}
-
-             {/* Layer List Modal */}
-             {showLayerList && (
-                <div className="absolute inset-0 bg-black/50 z-40 flex justify-end" onClick={() => setShowLayerList(false)}>
-                   <div className="w-64 bg-white h-full p-4 overflow-y-auto animate-slide-left" onClick={e => e.stopPropagation()}>
-                      <h3 className="font-bold text-gray-800 mb-4">لایه‌ها</h3>
-                      <div className="space-y-2">
-                         {paperSettings.elements.map(el => (
-                            <div key={el.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-                               <button 
-                                  onClick={() => { setSelectedElementId(el.id); setShowLayerList(false); }}
-                                  className="text-sm font-bold text-gray-700 flex-1 text-right"
-                               >
-                                  {el.label}
-                               </button>
-                               <button onClick={() => updateSelectedElement('visible', !el.visible)}>
-                                  {el.visible ? <CheckCircle size={16} className="text-green-500" /> : <div className="w-4 h-4 border-2 border-gray-300 rounded-full" />}
-                               </button>
-                            </div>
-                         ))}
-                      </div>
-                   </div>
-                </div>
-             )}
-           </>
-         ) : (
-           /* Other Mobile Tabs */
-           <div className="flex flex-col h-full">
-              <div className="bg-white p-4 sticky top-0 z-30 shadow-sm border-b border-gray-100">
-                 <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-2">
-                       <div className="bg-gray-100 p-2 rounded-xl text-gray-600"><SettingsIcon size={20} /></div>
-                       <h2 className="text-lg font-bold text-gray-800">تنظیمات</h2>
-                    </div>
-                 </div>
-                 <div className="flex bg-gray-100 p-1 rounded-xl">
-                    <button onClick={() => setActiveTab('profile')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'profile' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>پروفایل</button>
-                    <button onClick={() => setActiveTab('paper')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'paper' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>نسخه</button>
-                    <button onClick={() => setActiveTab('backup')} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'backup' ? 'bg-white shadow text-gray-800' : 'text-gray-500'}`}>پشتیبان</button>
-                 </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 pb-32">
-                 {message && <div className={`p-4 rounded-xl flex items-center gap-2 mb-4 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{message.text}</div>}
-                 
-                 {activeTab === 'profile' && (
-                    <div className="space-y-4 animate-slide-up">
-                       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
-                          <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2"><User size={16} className="text-blue-500"/> اطلاعات پزشک</h3>
-                          <input className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} placeholder="نام پزشک..." />
-                          <input className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm" value={profile.specialty} onChange={e => setProfile({...profile, specialty: e.target.value})} placeholder="تخصص..." />
-                          <input className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm" value={profile.medicalCouncilNumber} onChange={e => setProfile({...profile, medicalCouncilNumber: e.target.value})} placeholder="نظام پزشکی..." />
-                       </div>
-                       <button onClick={handleSaveProfile} disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-2xl flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Save />} ذخیره</button>
-                    </div>
-                 )}
-
-                 {activeTab === 'backup' && (
-                    <div className="space-y-4 animate-slide-up">
-                       <div className="bg-green-50 p-6 rounded-3xl border border-green-100 text-center space-y-4">
-                          <Download size={32} className="mx-auto text-green-600" />
-                          <h3 className="font-bold text-green-900">پشتیبان‌گیری</h3>
-                          <button onClick={handleExport} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold">دانلود فایل</button>
-                       </div>
-                       <div className="bg-orange-50 p-6 rounded-3xl border border-orange-100 text-center space-y-4">
-                          <Upload size={32} className="mx-auto text-orange-600" />
-                          <h3 className="font-bold text-orange-900">بازگردانی</h3>
-                          <div className="relative w-full">
-                             <input type="file" accept=".json" className="absolute inset-0 opacity-0 z-10" onChange={handleImport} />
-                             <button className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold">انتخاب فایل</button>
-                          </div>
-                       </div>
-                    </div>
-                 )}
-              </div>
-           </div>
-         )}
-      </div>
-
-      {/* ======================= DESKTOP VIEW ======================= */}
-      <div className="hidden lg:block">
+    <div 
+      className="animate-fade-in pb-20 h-full" 
+      onMouseMove={handleMouseMove} 
+      onMouseUp={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      <div className="block">
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-gray-800 p-3 rounded-2xl text-white">
-             <User size={32} />
+             <SettingsIcon size={32} />
           </div>
           <div>
-            <h2 className="text-3xl font-bold text-gray-800">تنظیمات و مدیریت</h2>
+            <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">تنظیمات و مدیریت</h2>
             <p className="text-gray-500">Settings & Control Room</p>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-3xl">
-          <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'profile' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
+        <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-3xl overflow-x-auto no-scrollbar">
+          <button onClick={() => setActiveTab('profile')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'profile' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
             <User size={20} /> اطلاعات مطب
           </button>
-          <button onClick={() => setActiveTab('paper')} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'paper' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <Grid size={20} /> طراحی نسخه (سربرگ)
+          <button onClick={() => setActiveTab('paper')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'paper' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <Grid size={20} /> طراحی نسخه
           </button>
-          <button onClick={() => setActiveTab('backup')} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'backup' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
-            <Database size={20} /> مدیریت داده‌ها
+          <button onClick={() => setActiveTab('backup')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'backup' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <Database size={20} /> مدیریت داده
           </button>
         </div>
 
@@ -593,7 +246,7 @@ const Settings: React.FC = () => {
           </div>
         )}
 
-        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[500px] mt-6">
+        <div className="bg-white p-4 lg:p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[500px] mt-6">
           
           {/* PROFILE TAB */}
           {activeTab === 'profile' && (
@@ -641,44 +294,44 @@ const Settings: React.FC = () => {
           {/* PAPER SETTINGS TAB */}
           {activeTab === 'paper' && (
             <div className="space-y-6">
-               <div className="flex justify-between items-center border-b pb-4">
+               <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b pb-4 gap-4">
                   <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
                      <Grid className="text-blue-600" />
-                     طراحی سربرگ و چیدمان نسخه
+                     طراحی سربرگ
                   </h3>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 w-full lg:w-auto">
                      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
-                        <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A4' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A4' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>کاغذ A4</button>
-                        <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A5' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A5' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>کاغذ A5</button>
+                        <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A4' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A4' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>A4</button>
+                        <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A5' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A5' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>A5</button>
                      </div>
                      <div className="relative">
                         <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} />
                         <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-gray-50">
-                           <Upload size={16} /> آپلود عکس سربرگ
+                           <Upload size={16} /> سربرگ
                         </button>
                      </div>
-                     <button onClick={() => setPaperSettings(p => ({ ...p, backgroundImage: '' }))} className="text-red-500 text-xs px-2 hover:bg-red-50 rounded">بازنشانی</button>
-                     <button onClick={handleSavePaper} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow hover:bg-emerald-700">
-                        <Save size={16} /> ذخیره طرح
+                     <button onClick={() => setPaperSettings(p => ({ ...p, backgroundImage: '' }))} className="text-red-500 text-xs px-2 hover:bg-red-50 rounded">حذف</button>
+                     <button onClick={handleSavePaper} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow hover:bg-emerald-700 ml-auto lg:ml-0">
+                        <Save size={16} /> ذخیره
                      </button>
                   </div>
                </div>
 
-               <div className="flex gap-6 h-[700px]">
-                  <div className="flex-1 bg-gray-200 rounded-2xl overflow-auto p-8 flex justify-center relative shadow-inner">
+               <div className="flex flex-col lg:flex-row gap-6 lg:h-[700px]">
+                  <div className="flex-1 bg-gray-200 rounded-2xl overflow-auto p-4 lg:p-8 flex justify-center relative shadow-inner min-h-[400px]">
                      <div 
                        ref={canvasRef}
                        style={{ 
                           width: dims.w + 'px', 
                           height: dims.h + 'px', 
                           backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none',
-                          backgroundSize: '100% 100%' // Force Fit for desktop too
+                          backgroundSize: '100% 100%' 
                        }}
-                       className="bg-white shadow-2xl relative transition-all duration-300"
+                       className="bg-white shadow-2xl relative transition-all duration-300 transform scale-[0.6] origin-top lg:scale-100 lg:origin-center" // Simple scaling for mobile preview
                      >
                         {!paperSettings.backgroundImage && (
                            <div className="absolute inset-0 flex items-center justify-center text-gray-300 pointer-events-none">
-                              <span className="text-4xl font-bold opacity-20 transform -rotate-45">محل آپلود عکس سربرگ شما</span>
+                              <span className="text-4xl font-bold opacity-20 transform -rotate-45">محل آپلود عکس سربرگ</span>
                            </div>
                         )}
 
@@ -686,6 +339,7 @@ const Settings: React.FC = () => {
                            <div
                              key={el.id}
                              onMouseDown={(e) => handleMouseDown(e, el.id)}
+                             onTouchStart={(e) => handleTouchStart(e, el.id)}
                              style={{
                                 position: 'absolute',
                                 left: el.x + 'px',
@@ -699,7 +353,7 @@ const Settings: React.FC = () => {
                                 zIndex: selectedElementId === el.id ? 10 : 1,
                                 textAlign: el.align || 'right'
                              }}
-                             className="group hover:border-blue-400 select-none"
+                             className="group hover:border-blue-400 select-none touch-none"
                            >
                               {el.label}
                            </div>
@@ -707,9 +361,12 @@ const Settings: React.FC = () => {
                      </div>
                   </div>
 
-                  <div className="w-80 bg-white border-l border-gray-200 p-6 overflow-y-auto">
-                     <h4 className="font-bold text-gray-800 mb-4 border-b pb-2">المان‌های صفحه</h4>
-                     <div className="space-y-2 mb-6 max-h-48 overflow-y-auto">
+                  <div className="w-full lg:w-80 bg-white border border-gray-200 rounded-2xl p-6 lg:overflow-y-auto">
+                     <h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center gap-2">
+                       <Layers size={18} className="text-gray-500" />
+                       المان‌ها
+                     </h4>
+                     <div className="space-y-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar">
                         {paperSettings.elements.map(el => (
                            <div key={el.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={() => setSelectedElementId(el.id)}>
                               <div className="flex items-center gap-2">
@@ -757,7 +414,7 @@ const Settings: React.FC = () => {
                            </div>
                         </div>
                      ) : (
-                        <p className="text-sm text-gray-400 text-center py-4">یک المان را انتخاب کنید</p>
+                        <p className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-xl">یک المان را انتخاب کنید</p>
                      )}
 
                      <div className="mt-6 pt-6 border-t border-gray-200">
