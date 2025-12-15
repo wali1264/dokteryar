@@ -106,71 +106,7 @@ class ProxyChatSession {
   }
 }
 
-// --- IMAGE COMPRESSION HELPER ---
-// Compresses images to max 1024px and 70% quality to avoid payload limits
-const compressImage = async (file: File | Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        // Target Max Dimension: 1024px (Good balance for AI & Size)
-        const MAX_SIZE = 1024;
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
-            height = MAX_SIZE;
-          }
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-            reject(new Error("Canvas context failed"));
-            return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Compress to JPEG at 70% quality
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-        // Extract base64 part
-        resolve(dataUrl.split(',')[1]); 
-      };
-      img.onerror = (err) => reject(new Error("Image load failed"));
-      img.src = event.target?.result as string;
-    };
-    reader.onerror = (err) => reject(new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
-};
-
 const fileToGenerativePart = async (file: File | Blob) => {
-  // 1. Try compression for images to reduce payload size
-  if (file.type.startsWith('image/')) {
-      try {
-          const base64Data = await compressImage(file);
-          return {
-              inlineData: {
-                  data: base64Data,
-                  mimeType: 'image/jpeg', // Normalized to jpeg
-              }
-          };
-      } catch (e) {
-          console.warn("Compression failed, using original file", e);
-      }
-  }
-
-  // 2. Fallback for non-images (PDFs etc) or failed compression
   return new Promise<{ inlineData: { data: string; mimeType: string } }>((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -179,7 +115,7 @@ const fileToGenerativePart = async (file: File | Blob) => {
           resolve({
             inlineData: {
               data: base64String,
-              mimeType: file.type || 'application/octet-stream',
+              mimeType: file.type || 'image/jpeg',
             },
           });
       } else {
@@ -204,43 +140,13 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-// Safe JSON parser (Enhanced Robustness)
+// Safe JSON parser
 const safeParseJSON = (text: string) => {
-  if (!text) return {};
   try {
-    // 1. Clean Markdown code blocks (case insensitive)
-    let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    
-    // 2. Heuristic: Find the first '{' or '[' and the last '}' or ']'
-    // This removes any preamble or postscript text the AI might have added
-    const firstBrace = cleaned.indexOf('{');
-    const firstBracket = cleaned.indexOf('[');
-    
-    let startIndex = -1;
-    if (firstBrace !== -1 && firstBracket !== -1) {
-        startIndex = Math.min(firstBrace, firstBracket);
-    } else if (firstBrace !== -1) {
-        startIndex = firstBrace;
-    } else if (firstBracket !== -1) {
-        startIndex = firstBracket;
-    }
-
-    if (startIndex !== -1) {
-        cleaned = cleaned.substring(startIndex);
-        
-        // Find end
-        const lastBrace = cleaned.lastIndexOf('}');
-        const lastBracket = cleaned.lastIndexOf(']');
-        const endIndex = Math.max(lastBrace, lastBracket);
-        
-        if (endIndex !== -1) {
-            cleaned = cleaned.substring(0, endIndex + 1);
-        }
-    }
-
+    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("JSON Parse Failed. Raw Text:", text);
+    console.error("Failed to parse JSON:", text);
     return {};
   }
 };
@@ -468,30 +374,32 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
 export const digitizePrescription = async (image: File): Promise<{ items: PrescriptionItem[], diagnosis?: string, vitals?: PatientVitals }> => {
     const imgPart = await fileToGenerativePart(image);
     const prompt = `
-      You are a Forensic Medical Transcriber and Graphologist using a "Supervisor" protocol.
-      Your goal is to digitize this handwritten prescription with 100% fidelity to the source text.
+      You are an expert OCR Pharmacist designed for ultra-fast, literal transcription.
+      Task: Transcribe this prescription image EXACTLY as written.
 
-      --- SUPERVISOR PROTOCOL (STRICT ENFORCEMENT) ---
-      1. **DO NOT AUTOCORRECT**: If the doctor wrote "Para", you MUST output "Para". If they wrote "Paramol", output "Paramol". Do NOT expand to "Paracetamol". 
-      2. **DO NOT GUESS**: If a letter is ambiguous, transcribe the most likely visual character strokes, NOT what you think the drug *should* be.
-      3. **DO NOT SWAP BRANDS**: If the doctor wrote a brand name, keep it. If they wrote generic, keep it.
-      4. **PRESERVE NOTATION**: "Tab" remains "Tab". "N=20" remains "N=20". "PR: 80" remains "PR: 80".
-      5. **NO HALLUCINATION**: Do not add any drugs or vitals that are not explicitly present in the handwriting.
+      CRITICAL INSTRUCTIONS (NO DEVIATION):
+      1. DRUG NAMES: Transcribe exactly as seen.
+         - If Brand name is written, write Brand name.
+         - If Generic name is written, write Generic name.
+         - Do NOT normalize, correct, or translate drug names.
+         - Include strength/concentration if visible.
+      
+      2. INSTRUCTIONS (SIG): Transcribe exactly as seen.
+         - Do NOT translate to Persian.
+         - Do NOT expand abbreviations.
+         - Example: If text is "1x3", output "1x3". If "BID", output "BID".
+         - Keep mathematical symbols like "X", "*", "#" exactly as is.
 
-      --- DATA EXTRACTION RULES ---
-      1. **Drugs Array**:
-         - 'drug': The EXACT string written for the medication name. (No spell check).
-         - 'dosage': The quantity or dose string exactly as written.
-         - 'instruction': Translate Latin sig codes (BID, TDS, q8h) to Persian for the patient. But keep the drug name RAW.
-      2. **Diagnosis**: Extract the diagnosis exactly as written.
-      3. **Vitals**: Extract vitals (BP, HR, PR, Temp) exactly into the corresponding fields. If a prefix exists (e.g. "T: 37"), keep the prefix in the string if it helps clarity, or just the value.
+      3. DOSAGE: Extract the quantity/count (e.g., "N=20" -> "20", "#30" -> "30").
 
-      RETURN RAW JSON ONLY:
+      4. OUTPUT: Return RAW JSON ONLY. No markdown formatting.
+      
+      JSON Structure:
       {
         "items": [
-          { "drug": "string (EXACT COPY)", "dosage": "string (EXACT COPY)", "instruction": "string (Persian Translation of Sig)" }
+          { "drug": "Exact Drug Name", "dosage": "Qty", "instruction": "Exact Instruction" }
         ],
-        "diagnosis": "string",
+        "diagnosis": "string (if visible)",
         "vitals": {
           "bloodPressure": "string",
           "heartRate": "string",
@@ -508,7 +416,9 @@ export const digitizePrescription = async (image: File): Promise<{ items: Prescr
     const response = await callProxy({
       model: "gemini-2.5-flash",
       contents: [{ parts: [imgPart, { text: prompt }] }],
-      config: {}
+      config: {
+        thinkingConfig: { thinkingBudget: 0 } // Disable thinking for maximum speed
+      }
     });
 
     return safeParseJSON(response.text || "{}");
