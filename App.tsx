@@ -27,129 +27,109 @@ import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { keyManager } from './services/geminiService';
 import { supabase } from './services/supabase';
-import { Loader2, LogOut, Clock } from 'lucide-react';
+import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
   const [currentRecord, setCurrentRecord] = useState<PatientRecord | null>(null);
   
-  // --- Auth State ---
+  // --- INSTANT-FLIGHT AUTH LOGIC ---
+  // Optimistically assume we are logged in if a local session key exists
+  const hasLocalKey = !!localStorage.getItem('tabib_session_id');
   const [session, setSession] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [isApproved, setIsApproved] = useState<boolean | null>(null);
+  const [authLoading, setAuthLoading] = useState(!hasLocalKey); // Load instantly if we have a key
+  const [isApproved, setIsApproved] = useState<boolean | null>(hasLocalKey ? true : null);
+  const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
 
   useEffect(() => {
-    // 1. Initial Session Check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) checkUserStatus(session.user.id);
-      else setAuthLoading(false);
-    });
+    // 1. Initial Session Fetch
+    const initAuth = async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      setSession(currentSession);
+      
+      if (currentSession) {
+        // Run verification in the "Shadow" (background)
+        verifySecurityInBackground(currentSession.user.id);
+      } else {
+        setAuthLoading(false);
+        setIsApproved(null);
+      }
+    };
+
+    initAuth();
 
     // 2. Real-time Auth Listeners
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-         setAuthLoading(true);
-         checkUserStatus(session.user.id);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      if (newSession) {
+         verifySecurityInBackground(newSession.user.id);
       } else {
          setAuthLoading(false);
          setIsApproved(null);
       }
     });
 
-    // 3. Re-validation on Reconnect (SECURITY ENFORCEMENT)
-    const handleOnline = () => {
-      if (supabase.auth.getUser()) {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-          if (user) checkUserStatus(user.id);
-        });
-      }
-    };
-    window.addEventListener('online', handleOnline);
-
     return () => {
       subscription.unsubscribe();
-      window.removeEventListener('online', handleOnline);
     };
   }, []);
 
-  // --- Real-time Session Invalidation (Online Only) ---
-  useEffect(() => {
-    if (!session?.user?.id || !navigator.onLine) return;
+  const verifySecurityInBackground = async (userId: string) => {
+    setSecurityStatus('syncing');
+    
+    // SMART TIMEOUT: If network is slow, don't let it hang. Switch to offline mode after 3s.
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Verification Timeout")), 3000)
+    );
 
-    const channel = supabase.channel('security_check')
-        .on(
-            'postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` },
-            (payload) => {
-                const newSessionId = payload.new.active_session_id;
-                const localSessionId = localStorage.getItem('tabib_session_id');
-                
-                if (localSessionId && newSessionId && newSessionId !== localSessionId) {
-                    alert('حساب کاربری شما در دستگاه دیگری وارد شده است. جهت امنیت، دسترسی این دستگاه قطع می‌گردد.');
-                    handleSignOutForced();
-                }
-            }
-        )
-        .subscribe();
+    const verificationPromise = (async () => {
+      if (!navigator.onLine) throw new Error("Offline");
 
-    return () => { supabase.removeChannel(channel); };
-  }, [session]);
-
-  const checkUserStatus = async (userId: string) => {
-    if (!navigator.onLine) {
-      const hasLocalSession = !!localStorage.getItem('tabib_session_id');
-      if (hasLocalSession) {
-        setIsApproved(true); // Temporary trust in offline mode
-      } else {
-        // Force cleanup if no local session exists even if offline
-        handleSignOutForced();
-      }
-      setAuthLoading(false);
-      return;
-    }
-
-    try {
       const { data, error } = await supabase
         .from('profiles')
         .select('is_approved, active_session_id')
         .eq('id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-         console.error('Error fetching profile:', error);
-      }
+      if (error) throw error;
+      return data;
+    })();
 
-      setIsApproved(data?.is_approved ?? false);
-
+    try {
+      // Race the network against our 3s patience threshold
+      const result: any = await Promise.race([verificationPromise, timeoutPromise]);
+      
+      setIsApproved(result.is_approved);
+      
       const localSessionId = localStorage.getItem('tabib_session_id');
-      const dbSessionId = data?.active_session_id;
-
-      if (dbSessionId && localSessionId && dbSessionId !== localSessionId) {
-          await handleSignOutForced();
-          alert('جلسه کاری شما منقضی شده یا در دستگاه دیگری وارد شده‌اید.');
+      if (result.active_session_id && localSessionId && result.active_session_id !== localSessionId) {
+          alert('امنیت: این حساب در دستگاه دیگری باز شده است. خروج اجباری...');
+          handleSignOutForced();
           return;
       }
 
-      if (!dbSessionId && localSessionId) {
-          await supabase.from('profiles').update({ active_session_id: localSessionId }).eq('id', userId);
+      setSecurityStatus('verified');
+      setAuthLoading(false);
+    } catch (e: any) {
+      console.warn("Security check bypassed/failed:", e.message);
+      // If we have a local key, we trust it for now (Offline/Slow Network fallback)
+      if (hasLocalKey) {
+        setIsApproved(true);
+        setSecurityStatus('offline');
+      } else {
+        setIsApproved(false);
       }
-
-    } catch (e) {
-      console.error(e);
-      if (localStorage.getItem('tabib_session_id')) setIsApproved(true);
-    } finally {
       setAuthLoading(false);
     }
   };
 
-  // Used for system-triggered logouts where internet might be flaky but session is definitely invalid
   const handleSignOutForced = async () => {
     localStorage.removeItem('tabib_session_id');
     await supabase.auth.signOut();
     setSession(null);
     setIsApproved(null);
+    setAuthLoading(false);
+    window.location.reload();
   };
 
   const handleNavigate = (route: AppRoute, record?: PatientRecord) => {
@@ -192,10 +172,18 @@ function App() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-           <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-           <p className="text-gray-500 font-medium text-sm animate-pulse">در حال آماده‌سازی میز کار...</p>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-6 animate-fade-in">
+           <div className="relative">
+              <div className="w-20 h-20 border-4 border-blue-50 rounded-full"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                 <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              </div>
+           </div>
+           <div className="text-center space-y-1">
+              <p className="text-gray-800 font-black text-xl">طبیب هوشمند</p>
+              <p className="text-gray-400 text-sm font-medium animate-pulse">در حال آماده‌سازی آنی سیستم...</p>
+           </div>
         </div>
       </div>
     );
@@ -226,9 +214,31 @@ function App() {
   }
 
   return (
-    <Layout currentRoute={currentRoute} onNavigate={(route) => handleNavigate(route)}>
-      {renderContent()}
-    </Layout>
+    <>
+      {/* SHADOW VERIFICATION INDICATOR */}
+      {securityStatus === 'syncing' && (
+        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-blue-100 animate-fade-in pointer-events-none">
+           <Loader2 size={12} className="text-blue-500 animate-spin" />
+           <span className="text-[10px] font-bold text-blue-600">همگام‌سازی امنیتی...</span>
+        </div>
+      )}
+      {securityStatus === 'verified' && (
+        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full shadow-sm border border-emerald-100 animate-out fade-out delay-1000 pointer-events-none">
+           <ShieldCheck size={12} className="text-emerald-500" />
+           <span className="text-[10px] font-bold text-emerald-600">امنیت تایید شد</span>
+        </div>
+      )}
+      {securityStatus === 'offline' && (
+        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-full shadow-sm border border-amber-100 pointer-events-none">
+           <ShieldAlert size={12} className="text-amber-500" />
+           <span className="text-[10px] font-bold text-amber-600">حالت آفلاین امن</span>
+        </div>
+      )}
+
+      <Layout currentRoute={currentRoute} onNavigate={(route) => handleNavigate(route)}>
+        {renderContent()}
+      </Layout>
+    </>
   );
 }
 

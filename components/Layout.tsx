@@ -222,8 +222,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         </div>
       )}
 
-      {/* ================================================================= */}
-
       {/* ================= DESKTOP SIDEBAR (Hidden on Mobile) ================= */}
       <aside className={`
         hidden lg:flex fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl flex-col
@@ -252,17 +250,17 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
             <p className="text-xs font-bold text-gray-400 px-4 mb-2">دپارتمان‌های تخصصی</p>
             <NavItem route={AppRoute.EMERGENCY} icon={Ambulance} label="اورژانس" />
             <NavItem route={AppRoute.CARDIOLOGY} icon={HeartPulse} label="قلب و عروق" />
-            <NavItem route={AppRoute.PULMONOLOGY} icon={Wind} label="ریه و تنفس" />
+            <NavItem route={AppRoute.PULMONOLOGY} icon={Wind} label="ریه" />
             <NavItem route={AppRoute.GASTROENTEROLOGY} icon={Utensils} label="گوارش" />
-            <NavItem route={AppRoute.NEUROLOGY} icon={BrainCircuit} label="مغز و اعصاب" />
+            <NavItem route={AppRoute.NEUROLOGY} icon={BrainCircuit} label="مغز" />
             <NavItem route={AppRoute.GENETICS} icon={Dna} label="ژنتیک" />
-            <NavItem route={AppRoute.UROLOGY} icon={Droplets} label="ارولوژی" />
+            <NavItem route={AppRoute.UROLOGY} icon={Droplets} label="کلیه" />
             <NavItem route={AppRoute.GYNECOLOGY} icon={Flower} label="زنان" />
             <NavItem route={AppRoute.PEDIATRICS} icon={Baby} label="کودکان" />
             <NavItem route={AppRoute.HEMATOLOGY} icon={Droplet} label="خون" />
             <NavItem route={AppRoute.ORTHOPEDICS} icon={Bone} label="ارتوپدی" />
             <NavItem route={AppRoute.OPHTHALMOLOGY} icon={Glasses} label="چشم" />
-            <NavItem route={AppRoute.DENTISTRY} icon={Smile} label="دندانپزشکی" />
+            <NavItem route={AppRoute.DENTISTRY} icon={Smile} label="دندان" />
             <NavItem route={AppRoute.PSYCHOLOGY} icon={Sparkles} label="روانشناسی" />
             <NavItem route={AppRoute.RADIOLOGY} icon={ScanEye} label="رادیولوژی" />
             <NavItem route={AppRoute.LABORATORY} icon={Beaker} label="آزمایشگاه" />
@@ -283,7 +281,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           <button 
             onClick={handleSignOut} 
             title="خروج امن از سیستم"
-            className={`p-2 rounded-full transition-all shadow-sm ${!isOnline ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white text-red-500 hover:bg-red-50 hover:text-red-600'}`}
+            className={`p-2 rounded-full transition-all shadow-sm ${!isOnline ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white text-red-500 hover:bg-red-600'}`}
           >
             <LogOut size={20} />
           </button>
