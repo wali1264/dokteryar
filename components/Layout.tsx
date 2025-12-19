@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid, LogOut } from 'lucide-react';
+import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, HeartPulse, BrainCircuit, Sparkles, Glasses, Baby, Bone, Smile, Flower, Wind, Utensils, Droplets, Droplet, Ambulance, Dna, FileSignature, Settings as SettingsIcon, Wifi, WifiOff, Shield, Key, BarChart3, Lock, AlertTriangle, Download, FolderOpen, UserPlus, Grid, LogOut, Loader2, CheckCircle2 } from 'lucide-react';
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
 import { supabase } from '../services/supabase';
@@ -15,6 +15,10 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+
+  // --- Secure Logout States ---
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutStage, setLogoutStage] = useState<'idle' | 'clearing' | 'success'>('idle');
 
   // --- Admin Mode Logic ---
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -62,30 +66,54 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setDeferredPrompt(null);
   };
 
-  // --- CLEAN EXIT LOGIC ---
+  // --- ATOMIC SECURE LOGOUT LOGIC ---
   const handleSignOut = async () => {
+    // 1. Offline Check - Block logout to prevent ghost sessions
+    if (!navigator.onLine) {
+      alert("دکتر عزیز، جهت حفظ امنیت حساب و جلوگیری از تداخل در ورودهای بعدی، خروج قطعی نیازمند اتصال به شبکه است. لطفاً آنلاین شوید.");
+      return;
+    }
+
+    setIsLoggingOut(true);
+    setLogoutStage('clearing');
+
     try {
-      // 1. Identify the user
+      // 2. Identify the user
       const { data: { user } } = await supabase.auth.getUser();
       
-      // 2. Clear the session from Database ("Empty the chair")
+      // 3. Clear the session from Database ("Empty the chair")
+      // We wait for DB success before touching local storage
       if (user) {
-        await supabase.from('profiles').update({ 
-          active_session_id: null,
-          last_login_device: null 
-        }).eq('id', user.id);
+        const { error: dbError } = await supabase
+          .from('profiles')
+          .update({ 
+            active_session_id: null,
+            last_login_device: null 
+          })
+          .eq('id', user.id);
+        
+        if (dbError) throw dbError;
       }
 
-      // 3. Clear local storage
+      // 4. Perform local cleanup only AFTER DB success
       localStorage.removeItem('tabib_session_id');
 
-      // 4. Perform Supabase SignOut
+      // 5. Perform Supabase SignOut
       await supabase.auth.signOut();
+
+      // 6. Success State
+      setLogoutStage('success');
+      
+      // Give user time to see the success message
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
       
     } catch (error) {
-      console.error("Error during sign out:", error);
-      // Force sign out even if DB update fails (fallback)
-      await supabase.auth.signOut();
+      console.error("Secure logout failed:", error);
+      setIsLoggingOut(false);
+      setLogoutStage('idle');
+      alert("خطای امنیتی: ارتباط با پایگاه داده جهت ابطال نشست برقرار نشد. جهت امنیت حساب شما، خروج انجام نشد. لطفا دوباره تلاش کنید.");
     }
   };
 
@@ -164,6 +192,38 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   return (
     <div className="min-h-screen bg-slate-50 flex">
       
+      {/* ===================== SECURE LOGOUT OVERLAY ===================== */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 z-[1000] bg-white flex flex-col items-center justify-center animate-fade-in">
+           {logoutStage === 'clearing' ? (
+             <div className="flex flex-col items-center gap-6 animate-slide-up">
+                <div className="relative">
+                  <div className="w-24 h-24 border-4 border-blue-50 rounded-full animate-pulse"></div>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 size={48} className="text-blue-600 animate-spin" />
+                  </div>
+                </div>
+                <div className="text-center space-y-2">
+                  <h3 className="text-2xl font-bold text-gray-800">در حال خروج امن...</h3>
+                  <p className="text-gray-500 font-medium">در حال ابطال دسترسی‌های سیستم</p>
+                </div>
+             </div>
+           ) : (
+             <div className="flex flex-col items-center gap-6 animate-bounce-in">
+                <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-100">
+                  <CheckCircle2 size={56} />
+                </div>
+                <div className="text-center space-y-2">
+                  <h3 className="text-2xl font-bold text-gray-800">خروج با موفقیت انجام شد</h3>
+                  <p className="text-emerald-600 font-bold">تمامی نشست‌های فعال این دستگاه متوقف گردید</p>
+                </div>
+             </div>
+           )}
+        </div>
+      )}
+
+      {/* ================================================================= */}
+
       {/* ================= DESKTOP SIDEBAR (Hidden on Mobile) ================= */}
       <aside className={`
         hidden lg:flex fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl flex-col
@@ -223,14 +283,14 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           <button 
             onClick={handleSignOut} 
             title="خروج امن از سیستم"
-            className="p-2 bg-white text-red-500 rounded-full hover:bg-red-50 hover:text-red-600 transition-colors shadow-sm"
+            className={`p-2 rounded-full transition-all shadow-sm ${!isOnline ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white text-red-500 hover:bg-red-50 hover:text-red-600'}`}
           >
             <LogOut size={20} />
           </button>
         </div>
       </aside>
 
-      {/* ================= MAIN CONTENT AREA ================= */}
+      {/* ======================= MAIN CONTENT AREA ======================= */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative lg:mr-72 transition-all duration-300">
         
         {/* Mobile Modern Header */}
@@ -250,7 +310,11 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
              )}
              
              {/* Logout Button Mobile */}
-             <button onClick={handleSignOut} className="bg-red-50 text-red-500 p-2 rounded-full hover:bg-red-100 transition-colors" title="خروج">
+             <button 
+                onClick={handleSignOut} 
+                className={`p-2 rounded-full transition-colors ${!isOnline ? 'bg-gray-50 text-gray-300' : 'bg-red-50 text-red-500 hover:bg-red-100'}`} 
+                title="خروج امن"
+             >
                 <LogOut size={18} />
              </button>
 
@@ -281,14 +345,12 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
              label="مشاوره" 
              isActive={currentRoute === AppRoute.INTAKE} 
            />
-           {/* SWAPPED: Prescription is now centered (Index 2) */}
            <BottomNavItem 
              route={AppRoute.PRESCRIPTION} 
              icon={FileSignature} 
              label="میز کار" 
              isActive={currentRoute === AppRoute.PRESCRIPTION} 
            />
-           {/* SWAPPED: Diagnosis moved to the right (Index 3) */}
            <BottomNavItem 
              route={AppRoute.DIAGNOSIS} 
              icon={Activity} 
@@ -361,7 +423,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
 
       </main>
 
-      {/* ADMIN LOGIN MODAL (Unchanged) */}
+      {/* ADMIN LOGIN MODAL */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminLogin(false)}>
            <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
@@ -394,7 +456,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         </div>
       )}
 
-      {/* ADMIN CONTROL ROOM DASHBOARD (Unchanged) */}
+      {/* ADMIN CONTROL ROOM DASHBOARD */}
       {showAdminDashboard && (
         <div className="fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4 overflow-y-auto">
            <div className="w-full max-w-5xl bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh]">
@@ -417,7 +479,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
 
               {/* Body */}
               <div className="p-8 flex-1 overflow-y-auto">
-                 {/* Stats Cards */}
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                     <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
                        <p className="text-gray-400 text-xs mb-1">کل درخواست‌ها</p>
@@ -439,7 +500,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                     </div>
                  </div>
 
-                 {/* Usage Chart (Visual Bar) */}
                  <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 mb-8">
                     <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Activity size={16} className="text-emerald-500"/> توزیع بار (Load Balancing)</h4>
                     <div className="flex h-4 rounded-full overflow-hidden bg-gray-900">
@@ -454,7 +514,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                     </div>
                  </div>
 
-                 {/* Detailed List */}
                  <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
                     <table className="w-full text-right text-gray-300">
                        <thead className="bg-gray-900 text-gray-500 text-xs uppercase">

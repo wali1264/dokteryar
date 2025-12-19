@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -25,6 +25,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [vitals, setVitals] = useState<PatientVitals>({
     bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: ''
   });
+
+  // --- Clinical Guard States ---
+  const [previousVitals, setPreviousVitals] = useState<PatientVitals | null>(null);
+  const [activeDraft, setActiveDraft] = useState<any | null>(null);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
   
   const [settings, setSettings] = useState<PrescriptionSettings>({
     topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', printBackground: true, paperSize: 'A4', elements: []
@@ -73,6 +78,21 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   }, [initialRecord]);
 
+  // --- SHADOW DRAFT ENGINE (Auto-Save) ---
+  useEffect(() => {
+    if (!selectedPatient || viewMode !== 'editor') return;
+
+    const draft = {
+      items,
+      diagnosis,
+      vitals,
+      timestamp: Date.now()
+    };
+
+    // Save to local storage using unique patient ID
+    localStorage.setItem(`tabib_draft_${selectedPatient.id}`, JSON.stringify(draft));
+  }, [items, diagnosis, vitals, selectedPatient, viewMode]);
+
   const loadInitialData = async () => {
     try {
       const templatesData = await getAllTemplates();
@@ -93,12 +113,22 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const handleSelectPatient = (patient: PatientRecord) => {
     setSelectedPatient(patient);
     setViewMode('editor');
-    setItems([]);
     
-    // Auto-fill Logic
+    // --- FRESH VISIT PROTOCOL ---
+    // Clear current vitals state so they are measured fresh
+    setVitals({
+      bloodPressure: '', heartRate: '', temperature: '', spO2: '', 
+      weight: patient.vitals?.weight || '', // Carry over weight as reference but editable
+      height: patient.vitals?.height || '', 
+      respiratoryRate: '', bloodSugar: ''
+    });
+
+    // Store previous vitals for "Ghost Labels" reference
+    setPreviousVitals(patient.vitals || null);
+
+    // Initial Setup
     if (patient.diagnosis && patient.status === 'diagnosed') {
         setDiagnosis(patient.diagnosis.modern.diagnosis);
-        
         const aiItems = patient.diagnosis.modern.treatmentPlan.map(plan => ({
             drug: plan,
             dosage: '',
@@ -106,11 +136,41 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         }));
         setItems(aiItems);
     } else {
+        setItems([]);
         const cp = patient.chiefComplaint || '';
         setDiagnosis(cp === 'ثبت نام اولیه (مستقیم)' ? '' : cp);
     }
 
-    setVitals(patient.vitals || { bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: '' });
+    // --- DRAFT RESTORATION CHECK ---
+    const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
+    if (savedDraft) {
+      try {
+        const parsed = JSON.parse(savedDraft);
+        // Only show restoration if the draft has actual content
+        if (parsed.items.length > 0 || parsed.diagnosis || parsed.vitals.bloodPressure) {
+          setActiveDraft(parsed);
+          setShowDraftBanner(true);
+        }
+      } catch (e) { console.error("Draft parse error", e); }
+    }
+  };
+
+  const applyDraft = () => {
+    if (activeDraft) {
+      setItems(activeDraft.items);
+      setDiagnosis(activeDraft.diagnosis);
+      setVitals(activeDraft.vitals);
+      setShowDraftBanner(false);
+      setActiveDraft(null);
+    }
+  };
+
+  const discardDraft = () => {
+    if (selectedPatient) {
+      localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
+    }
+    setShowDraftBanner(false);
+    setActiveDraft(null);
   };
 
   const handleRegisterPatient = async () => {
@@ -121,7 +181,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       age: newPatientAge,
       gender: newPatientGender,
       phoneNumber: newPatientPhone,
-      chiefComplaint: '', // Default empty for new patients in desk
+      chiefComplaint: '', 
       history: newPatientHistory,
       allergies: newPatientAllergies,
       vitals: { 
@@ -258,7 +318,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
-  // --- ENHANCED PRINT LOGIC (MOBILE OPTIMIZED) ---
   const handlePrint = (mode: 'plain' | 'custom') => {
      saveToPatientRecord();
 
@@ -268,13 +327,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        return;
      }
 
-     // Updated CSS for single page enforcement on mobile
      let style = `
        @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
        html, body { height: 100%; }
        body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 80px; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
-       
-       /* Control Bar - Hidden on Print */
        .control-bar {
           position: fixed; top: 0; left: 0; right: 0;
           background: rgba(255, 255, 255, 0.95);
@@ -312,7 +368,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
              padding: 0 !important; 
              overflow: hidden; 
           }
-          
           .rx-container, .custom-container {
              width: 100%;
              height: 100%;
@@ -321,27 +376,22 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
              page-break-inside: avoid;
              break-inside: avoid;
              overflow: hidden;
-             transform: scale(0.98); /* Safety scale for mobile margins */
+             transform: scale(0.98); 
              transform-origin: top center;
           }
        }
-       
-       /* Digital Mode Styles */
        .rx-container { padding: 40px; box-sizing: border-box; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
        .rx-symbol { font-size: 32px; font-weight: bold; margin: 20px 0; font-family: serif; }
        .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
-       
-       /* Custom Layout Mode Styles */
        .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
        .print-element { position: absolute; white-space: nowrap; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
 
      let content = '';
-
      const controlHtml = `
         <div class="control-bar no-print">
            <button class="btn btn-print" onclick="window.print()">
@@ -390,10 +440,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           </div>
         `;
      } else {
-        // --- CUSTOM LAYOUT WITH FORCED BACKGROUND ---
         let bgHtml = '';
         if (settings.printBackground && settings.backgroundImage) {
-           // Using IMG tag instead of CSS background ensures mobile browsers print it more reliably
            bgHtml = `<img src="${settings.backgroundImage}" class="bg-image" />`;
         }
 
@@ -479,8 +527,35 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            ]
        };
        await saveRecord(record);
+       
+       // --- CLEANUP DRAFT ON COMPLETION ---
+       localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
      } catch (e) { console.error(e); }
   };
+
+  const VitalInput = ({ label, icon: Icon, value, prevValue, unit, field, color }: any) => (
+    <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all relative">
+       <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+             <Icon size={18} className={color} />
+             <label className="text-xs font-bold text-gray-500">{label}</label>
+          </div>
+          {unit && <span className="text-[10px] text-gray-300 font-mono uppercase">{unit}</span>}
+       </div>
+       <input 
+          className="w-full text-center text-xl font-bold text-gray-800 outline-none bg-transparent placeholder-gray-200" 
+          placeholder="---" 
+          value={value} 
+          onChange={e => setVitals({...vitals, [field]: e.target.value})} 
+       />
+       {prevValue && (
+          <div className="flex items-center justify-center gap-1 opacity-40 group hover:opacity-100 transition-opacity">
+             <History size={10} className="text-gray-400" />
+             <span className="text-[10px] text-gray-400 font-bold">قبلی: {prevValue}</span>
+          </div>
+       )}
+    </div>
+  );
 
   if (viewMode === 'landing') {
     return (
@@ -511,7 +586,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
             </div>
          </div>
 
-         {/* New Patient Modal Code... (unchanged) */}
          {showNewPatientModal && (
             <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
                <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
@@ -552,10 +626,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     );
   }
 
-  // ... (Rest of the main component code remains largely same, minimal changes needed except the print logic above)
-  
   return (
-    <div className="space-y-8 animate-fade-in pb-24 lg:pb-20">
+    <div className="space-y-8 animate-fade-in pb-24 lg:pb-20 relative">
+      
+      {/* ======================= SHADOW DRAFT RESTORE BANNER ======================= */}
+      {showDraftBanner && (
+         <div className="fixed top-20 left-4 right-4 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 z-[80] animate-bounce-subtle">
+            <div className="bg-indigo-600 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-6 border border-white/20 backdrop-blur-md">
+               <div className="flex items-center gap-3">
+                  <div className="bg-white/20 p-2 rounded-xl"><RefreshCw size={20} className="animate-spin-slow" /></div>
+                  <div>
+                     <p className="text-sm font-bold">پیش‌نویس ناتمام یافت شد</p>
+                     <p className="text-[10px] opacity-80">یک نسخه ناتمام از دقایق پیش برای این بیمار موجود است.</p>
+                  </div>
+               </div>
+               <div className="flex gap-2">
+                  <button onClick={discardDraft} className="bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">حذف</button>
+                  <button onClick={applyDraft} className="bg-white text-indigo-600 px-4 py-1.5 rounded-lg text-xs font-black shadow-lg transition-transform active:scale-95">بازیابی</button>
+               </div>
+            </div>
+         </div>
+      )}
+
       {loading && (
          <div className="fixed inset-0 z-[70] bg-white/80 backdrop-blur-md flex flex-col items-center justify-center animate-fade-in">
             <div className="relative">
@@ -567,7 +659,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {/* Mobile & Desktop JSX (Standard layout) */}
+      {/* MOBILE UI */}
       <div className="lg:hidden flex flex-col gap-4">
          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -580,19 +672,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
             </div>
          </div>
+
          <div className="bg-gray-100 p-1 rounded-xl flex">
             <button onClick={() => setMobileTab('rx')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'rx' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>نسخه و تشخیص</button>
             <button onClick={() => setMobileTab('vitals')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'vitals' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>علائم حیاتی</button>
             <button onClick={() => setMobileTab('templates')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'templates' ? 'bg-white shadow text-gray-700' : 'text-gray-500'}`}>قالب‌ها</button>
          </div>
+
          <div className="min-h-[50vh]">
             {mobileTab === 'vitals' && (
                <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                  {[{ l: 'فشار خون', i: Activity, v: vitals.bloodPressure, k: 'bloodPressure', c: 'text-red-500' }, { l: 'ضربان قلب', i: Heart, v: vitals.heartRate, k: 'heartRate', c: 'text-rose-500' }, { l: 'دمای بدن', i: Thermometer, v: vitals.temperature, k: 'temperature', c: 'text-orange-500' }, { l: 'اکسیژن', i: Wind, v: vitals.spO2, k: 'spO2', c: 'text-blue-500' }, { l: 'قند خون', i: Droplet, v: vitals.bloodSugar, k: 'bloodSugar', c: 'text-pink-500' }, { l: 'وزن (kg)', i: Scale, v: vitals.weight, k: 'weight', c: 'text-indigo-500' }, { l: 'تنفس', i: Wind, v: vitals.respiratoryRate, k: 'respiratoryRate', c: 'text-cyan-500' }, { l: 'قد (cm)', i: Hash, v: vitals.height, k: 'height', c: 'text-gray-500' }].map((item: any) => (
-                     <div key={item.k} className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col items-center justify-center gap-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all">
-                        <item.i size={24} className={item.c} /><label className="text-xs font-bold text-gray-400">{item.l}</label><input className="w-full text-center text-xl font-bold text-gray-700 outline-none bg-transparent placeholder-gray-200" placeholder="---" value={item.v} onChange={e => setVitals({...vitals, [item.k]: e.target.value})} />
-                     </div>
-                  ))}
+                  <VitalInput label="فشار خون" icon={Activity} color="text-red-500" value={vitals.bloodPressure} prevValue={previousVitals?.bloodPressure} unit="mmHg" field="bloodPressure" />
+                  <VitalInput label="ضربان قلب" icon={Heart} color="text-rose-500" value={vitals.heartRate} prevValue={previousVitals?.heartRate} unit="bpm" field="heartRate" />
+                  <VitalInput label="دمای بدن" icon={Thermometer} color="text-orange-500" value={vitals.temperature} prevValue={previousVitals?.temperature} unit="°C" field="temperature" />
+                  <VitalInput label="اکسیژن" icon={Wind} color="text-blue-500" value={vitals.spO2} prevValue={previousVitals?.spO2} unit="%" field="spO2" />
+                  <VitalInput label="قند خون" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} prevValue={previousVitals?.bloodSugar} unit="mg/dL" field="bloodSugar" />
+                  <VitalInput label="وزن (kg)" icon={Scale} color="text-indigo-500" value={vitals.weight} prevValue={previousVitals?.weight} unit="kg" field="weight" />
+                  <VitalInput label="تنفس" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} prevValue={previousVitals?.respiratoryRate} unit="rpm" field="respiratoryRate" />
+                  <VitalInput label="قد (cm)" icon={Hash} color="text-gray-500" value={vitals.height} prevValue={previousVitals?.height} unit="cm" field="height" />
                </div>
             )}
             {mobileTab === 'rx' && (
@@ -619,13 +716,63 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 active:scale-95 transition-transform flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />چاپ و اتمام نسخه</button></div>
       </div>
 
+      {/* DESKTOP UI */}
       <div className="hidden lg:block">
          <div className="flex justify-between items-center mb-6"><div className="flex items-center gap-3"><button onClick={() => setViewMode('landing')} className="p-2 bg-white rounded-xl shadow-sm hover:bg-gray-50 text-gray-500"><ArrowLeft /></button><FileSignature className="text-indigo-600 w-10 h-10" /><div><h2 className="text-3xl font-bold text-gray-800">میز کار دکتر</h2><p className="text-gray-500">پرونده: {selectedPatient?.name}</p></div></div></div>
          <div className="grid grid-cols-12 gap-8">
-              <div className="col-span-3 space-y-4"><div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-full"><h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><LayoutTemplate size={18} />قالب‌های آماده</h4>{templates.length === 0 && <p className="text-sm text-gray-400">قالبی ذخیره نشده است</p>}<div className="space-y-2">{templates.map(t => (<div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg group"><button onClick={() => loadTemplate(t)} className="text-sm font-bold text-gray-700 hover:text-indigo-600 flex-1 text-right">{t.name}</button><button onClick={() => handleDeleteTemplate(t.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash size={14} /></button></div>))}</div></div></div>
+              <div className="col-span-3 space-y-4">
+                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-fit mb-4">
+                    <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><LayoutTemplate size={18} />قالب‌های آماده</h4>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                       {templates.map(t => (<div key={t.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg group"><button onClick={() => loadTemplate(t)} className="text-sm font-bold text-gray-700 hover:text-indigo-600 flex-1 text-right">{t.name}</button><button onClick={() => handleDeleteTemplate(t.id)} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash size={14} /></button></div>))}
+                    </div>
+                 </div>
+                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                    <h4 className="font-bold text-blue-700 mb-4 flex items-center gap-2"><History size={18} />تاریخچه علائم</h4>
+                    <div className="space-y-3">
+                       {[
+                          { l: 'BP', v: previousVitals?.bloodPressure, c: 'text-red-600' },
+                          { l: 'HR', v: previousVitals?.heartRate, c: 'text-rose-600' },
+                          { l: 'Temp', v: previousVitals?.temperature, c: 'text-orange-600' },
+                          { l: 'BS', v: previousVitals?.bloodSugar, c: 'text-pink-600' },
+                          { l: 'Wt', v: previousVitals?.weight, c: 'text-indigo-600' },
+                       ].map(iv => iv.v ? (
+                          <div key={iv.l} className="flex justify-between items-center bg-white p-2 rounded-lg border border-blue-50 shadow-sm">
+                             <span className="text-[10px] font-bold text-gray-400">{iv.l}</span>
+                             <span className={`text-sm font-black ${iv.c}`}>{iv.v}</span>
+                          </div>
+                       ) : null)}
+                    </div>
+                 </div>
+              </div>
               <div className="col-span-9 bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[600px] flex flex-col">
                  <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6"><div className="flex gap-6"><div><span className="text-xs text-gray-400 font-bold block mb-1">نام بیمار</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.name}</span></div><div><span className="text-xs text-gray-400 font-bold block mb-1">سن</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.age}</span></div><div><span className="text-xs text-gray-400 font-bold block mb-1">جنسیت</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'}</span></div></div><div className="relative"><button onClick={startCamera} disabled={!isOnline} className={`bg-white border text-blue-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${isOnline ? 'border-blue-200 hover:bg-blue-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>{isOnline ? <Camera size={18} /> : <WifiOff size={18} />}{loading ? '...' : isOnline ? 'اسکن نسخه (دوربین)' : 'آفلاین'}</button></div></div>
-                 <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6"><div className="flex items-center gap-2 mb-3 text-indigo-800 font-bold"><Activity size={18} /><span>علائم حیاتی و تشخیص</span></div><div className="grid grid-cols-4 gap-3 mb-4"><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="BP" value={vitals.bloodPressure} onChange={e => setVitals({...vitals, bloodPressure: e.target.value})} /><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="HR" value={vitals.heartRate} onChange={e => setVitals({...vitals, heartRate: e.target.value})} /><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="Temp" value={vitals.temperature} onChange={e => setVitals({...vitals, temperature: e.target.value})} /><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="RR" value={vitals.respiratoryRate} onChange={e => setVitals({...vitals, respiratoryRate: e.target.value})} /><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="Glu/BS" value={vitals.bloodSugar} onChange={e => setVitals({...vitals, bloodSugar: e.target.value})} /><input className="p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="Weight" value={vitals.weight} onChange={e => setVitals({...vitals, weight: e.target.value})} /></div><input className="w-full p-2 bg-white border border-indigo-100 rounded-lg text-sm" placeholder="تشخیص پزشک (Diagnosis)" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div>
+                 
+                 <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6">
+                    <div className="flex items-center gap-2 mb-3 text-indigo-800 font-bold"><Activity size={18} /><span>علائم حیاتی و تشخیص نهایی</span></div>
+                    <div className="grid grid-cols-4 gap-3 mb-4">
+                       {[
+                         { l: 'فشار (BP)', k: 'bloodPressure', p: previousVitals?.bloodPressure },
+                         { l: 'ضربان (HR)', k: 'heartRate', p: previousVitals?.heartRate },
+                         { l: 'دما (T)', k: 'temperature', p: previousVitals?.temperature },
+                         { l: 'تنفس (RR)', k: 'respiratoryRate', p: previousVitals?.respiratoryRate },
+                         { l: 'قند (BS)', k: 'bloodSugar', p: previousVitals?.bloodSugar },
+                         { l: 'وزن (Wt)', k: 'weight', p: previousVitals?.weight }
+                       ].map(f => (
+                         <div key={f.k} className="relative group">
+                            <input 
+                              className="w-full p-2.5 bg-white border border-indigo-100 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 transition-all" 
+                              placeholder={f.l} 
+                              value={(vitals as any)[f.k]} 
+                              onChange={e => setVitals({...vitals, [f.k]: e.target.value})} 
+                            />
+                            {f.p && <div className="absolute -top-2 right-2 bg-indigo-600 text-white text-[8px] px-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">آخرین: {f.p}</div>}
+                         </div>
+                       ))}
+                    </div>
+                    <input className="w-full p-3 bg-white border border-indigo-100 rounded-lg text-sm font-bold" placeholder="تشخیص پزشک (Diagnosis)" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
+                 </div>
+
                  <div className="flex-1 overflow-x-auto"><table className="w-full text-right"><thead><tr className="border-b border-gray-200"><th className="pb-3 text-sm text-gray-500 w-10">#</th><th className="pb-3 text-sm text-gray-500 w-1/3">نام دارو (Drug)</th><th className="pb-3 text-sm text-gray-500 w-1/4">دوز (Dosage)</th><th className="pb-3 text-sm text-gray-500">دستور مصرف (Sig)</th><th className="pb-3 w-10"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (<tr key={idx} className="group"><td className="py-3 text-gray-400 text-sm">{idx + 1}</td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none font-medium" value={item.drug} onChange={e => updateItem(idx, 'drug', e.target.value)} placeholder="نام دارو" /></td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="دوز" /></td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="دستور" /></td><td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button></td></tr>))}</tbody></table><button onClick={addItem} className="mt-4 text-indigo-600 font-bold text-sm flex items-center gap-1 hover:bg-indigo-50 px-3 py-1 rounded-lg transition-colors"><Plus size={16} />افزودن قلم دارو</button></div>
                  <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-2"><Save size={18} />ذخیره در قالب‌ها</button><button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 shadow-lg hover:bg-indigo-700 flex items-center gap-2"><Printer size={18} />تایید نهایی و چاپ نسخه</button></div>
               </div>

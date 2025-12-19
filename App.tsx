@@ -88,7 +88,7 @@ function App() {
                 
                 if (localSessionId && newSessionId && newSessionId !== localSessionId) {
                     alert('حساب کاربری شما در دستگاه دیگری وارد شده است. جهت امنیت، دسترسی این دستگاه قطع می‌گردد.');
-                    handleSignOut();
+                    handleSignOutForced();
                 }
             }
         )
@@ -98,15 +98,13 @@ function App() {
   }, [session]);
 
   const checkUserStatus = async (userId: string) => {
-    // HYBRID AUTH LOGIC:
-    // If offline, assume the user is still valid if they have a local session.
-    // Re-validation will happen automatically when they go back online.
     if (!navigator.onLine) {
       const hasLocalSession = !!localStorage.getItem('tabib_session_id');
       if (hasLocalSession) {
         setIsApproved(true); // Temporary trust in offline mode
       } else {
-        await handleSignOut();
+        // Force cleanup if no local session exists even if offline
+        handleSignOutForced();
       }
       setAuthLoading(false);
       return;
@@ -123,43 +121,31 @@ function App() {
          console.error('Error fetching profile:', error);
       }
 
-      // 1. Approval Check
       setIsApproved(data?.is_approved ?? false);
 
-      // 2. Strict Session Integrity Check (Online)
       const localSessionId = localStorage.getItem('tabib_session_id');
       const dbSessionId = data?.active_session_id;
 
       if (dbSessionId && localSessionId && dbSessionId !== localSessionId) {
-          await handleSignOut();
+          await handleSignOutForced();
           alert('جلسه کاری شما منقضی شده یا در دستگاه دیگری وارد شده‌اید.');
           return;
       }
 
-      // Self-healing for migration or sync issues
       if (!dbSessionId && localSessionId) {
           await supabase.from('profiles').update({ active_session_id: localSessionId }).eq('id', userId);
       }
 
     } catch (e) {
       console.error(e);
-      // In case of unknown error (like network timeout), allow access if they have a local session
       if (localStorage.getItem('tabib_session_id')) setIsApproved(true);
     } finally {
       setAuthLoading(false);
     }
   };
 
-  const handleSignOut = async () => {
-    try {
-      if (session?.user?.id && navigator.onLine) {
-         await supabase.from('profiles').update({ 
-           active_session_id: null,
-           last_login_device: null 
-         }).eq('id', session.user.id);
-      }
-    } catch (e) { console.error("Error cleaning session:", e); }
-
+  // Used for system-triggered logouts where internet might be flaky but session is definitely invalid
+  const handleSignOutForced = async () => {
     localStorage.removeItem('tabib_session_id');
     await supabase.auth.signOut();
     setSession(null);
@@ -232,7 +218,7 @@ function App() {
             </p>
             <div className="flex gap-3">
                <button onClick={() => window.location.reload()} className="flex-1 bg-amber-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-amber-600">بررسی مجدد</button>
-               <button onClick={handleSignOut} className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200"><LogOut size={20} /></button>
+               <button onClick={handleSignOutForced} className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200"><LogOut size={20} /></button>
             </div>
          </div>
       </div>
