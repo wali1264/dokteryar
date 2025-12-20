@@ -9,6 +9,31 @@ interface PrescriptionProps {
   initialRecord: PatientRecord | null;
 }
 
+// --- STABLE SUB-COMPONENT (Moved outside to prevent re-mounting/keyboard closing) ---
+const VitalInput = ({ label, icon: Icon, value, prevValue, unit, field, color, onChange }: any) => (
+  <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all relative">
+     <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+           <Icon size={18} className={color} />
+           <label className="text-xs font-bold text-gray-500">{label}</label>
+        </div>
+        {unit && <span className="text-[10px] text-gray-300 font-mono uppercase">{unit}</span>}
+     </div>
+     <input 
+        className="w-full text-center text-xl font-bold text-gray-800 outline-none bg-transparent placeholder-gray-200" 
+        placeholder="---" 
+        value={value} 
+        onChange={e => onChange(field, e.target.value)} 
+     />
+     {prevValue && (
+        <div className="flex items-center justify-center gap-1 opacity-40 group hover:opacity-100 transition-opacity">
+           <History size={10} className="text-gray-400" />
+           <span className="text-[10px] text-gray-400 font-bold">قبلی: {prevValue}</span>
+        </div>
+     )}
+  </div>
+);
+
 const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [viewMode, setViewMode] = useState<'landing' | 'editor'>('landing');
   const [mobileTab, setMobileTab] = useState<'rx' | 'vitals' | 'templates'>('rx');
@@ -89,7 +114,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       timestamp: Date.now()
     };
 
-    // Save to local storage using unique patient ID
     localStorage.setItem(`tabib_draft_${selectedPatient.id}`, JSON.stringify(draft));
   }, [items, diagnosis, vitals, selectedPatient, viewMode]);
 
@@ -114,19 +138,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setSelectedPatient(patient);
     setViewMode('editor');
     
-    // --- FRESH VISIT PROTOCOL ---
-    // Clear current vitals state so they are measured fresh
     setVitals({
       bloodPressure: '', heartRate: '', temperature: '', spO2: '', 
-      weight: patient.vitals?.weight || '', // Carry over weight as reference but editable
+      weight: patient.vitals?.weight || '', 
       height: patient.vitals?.height || '', 
       respiratoryRate: '', bloodSugar: ''
     });
 
-    // Store previous vitals for "Ghost Labels" reference
     setPreviousVitals(patient.vitals || null);
 
-    // Initial Setup
     if (patient.diagnosis && patient.status === 'diagnosed') {
         setDiagnosis(patient.diagnosis.modern.diagnosis);
         const aiItems = patient.diagnosis.modern.treatmentPlan.map(plan => ({
@@ -141,18 +161,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         setDiagnosis(cp === 'ثبت نام اولیه (مستقیم)' ? '' : cp);
     }
 
-    // --- DRAFT RESTORATION CHECK ---
     const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
     if (savedDraft) {
       try {
         const parsed = JSON.parse(savedDraft);
-        // Only show restoration if the draft has actual content
         if (parsed.items.length > 0 || parsed.diagnosis || parsed.vitals.bloodPressure) {
           setActiveDraft(parsed);
           setShowDraftBanner(true);
         }
       } catch (e) { console.error("Draft parse error", e); }
     }
+  };
+
+  const handleVitalChange = (field: string, value: string) => {
+    setVitals(prev => ({ ...prev, [field]: value }));
   };
 
   const applyDraft = () => {
@@ -206,7 +228,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     handleSelectPatient(newRecord); 
   };
 
-  // --- CAMERA LOGIC ---
   const startCamera = async () => {
     setShowCamera(true);
     try {
@@ -527,35 +548,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            ]
        };
        await saveRecord(record);
-       
-       // --- CLEANUP DRAFT ON COMPLETION ---
        localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
      } catch (e) { console.error(e); }
   };
-
-  const VitalInput = ({ label, icon: Icon, value, prevValue, unit, field, color }: any) => (
-    <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all relative">
-       <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-             <Icon size={18} className={color} />
-             <label className="text-xs font-bold text-gray-500">{label}</label>
-          </div>
-          {unit && <span className="text-[10px] text-gray-300 font-mono uppercase">{unit}</span>}
-       </div>
-       <input 
-          className="w-full text-center text-xl font-bold text-gray-800 outline-none bg-transparent placeholder-gray-200" 
-          placeholder="---" 
-          value={value} 
-          onChange={e => setVitals({...vitals, [field]: e.target.value})} 
-       />
-       {prevValue && (
-          <div className="flex items-center justify-center gap-1 opacity-40 group hover:opacity-100 transition-opacity">
-             <History size={10} className="text-gray-400" />
-             <span className="text-[10px] text-gray-400 font-bold">قبلی: {prevValue}</span>
-          </div>
-       )}
-    </div>
-  );
 
   if (viewMode === 'landing') {
     return (
@@ -629,7 +624,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   return (
     <div className="space-y-8 animate-fade-in pb-24 lg:pb-20 relative">
       
-      {/* ======================= SHADOW DRAFT RESTORE BANNER ======================= */}
       {showDraftBanner && (
          <div className="fixed top-20 left-4 right-4 lg:left-1/2 lg:right-auto lg:-translate-x-1/2 z-[80] animate-bounce-subtle">
             <div className="bg-indigo-600 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-6 border border-white/20 backdrop-blur-md">
@@ -682,14 +676,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          <div className="min-h-[50vh]">
             {mobileTab === 'vitals' && (
                <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                  <VitalInput label="فشار خون" icon={Activity} color="text-red-500" value={vitals.bloodPressure} prevValue={previousVitals?.bloodPressure} unit="mmHg" field="bloodPressure" />
-                  <VitalInput label="ضربان قلب" icon={Heart} color="text-rose-500" value={vitals.heartRate} prevValue={previousVitals?.heartRate} unit="bpm" field="heartRate" />
-                  <VitalInput label="دمای بدن" icon={Thermometer} color="text-orange-500" value={vitals.temperature} prevValue={previousVitals?.temperature} unit="°C" field="temperature" />
-                  <VitalInput label="اکسیژن" icon={Wind} color="text-blue-500" value={vitals.spO2} prevValue={previousVitals?.spO2} unit="%" field="spO2" />
-                  <VitalInput label="قند خون" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} prevValue={previousVitals?.bloodSugar} unit="mg/dL" field="bloodSugar" />
-                  <VitalInput label="وزن (kg)" icon={Scale} color="text-indigo-500" value={vitals.weight} prevValue={previousVitals?.weight} unit="kg" field="weight" />
-                  <VitalInput label="تنفس" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} prevValue={previousVitals?.respiratoryRate} unit="rpm" field="respiratoryRate" />
-                  <VitalInput label="قد (cm)" icon={Hash} color="text-gray-500" value={vitals.height} prevValue={previousVitals?.height} unit="cm" field="height" />
+                  <VitalInput label="فشار خون" icon={Activity} color="text-red-500" value={vitals.bloodPressure} prevValue={previousVitals?.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} />
+                  <VitalInput label="ضربان قلب" icon={Heart} color="text-rose-500" value={vitals.heartRate} prevValue={previousVitals?.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} />
+                  <VitalInput label="دمای بدن" icon={Thermometer} color="text-orange-500" value={vitals.temperature} prevValue={previousVitals?.temperature} unit="°C" field="temperature" onChange={handleVitalChange} />
+                  <VitalInput label="اکسیژن" icon={Wind} color="text-blue-500" value={vitals.spO2} prevValue={previousVitals?.spO2} unit="%" field="spO2" onChange={handleVitalChange} />
+                  <VitalInput label="قند خون" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} prevValue={previousVitals?.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} />
+                  <VitalInput label="وزن (kg)" icon={Scale} color="text-indigo-500" value={vitals.weight} prevValue={previousVitals?.weight} unit="kg" field="weight" onChange={handleVitalChange} />
+                  <VitalInput label="تنفس" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} prevValue={previousVitals?.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} />
+                  <VitalInput label="قد (cm)" icon={Hash} color="text-gray-500" value={vitals.height} prevValue={previousVitals?.height} unit="cm" field="height" onChange={handleVitalChange} />
                </div>
             )}
             {mobileTab === 'rx' && (
@@ -764,7 +758,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               className="w-full p-2.5 bg-white border border-indigo-100 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 transition-all" 
                               placeholder={f.l} 
                               value={(vitals as any)[f.k]} 
-                              onChange={e => setVitals({...vitals, [f.k]: e.target.value})} 
+                              onChange={e => handleVitalChange(f.k, e.target.value)} 
                             />
                             {f.p && <div className="absolute -top-2 right-2 bg-indigo-600 text-white text-[8px] px-1 rounded shadow-sm opacity-0 group-hover:opacity-100 transition-opacity">آخرین: {f.p}</div>}
                          </div>
