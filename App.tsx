@@ -33,11 +33,14 @@ function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
   const [currentRecord, setCurrentRecord] = useState<PatientRecord | null>(null);
   
-  // --- INSTANT-FLIGHT AUTH LOGIC ---
+  // --- OFFLINE-RESILIENT AUTH LOGIC ---
   const hasLocalKey = !!localStorage.getItem('tabib_session_id');
+  const lastKnownApproval = localStorage.getItem('tabib_is_approved') === 'true';
+  
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(!hasLocalKey); 
-  const [isApproved, setIsApproved] = useState<boolean | null>(hasLocalKey ? true : null);
+  // If we have a session key, we initially assume the user is approved based on their last successful session
+  const [isApproved, setIsApproved] = useState<boolean | null>(hasLocalKey ? (lastKnownApproval || true) : null);
   const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
 
   // --- AUTO-DISMISS TIMER ---
@@ -46,7 +49,7 @@ function App() {
     if (securityStatus === 'verified' || securityStatus === 'offline') {
       timer = setTimeout(() => {
         setSecurityStatus('idle');
-      }, 3000); // Dissapear after 3 seconds
+      }, 3000);
     }
     return () => clearTimeout(timer);
   }, [securityStatus]);
@@ -82,15 +85,21 @@ function App() {
   }, []);
 
   const verifySecurityInBackground = async (userId: string) => {
+    // If clearly offline, don't even try to reach Supabase, just stay in "Last Known" state
+    if (!navigator.onLine) {
+        setSecurityStatus('offline');
+        setAuthLoading(false);
+        // We don't change isApproved here to keep the last known state
+        return;
+    }
+
     setSecurityStatus('syncing');
     
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("Verification Timeout")), 3000)
+      setTimeout(() => reject(new Error("Verification Timeout")), 4000)
     );
 
     const verificationPromise = (async () => {
-      if (!navigator.onLine) throw new Error("Offline");
-
       const { data, error } = await supabase
         .from('profiles')
         .select('is_approved, active_session_id')
@@ -105,6 +114,13 @@ function App() {
       const result: any = await Promise.race([verificationPromise, timeoutPromise]);
       setIsApproved(result.is_approved);
       
+      // Persist approval status for offline use
+      if (result.is_approved) {
+        localStorage.setItem('tabib_is_approved', 'true');
+      } else {
+        localStorage.setItem('tabib_is_approved', 'false');
+      }
+      
       const localSessionId = localStorage.getItem('tabib_session_id');
       if (result.active_session_id && localSessionId && result.active_session_id !== localSessionId) {
           alert('امنیت: این حساب در دستگاه دیگری باز شده است. خروج اجباری...');
@@ -115,8 +131,9 @@ function App() {
       setSecurityStatus('verified');
       setAuthLoading(false);
     } catch (e: any) {
+      console.warn("Security sync failed, falling back to cached state", e);
+      // If verification fails due to network/timeout, TRUST the existing session if it exists
       if (hasLocalKey) {
-        setIsApproved(true);
         setSecurityStatus('offline');
       } else {
         setIsApproved(false);
@@ -127,6 +144,7 @@ function App() {
 
   const handleSignOutForced = async () => {
     localStorage.removeItem('tabib_session_id');
+    localStorage.removeItem('tabib_is_approved');
     await supabase.auth.signOut();
     setSession(null);
     setIsApproved(null);
