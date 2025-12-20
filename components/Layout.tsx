@@ -68,7 +68,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
 
   // --- ATOMIC SECURE LOGOUT LOGIC ---
   const handleSignOut = async () => {
-    // 1. Offline Check - Block logout to prevent ghost sessions
     if (!navigator.onLine) {
       alert("دکتر عزیز، جهت حفظ امنیت حساب و جلوگیری از تداخل در ورودهای بعدی، خروج قطعی نیازمند اتصال به شبکه است. لطفاً آنلاین شوید.");
       return;
@@ -78,11 +77,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setLogoutStage('clearing');
 
     try {
-      // 2. Identify the user
       const { data: { user } } = await supabase.auth.getUser();
-      
-      // 3. Clear the session from Database ("Empty the chair")
-      // We wait for DB success before touching local storage
       if (user) {
         const { error: dbError } = await supabase
           .from('profiles')
@@ -91,24 +86,14 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
             last_login_device: null 
           })
           .eq('id', user.id);
-        
         if (dbError) throw dbError;
       }
-
-      // 4. Perform local cleanup only AFTER DB success
       localStorage.removeItem('tabib_session_id');
-
-      // 5. Perform Supabase SignOut
       await supabase.auth.signOut();
-
-      // 6. Success State
       setLogoutStage('success');
-      
-      // Give user time to see the success message
       setTimeout(() => {
         window.location.reload();
       }, 2000);
-      
     } catch (error) {
       console.error("Secure logout failed:", error);
       setIsLoggingOut(false);
@@ -117,10 +102,9 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     }
   };
 
-  // Trigger Logic
   const handleLogoClick = () => {
     const now = Date.now();
-    if (now - lastClickTimeRef.current < 800) { // < 1s threshold (800ms)
+    if (now - lastClickTimeRef.current < 800) {
       clickCountRef.current++;
     } else {
       clickCountRef.current = 1;
@@ -134,10 +118,10 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   };
 
   const handleAdminLogin = () => {
-    if (adminPassword === 'Alliwali@1264') { // Secure password applied
+    if (adminPassword === 'Alliwali@1264') {
       setShowAdminLogin(false);
       setShowAdminDashboard(true);
-      setKeyStats(keyManager.getStatistics()); // Load stats
+      setKeyStats(keyManager.getStatistics());
       setAdminPassword('');
       setLoginError(false);
     } else {
@@ -169,7 +153,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     );
   };
 
-  // Mobile Bottom Nav Item
   const BottomNavItem = ({ route, icon: Icon, label, isActive, onClick }: { route?: AppRoute, icon: any, label: string, isActive?: boolean, onClick?: () => void }) => (
     <button 
       onClick={() => onClick ? onClick() : (route && onNavigate(route))}
@@ -182,7 +165,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     </button>
   );
 
-  // Derived Stats
   const totalRequests = keyStats.reduce((acc, curr) => acc + curr.usageCount, 0);
   const activeKeys = keyStats.filter(k => k.status === 'active').length;
   const sortedByUsage = [...keyStats].sort((a, b) => b.usageCount - a.usageCount);
@@ -191,8 +173,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
-      
-      {/* ===================== SECURE LOGOUT OVERLAY ===================== */}
       {isLoggingOut && (
         <div className="fixed inset-0 z-[1000] bg-white flex flex-col items-center justify-center animate-fade-in">
            {logoutStage === 'clearing' ? (
@@ -222,10 +202,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         </div>
       )}
 
-      {/* ================= DESKTOP SIDEBAR (Hidden on Mobile) ================= */}
-      <aside className={`
-        hidden lg:flex fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl flex-col
-      `}>
+      <aside className={`hidden lg:flex fixed inset-y-0 right-0 z-50 w-72 bg-white shadow-2xl flex-col`}>
         <div className="p-6 border-b border-gray-100 flex justify-between items-center cursor-pointer select-none" onClick={handleLogoClick}>
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white relative overflow-hidden">
@@ -234,18 +211,15 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
             <h1 className="text-2xl font-bold text-gray-800">طبیب هوشمند</h1>
           </div>
         </div>
-
         <div className={`px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 transition-colors ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
            {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
            {isOnline ? 'شبکه متصل است (AI فعال)' : 'حالت آفلاین (دستی)'}
         </div>
-
         <nav className="p-4 space-y-2 mt-2 overflow-y-auto flex-1 custom-scrollbar">
           <NavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار دکتر" />
           <NavItem route={AppRoute.INTAKE} icon={User} label="مشاوره هوشمند" />
           <NavItem route={AppRoute.DIAGNOSIS} icon={Stethoscope} label="اتاق تشخیص" />
           <NavItem route={AppRoute.DASHBOARD} icon={Archive} label="بایگانی" />
-          
           <div className="border-t my-4 border-gray-100 pt-4">
             <p className="text-xs font-bold text-gray-400 px-4 mb-2">دپارتمان‌های تخصصی</p>
             <NavItem route={AppRoute.EMERGENCY} icon={Ambulance} label="اورژانس" />
@@ -268,8 +242,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           </div>
           <NavItem route={AppRoute.SETTINGS} icon={SettingsIcon} label="تنظیمات" />
         </nav>
-
-        {/* Profile & Logout Section (Desktop) */}
         <div className="p-6 bg-blue-50 border-t border-blue-100 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <img src="https://picsum.photos/100/100" className="w-12 h-12 rounded-full border-2 border-blue-200" alt="Dr Profile" />
@@ -280,7 +252,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           </div>
           <button 
             onClick={handleSignOut} 
-            title="خروج امن از سیستم"
             className={`p-2 rounded-full transition-all shadow-sm ${!isOnline ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white text-red-500 hover:bg-red-600'}`}
           >
             <LogOut size={20} />
@@ -288,10 +259,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         </div>
       </aside>
 
-      {/* ======================= MAIN CONTENT AREA ======================= */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden relative lg:mr-72 transition-all duration-300">
-        
-        {/* Mobile Modern Header */}
         <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200 flex items-center justify-between px-4 lg:hidden fixed top-0 left-0 right-0 z-40 shadow-sm">
           <div className="flex items-center gap-2">
              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white" onClick={handleLogoClick}>
@@ -306,76 +274,59 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                    <Download size={18} />
                 </button>
              )}
-             
-             {/* Logout Button Mobile */}
-             <button 
-                onClick={handleSignOut} 
-                className={`p-2 rounded-full transition-colors ${!isOnline ? 'bg-gray-50 text-gray-300' : 'bg-red-50 text-red-500 hover:bg-red-100'}`} 
-                title="خروج امن"
-             >
+             <button onClick={handleSignOut} className={`p-2 rounded-full transition-colors ${!isOnline ? 'bg-gray-50 text-gray-300' : 'bg-red-50 text-red-500 hover:bg-red-100'}`} title="خروج امن">
                 <LogOut size={18} />
              </button>
-
              <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
                 <img src="https://picsum.photos/100/100" className="w-full h-full object-cover" alt="Profile" />
              </div>
           </div>
         </header>
         
-        {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto pt-20 pb-28 lg:pt-8 lg:pb-8 p-4 lg:p-8 scroll-smooth">
           <div className="max-w-7xl mx-auto h-full">
             {children}
           </div>
         </div>
 
-        {/* ================= MOBILE BOTTOM NAVIGATION ================= */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around items-end pb-safe px-2 py-2 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] rounded-t-2xl">
-           <BottomNavItem 
-             route={AppRoute.DASHBOARD} 
-             icon={FolderOpen} 
-             label="بایگانی" 
-             isActive={currentRoute === AppRoute.DASHBOARD} 
-           />
-           <BottomNavItem 
-             route={AppRoute.INTAKE} 
-             icon={UserPlus} 
-             label="مشاوره" 
-             isActive={currentRoute === AppRoute.INTAKE} 
-           />
-           <BottomNavItem 
-             route={AppRoute.PRESCRIPTION} 
-             icon={FileSignature} 
-             label="میز کار" 
-             isActive={currentRoute === AppRoute.PRESCRIPTION} 
-           />
-           <BottomNavItem 
-             route={AppRoute.DIAGNOSIS} 
-             icon={Activity} 
-             label="تشخیص" 
-             isActive={currentRoute === AppRoute.DIAGNOSIS} 
-           />
-           <BottomNavItem 
-             icon={Grid} 
-             label="بیشتر" 
-             isActive={isMoreMenuOpen} 
-             onClick={() => setIsMoreMenuOpen(true)}
-           />
+           <BottomNavItem route={AppRoute.DASHBOARD} icon={FolderOpen} label="بایگانی" isActive={currentRoute === AppRoute.DASHBOARD} />
+           <BottomNavItem route={AppRoute.INTAKE} icon={UserPlus} label="مشاوره" isActive={currentRoute === AppRoute.INTAKE} />
+           <BottomNavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار" isActive={currentRoute === AppRoute.PRESCRIPTION} />
+           <BottomNavItem route={AppRoute.DIAGNOSIS} icon={Activity} label="تشخیص" isActive={currentRoute === AppRoute.DIAGNOSIS} />
+           <BottomNavItem icon={Grid} label="بیشتر" isActive={isMoreMenuOpen} onClick={() => setIsMoreMenuOpen(true)} />
         </nav>
 
-        {/* ================= MOBILE "MORE" SHEET (Bottom Sheet) ================= */}
         {isMoreMenuOpen && (
            <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsMoreMenuOpen(false)}></div>
-              <div className="bg-white rounded-t-3xl p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up">
-                 <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-6"></div>
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300" onClick={() => setIsMoreMenuOpen(false)}></div>
+              <div className="bg-white rounded-t-[2.5rem] p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up transition-transform duration-200">
                  
-                 <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <Grid className="text-blue-600" />
-                    دپارتمان‌های تخصصی
-                 </h3>
+                 {/* ENHANCED INTERACTIVE HEADER AREA */}
+                 <div className="sticky top-0 bg-white pt-2 pb-4 mb-2 z-20 flex flex-col items-center">
+                    {/* Clickable Handle: Now acts as a close button too */}
+                    <button 
+                       onClick={() => setIsMoreMenuOpen(false)}
+                       className="w-12 h-1.5 bg-gray-200 rounded-full mb-6 hover:bg-gray-300 active:scale-90 transition-all"
+                       aria-label="بستن منو"
+                    ></button>
+                    
+                    <div className="w-full flex justify-between items-center px-2">
+                       <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
+                          <Grid className="text-blue-600" />
+                          دپارتمان‌های تخصصی
+                       </h3>
+                       {/* Explicit Close Button for better UX */}
+                       <button 
+                          onClick={() => setIsMoreMenuOpen(false)}
+                          className="p-2 bg-gray-100 text-gray-500 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"
+                       >
+                          <X size={20} />
+                       </button>
+                    </div>
+                 </div>
                  
-                 <div className="grid grid-cols-3 gap-3 mb-6">
+                 <div className="grid grid-cols-3 gap-3 mb-8">
                     {[
                       { r: AppRoute.EMERGENCY, i: Ambulance, l: 'اورژانس', c: 'bg-red-50 text-red-600' },
                       { r: AppRoute.CARDIOLOGY, i: HeartPulse, l: 'قلب', c: 'bg-rose-50 text-rose-600' },
@@ -406,98 +357,56 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                     ))}
                  </div>
 
-                 <div className="border-t border-gray-100 pt-4">
+                 <div className="border-t border-gray-100 pt-4 mb-4">
                     <button 
                       onClick={() => { onNavigate(AppRoute.SETTINGS); setIsMoreMenuOpen(false); }}
-                      className="w-full bg-gray-50 text-gray-700 p-4 rounded-xl flex items-center justify-between font-bold"
+                      className="w-full bg-gray-50 text-gray-700 p-5 rounded-2xl flex items-center justify-between font-bold active:bg-gray-100 transition-colors"
                     >
-                       <span className="flex items-center gap-2"><SettingsIcon size={20} /> تنظیمات و مدیریت</span>
-                       <div className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-xs">➜</div>
+                       <span className="flex items-center gap-3"><SettingsIcon size={20} className="text-blue-500" /> تنظیمات و مدیریت</span>
+                       <div className="w-8 h-8 bg-white border border-gray-200 rounded-full flex items-center justify-center text-xs shadow-sm font-black">➜</div>
                     </button>
                  </div>
               </div>
            </div>
         )}
-
       </main>
 
-      {/* ADMIN LOGIN MODAL */}
+      {/* ADMIN MODALS (Unchanged Logic) */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminLogin(false)}>
            <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
-              <div className="flex justify-center mb-6 text-emerald-500">
-                 <Shield size={48} />
-              </div>
+              <div className="flex justify-center mb-6 text-emerald-500"><Shield size={48} /></div>
               <h3 className="text-xl font-bold text-center mb-2">ورود به اتاق فرمان</h3>
               <p className="text-gray-400 text-sm text-center mb-6">لطفا رمز عبور مدیریتی را وارد کنید</p>
-              
               <div className="space-y-4">
                  <div className="relative">
-                    <input 
-                      type="password" 
-                      autoFocus
-                      className={`w-full bg-gray-800 border ${loginError ? 'border-red-500' : 'border-gray-600'} rounded-xl p-3 pl-10 text-center outline-none focus:border-emerald-500 transition-colors`}
-                      placeholder="• • • • •"
-                      value={adminPassword}
-                      onChange={e => setAdminPassword(e.target.value)}
-                      onKeyPress={e => e.key === 'Enter' && handleAdminLogin()}
-                    />
+                    <input type="password" autoFocus className={`w-full bg-gray-800 border ${loginError ? 'border-red-500' : 'border-gray-600'} rounded-xl p-3 pl-10 text-center outline-none focus:border-emerald-500 transition-colors`} placeholder="• • • • •" value={adminPassword} onChange={e => setAdminPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAdminLogin()} />
                     <Key className="absolute left-3 top-3.5 text-gray-500" size={18} />
                  </div>
                  {loginError && <p className="text-red-500 text-xs text-center">رمز عبور اشتباه است</p>}
-                 
-                 <button onClick={handleAdminLogin} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-900/20">
-                    ورود
-                 </button>
+                 <button onClick={handleAdminLogin} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-emerald-900/20">ورود</button>
               </div>
            </div>
         </div>
       )}
 
-      {/* ADMIN CONTROL ROOM DASHBOARD */}
       {showAdminDashboard && (
         <div className="fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4 overflow-y-auto">
            <div className="w-full max-w-5xl bg-gray-900 border border-gray-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[85vh]">
-              
-              {/* Header */}
               <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-950">
                  <div className="flex items-center gap-4">
-                    <div className="p-2 bg-emerald-500/10 rounded-lg">
-                       <BarChart3 className="text-emerald-500" size={28} />
-                    </div>
-                    <div>
-                       <h2 className="text-2xl font-bold text-white">اتاق فرمان</h2>
-                       <p className="text-gray-400 text-xs uppercase tracking-widest">سیستم نظارت بر کلیدها و ترافیک</p>
-                    </div>
+                    <div className="p-2 bg-emerald-500/10 rounded-lg"><BarChart3 className="text-emerald-500" size={28} /></div>
+                    <div><h2 className="text-2xl font-bold text-white">اتاق فرمان</h2><p className="text-gray-400 text-xs uppercase tracking-widest">سیستم نظارت بر کلیدها و ترافیک</p></div>
                  </div>
-                 <button onClick={() => setShowAdminDashboard(false)} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 text-gray-400 transition-colors">
-                    <X size={24} />
-                 </button>
+                 <button onClick={() => setShowAdminDashboard(false)} className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 text-gray-400 transition-colors"><X size={24} /></button>
               </div>
-
-              {/* Body */}
               <div className="p-8 flex-1 overflow-y-auto">
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                       <p className="text-gray-400 text-xs mb-1">کل درخواست‌ها</p>
-                       <p className="text-3xl font-bold text-white">{totalRequests}</p>
-                    </div>
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                       <p className="text-gray-400 text-xs mb-1">کلیدهای فعال</p>
-                       <p className="text-3xl font-bold text-emerald-400">{activeKeys} <span className="text-sm text-gray-500 font-normal">/ {keyStats.length}</span></p>
-                    </div>
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                       <p className="text-gray-400 text-xs mb-1">پرکارترین کلید</p>
-                       <p className="text-lg font-bold text-blue-400 truncate">{mostUsed ? mostUsed.maskedKey : '---'}</p>
-                       <p className="text-xs text-gray-500">{mostUsed ? `${mostUsed.usageCount} request` : ''}</p>
-                    </div>
-                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700">
-                       <p className="text-gray-400 text-xs mb-1">کم‌کارترین کلید</p>
-                       <p className="text-lg font-bold text-orange-400 truncate">{leastUsed ? leastUsed.maskedKey : '---'}</p>
-                       <p className="text-xs text-gray-500">{leastUsed ? `${leastUsed.usageCount} request` : ''}</p>
-                    </div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">کل درخواست‌ها</p><p className="text-3xl font-bold text-white">{totalRequests}</p></div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">کلیدهای فعال</p><p className="text-3xl font-bold text-emerald-400">{activeKeys} <span className="text-sm text-gray-500 font-normal">/ {keyStats.length}</span></p></div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">پرکارترین کلید</p><p className="text-lg font-bold text-blue-400 truncate">{mostUsed ? mostUsed.maskedKey : '---'}</p><p className="text-xs text-gray-500">{mostUsed ? `${mostUsed.usageCount} request` : ''}</p></div>
+                    <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">کم‌کارترین کلید</p><p className="text-lg font-bold text-orange-400 truncate">{leastUsed ? leastUsed.maskedKey : '---'}</p><p className="text-xs text-gray-500">{leastUsed ? `${leastUsed.usageCount} request` : ''}</p></div>
                  </div>
-
                  <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 mb-8">
                     <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Activity size={16} className="text-emerald-500"/> توزیع بار (Load Balancing)</h4>
                     <div className="flex h-4 rounded-full overflow-hidden bg-gray-900">
@@ -505,37 +414,16 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                           const percent = totalRequests > 0 ? (k.usageCount / totalRequests) * 100 : 0;
                           if (percent === 0) return null;
                           const colors = ['bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'];
-                          return (
-                             <div key={k.key} style={{ width: `${percent}%` }} className={`${colors[i % colors.length]} hover:opacity-80 transition-opacity`} title={`${k.maskedKey}: ${k.usageCount}`}></div>
-                          );
+                          return <div key={k.key} style={{ width: `${percent}%` }} className={`${colors[i % colors.length]} hover:opacity-80 transition-opacity`} title={`${k.maskedKey}: ${k.usageCount}`}></div>;
                        })}
                     </div>
                  </div>
-
                  <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
                     <table className="w-full text-right text-gray-300">
-                       <thead className="bg-gray-900 text-gray-500 text-xs uppercase">
-                          <tr>
-                             <th className="p-4">شناسه کلید</th>
-                             <th className="p-4">تعداد درخواست</th>
-                             <th className="p-4">خطاها</th>
-                             <th className="p-4">آخرین استفاده</th>
-                             <th className="p-4">وضعیت</th>
-                          </tr>
-                       </thead>
+                       <thead className="bg-gray-900 text-gray-500 text-xs uppercase"><tr><th className="p-4">شناسه کلید</th><th className="p-4">تعداد درخواست</th><th className="p-4">خطاها</th><th className="p-4">آخرین استفاده</th><th className="p-4">وضعیت</th></tr></thead>
                        <tbody className="divide-y divide-gray-700">
                           {keyStats.map(k => (
-                             <tr key={k.key} className="hover:bg-gray-750 transition-colors">
-                                <td className="p-4 font-mono text-emerald-400">{k.maskedKey}</td>
-                                <td className="p-4">{k.usageCount}</td>
-                                <td className="p-4 text-red-400">{k.errorCount}</td>
-                                <td className="p-4 text-sm text-gray-500">{k.lastUsed ? new Date(k.lastUsed).toLocaleTimeString() : '-'}</td>
-                                <td className="p-4">
-                                   <span className={`px-2 py-1 rounded text-xs font-bold ${k.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
-                                      {k.status === 'active' ? 'ACTIVE' : 'COOLDOWN'}
-                                   </span>
-                                </td>
-                             </tr>
+                             <tr key={k.key} className="hover:bg-gray-750 transition-colors"><td className="p-4 font-mono text-emerald-400">{k.maskedKey}</td><td className="p-4">{k.usageCount}</td><td className="p-4 text-red-400">{k.errorCount}</td><td className="p-4 text-sm text-gray-500">{k.lastUsed ? new Date(k.lastUsed).toLocaleTimeString() : '-'}</td><td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold ${k.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{k.status === 'active' ? 'ACTIVE' : 'COOLDOWN'}</span></td></tr>
                           ))}
                        </tbody>
                     </table>

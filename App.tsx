@@ -34,21 +34,29 @@ function App() {
   const [currentRecord, setCurrentRecord] = useState<PatientRecord | null>(null);
   
   // --- INSTANT-FLIGHT AUTH LOGIC ---
-  // Optimistically assume we are logged in if a local session key exists
   const hasLocalKey = !!localStorage.getItem('tabib_session_id');
   const [session, setSession] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(!hasLocalKey); // Load instantly if we have a key
+  const [authLoading, setAuthLoading] = useState(!hasLocalKey); 
   const [isApproved, setIsApproved] = useState<boolean | null>(hasLocalKey ? true : null);
   const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
 
+  // --- AUTO-DISMISS TIMER ---
   useEffect(() => {
-    // 1. Initial Session Fetch
+    let timer: any;
+    if (securityStatus === 'verified' || securityStatus === 'offline') {
+      timer = setTimeout(() => {
+        setSecurityStatus('idle');
+      }, 3000); // Dissapear after 3 seconds
+    }
+    return () => clearTimeout(timer);
+  }, [securityStatus]);
+
+  useEffect(() => {
     const initAuth = async () => {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       setSession(currentSession);
       
       if (currentSession) {
-        // Run verification in the "Shadow" (background)
         verifySecurityInBackground(currentSession.user.id);
       } else {
         setAuthLoading(false);
@@ -58,7 +66,6 @@ function App() {
 
     initAuth();
 
-    // 2. Real-time Auth Listeners
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       if (newSession) {
@@ -77,7 +84,6 @@ function App() {
   const verifySecurityInBackground = async (userId: string) => {
     setSecurityStatus('syncing');
     
-    // SMART TIMEOUT: If network is slow, don't let it hang. Switch to offline mode after 3s.
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error("Verification Timeout")), 3000)
     );
@@ -96,9 +102,7 @@ function App() {
     })();
 
     try {
-      // Race the network against our 3s patience threshold
       const result: any = await Promise.race([verificationPromise, timeoutPromise]);
-      
       setIsApproved(result.is_approved);
       
       const localSessionId = localStorage.getItem('tabib_session_id');
@@ -111,8 +115,6 @@ function App() {
       setSecurityStatus('verified');
       setAuthLoading(false);
     } catch (e: any) {
-      console.warn("Security check bypassed/failed:", e.message);
-      // If we have a local key, we trust it for now (Offline/Slow Network fallback)
       if (hasLocalKey) {
         setIsApproved(true);
         setSecurityStatus('offline');
@@ -215,25 +217,32 @@ function App() {
 
   return (
     <>
-      {/* SHADOW VERIFICATION INDICATOR */}
-      {securityStatus === 'syncing' && (
-        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-blue-100 animate-fade-in pointer-events-none">
-           <Loader2 size={12} className="text-blue-500 animate-spin" />
-           <span className="text-[10px] font-bold text-blue-600">همگام‌سازی امنیتی...</span>
-        </div>
-      )}
-      {securityStatus === 'verified' && (
-        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-emerald-50 px-3 py-1.5 rounded-full shadow-sm border border-emerald-100 animate-out fade-out delay-1000 pointer-events-none">
-           <ShieldCheck size={12} className="text-emerald-500" />
-           <span className="text-[10px] font-bold text-emerald-600">امنیت تایید شد</span>
-        </div>
-      )}
-      {securityStatus === 'offline' && (
-        <div className="fixed top-4 left-4 z-[100] flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-full shadow-sm border border-amber-100 pointer-events-none">
-           <ShieldAlert size={12} className="text-amber-500" />
-           <span className="text-[10px] font-bold text-amber-600">حالت آفلاین امن</span>
-        </div>
-      )}
+      {/* 
+         DYNAMIC ISLAND STATUS CAPSULE 
+         - Centered on mobile to avoid overlapping buttons
+         - Side-aligned on desktop for focus
+         - Automatically dismisses after success/offline detected
+      */}
+      <div className="fixed top-2.5 lg:top-4 left-1/2 -translate-x-1/2 lg:left-10 lg:translate-x-0 z-[100] pointer-events-none transition-all duration-500">
+        {securityStatus === 'syncing' && (
+          <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-blue-100 animate-slide-down">
+             <Loader2 size={14} className="text-blue-500 animate-spin" />
+             <span className="text-[11px] font-black text-blue-700 whitespace-nowrap">همگام‌سازی امنیتی...</span>
+          </div>
+        )}
+        {securityStatus === 'verified' && (
+          <div className="flex items-center gap-2 bg-emerald-50/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-emerald-100 animate-slide-down">
+             <ShieldCheck size={14} className="text-emerald-500" />
+             <span className="text-[11px] font-black text-emerald-700 whitespace-nowrap">امنیت تایید شد</span>
+          </div>
+        )}
+        {securityStatus === 'offline' && (
+          <div className="flex items-center gap-2 bg-amber-50/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-amber-100 animate-slide-down">
+             <ShieldAlert size={14} className="text-amber-500" />
+             <span className="text-[11px] font-black text-amber-700 whitespace-nowrap">حالت آفلاین امن</span>
+          </div>
+        )}
+      </div>
 
       <Layout currentRoute={currentRoute} onNavigate={(route) => handleNavigate(route)}>
         {renderContent()}
