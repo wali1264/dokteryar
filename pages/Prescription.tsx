@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription } from '../services/geminiService';
-import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients } from '../services/db';
-import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw } from 'lucide-react';
+import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats } from '../services/db';
+import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage } from '../types';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -47,6 +47,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [items, setItems] = useState<PrescriptionItem[]>([]);
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   
+  // --- Drug Bank States ---
+  const [allDrugs, setAllDrugs] = useState<Drug[]>([]);
+  const [usageStats, setUsageStats] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
+  const [suggestionType, setSuggestionType] = useState<'drug' | 'instruction' | null>(null);
+
   const [vitals, setVitals] = useState<PatientVitals>({
     bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: ''
   });
@@ -124,6 +131,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       
       const patientsData = await getUniquePatients();
       setAllPatients(patientsData);
+
+      const drugsData = await getAllDrugs();
+      setAllDrugs(drugsData);
+
+      const stats = await getUsageStats();
+      setUsageStats(stats);
 
       const s = await getSettings();
       if (s) setSettings(s);
@@ -307,6 +320,42 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
+    
+    if (field === 'drug') {
+      setSearchQuery(value);
+      setActiveItemIndex(index);
+      setSuggestionType('drug');
+    } else if (field === 'instruction') {
+      setSearchQuery(value);
+      setActiveItemIndex(index);
+      setSuggestionType('instruction');
+    }
+  };
+
+  const selectSuggestedDrug = (drugName: string) => {
+    if (activeItemIndex === null) return;
+    const newItems = [...items];
+    newItems[activeItemIndex].drug = drugName;
+    
+    // --- Triple-Fill Memory logic ---
+    const stats = usageStats.find(u => u.drugName === drugName);
+    if (stats) {
+        if (stats.lastDosage) newItems[activeItemIndex].dosage = stats.lastDosage;
+        if (stats.lastInstruction) newItems[activeItemIndex].instruction = stats.lastInstruction;
+    }
+    
+    setItems(newItems);
+    setActiveItemIndex(null);
+    setSuggestionType(null);
+  };
+
+  const selectSuggestedInstruction = (instruction: string) => {
+    if (activeItemIndex === null) return;
+    const newItems = [...items];
+    newItems[activeItemIndex].instruction = instruction;
+    setItems(newItems);
+    setActiveItemIndex(null);
+    setSuggestionType(null);
   };
 
   const removeItem = (index: number) => {
@@ -339,8 +388,51 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
+  // --- SMART FUZZY SEARCH LOGIC ---
+  const getDrugSuggestions = () => {
+    if (!searchQuery || searchQuery.length < 1) return [];
+    const q = searchQuery.toLowerCase();
+    
+    // Search anywhere in string (Fuzzy)
+    const results = allDrugs.filter(d => 
+      d.name.toLowerCase().includes(q) || 
+      (d.category && d.category.toLowerCase().includes(q))
+    );
+    
+    // Sort by alphabet or relevance to "starting with"
+    return results.sort((a, b) => {
+        const aStart = a.name.toLowerCase().startsWith(q);
+        const bStart = b.name.toLowerCase().startsWith(q);
+        if (aStart && !bStart) return -1;
+        if (!aStart && bStart) return 1;
+        return a.name.localeCompare(b.name);
+    }).slice(0, 10);
+  };
+
+  const getFormIcon = (name: string) => {
+    const n = name.toLowerCase();
+    if (n.includes('tab')) return <Pill className="text-blue-500" size={14} />;
+    if (n.includes('cap')) return <Pill className="text-orange-500" size={14} />;
+    if (n.includes('syr') || n.includes('susp')) return <Beaker className="text-emerald-500" size={14} />;
+    if (n.includes('oint') || n.includes('cream') || n.includes('gel')) return <Sparkles className="text-amber-500" size={14} />;
+    if (n.includes('drop')) return <Droplet className="text-cyan-500" size={14} />;
+    if (n.includes('inj')) return <Activity className="text-red-500" size={14} />;
+    if (n.includes('spray')) return <SprayCan className="text-indigo-500" size={14} />;
+    return <Zap className="text-gray-400" size={14} />;
+  };
+
+  const getQuickInstructions = (drugName: string) => {
+    const stats = usageStats.find(u => u.drugName === drugName);
+    return stats?.commonInstructions || ['هر ۸ ساعت', 'روزی یک عدد', 'قبل از غذا'];
+  };
+
   const handlePrint = (mode: 'plain' | 'custom') => {
      saveToPatientRecord();
+
+     // Log usage for all drugs in the list
+     items.forEach(item => {
+        if (item.drug) trackDrugUsage(item.drug, item.dosage, item.instruction);
+     });
 
      const win = window.open('', '_blank', 'width=900,height=1200');
      if (!win) {
@@ -605,7 +697,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      <div><label className="block text-sm font-bold text-gray-600 mb-2">شماره تماس</label><div className="relative"><input type="tel" className="w-full p-3.5 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left border border-gray-100 font-mono" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" /><Phone className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
                      <div className="flex gap-4">
                         <div className="flex-1"><label className="block text-sm font-bold text-gray-600 mb-2">سن</label><input type="number" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} placeholder="سال" /></div>
-                        <div className="flex-[1.5]"><label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label><div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow-sm text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div>
+                        <div className="flex-[1.5]"><label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label><div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div>
                      </div>
                      <div><label className="block text-sm font-bold text-gray-600 mb-2">وزن (کیلوگرم)</label><div className="relative"><input type="number" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100" placeholder="kg" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /><Scale className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
                      <div className="pt-2"><label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-2"><Activity size={16} />سابقه بیماری</label><input className="w-full p-3.5 bg-orange-50/30 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} /></div>
@@ -693,8 +785,52 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      {items.map((item, idx) => (
                         <div key={idx} className="bg-white p-4 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 relative group animate-slide-up">
                            <button onClick={() => removeItem(idx)} className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-colors"><Trash size={18} /></button>
-                           <div className="mb-4 pl-12"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="نام دارو را وارد کنید..." value={item.drug} onChange={e => updateItem(idx, 'drug', e.target.value)} /></div>
-                           <div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100"><label className="text-[10px] font-bold text-gray-400 block mb-1">دوز / تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} /></div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right" placeholder="هر ۸ ساعت..." value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} /></div></div>
+                           
+                           {/* Drug Search (Mobile Overlay Above Input) */}
+                           <div className="mb-4 pl-12 relative">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label>
+                              <input 
+                                 className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" 
+                                 placeholder="نام دارو را وارد کنید..." 
+                                 value={item.drug} 
+                                 onChange={e => updateItem(idx, 'drug', e.target.value)} 
+                              />
+                              
+                              {/* Search Results Overlay (Above Input for Mobile) */}
+                              {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
+                                <div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-50 overflow-hidden mb-2 animate-slide-up">
+                                   {getDrugSuggestions().map(d => (
+                                      <button key={d.id} onClick={() => selectSuggestedDrug(d.name)} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0">
+                                         <div className="flex items-center gap-3">
+                                            {getFormIcon(d.name)}
+                                            <span className="font-bold text-gray-700">{d.name}</span>
+                                         </div>
+                                         <Zap size={14} className="text-amber-500" />
+                                      </button>
+                                   ))}
+                                </div>
+                              )}
+                           </div>
+
+                           <div className="flex gap-3">
+                              <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">دوز / تعداد</label>
+                                 <input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} />
+                              </div>
+                              <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
+                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label>
+                                 <input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right" placeholder="هر ۸ ساعت..." value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} />
+                                 
+                                 {/* Quick Instructions Overlay (Mobile) */}
+                                 {item.drug && activeItemIndex === idx && !item.instruction && (
+                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100">
+                                       {getQuickInstructions(item.drug).map(ins => (
+                                          <button key={ins} onClick={() => selectSuggestedInstruction(ins)} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>
+                                       ))}
+                                    </div>
+                                 )}
+                              </div>
+                           </div>
                         </div>
                      ))}
                   </div>
@@ -712,8 +848,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {/* DESKTOP UI */}
       <div className="hidden lg:block">
+         {/* ... Desktop Header ... */}
          <div className="flex justify-between items-center mb-6"><div className="flex items-center gap-3"><button onClick={() => setViewMode('landing')} className="p-2 bg-white rounded-xl shadow-sm hover:bg-gray-50 text-gray-500"><ArrowLeft /></button><FileSignature className="text-indigo-600 w-10 h-10" /><div><h2 className="text-3xl font-bold text-gray-800">میز کار دکتر</h2><p className="text-gray-500">پرونده: {selectedPatient?.name}</p></div></div></div>
          <div className="grid grid-cols-12 gap-8">
+              {/* Desktop Sidebar */}
               <div className="col-span-3 space-y-4">
                  <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 h-fit mb-4">
                     <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><LayoutTemplate size={18} />قالب‌های آماده</h4>
@@ -739,7 +877,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     </div>
                  </div>
               </div>
-              <div className="col-span-9 bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[600px] flex flex-col">
+
+              {/* Desktop Editor */}
+              <div className="col-span-9 bg-white p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[600px] flex flex-col relative">
                  <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6"><div className="flex gap-6"><div><span className="text-xs text-gray-400 font-bold block mb-1">نام بیمار</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.name}</span></div><div><span className="text-xs text-gray-400 font-bold block mb-1">سن</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.age}</span></div><div><span className="text-xs text-gray-400 font-bold block mb-1">جنسیت</span><span className="font-bold text-lg text-gray-800">{selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'}</span></div></div><div className="relative"><button onClick={startCamera} disabled={!isOnline} className={`bg-white border text-blue-600 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all ${isOnline ? 'border-blue-200 hover:bg-blue-50' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>{isOnline ? <Camera size={18} /> : <WifiOff size={18} />}{loading ? '...' : isOnline ? 'اسکن نسخه (دوربین)' : 'آفلاین'}</button></div></div>
                  
                  <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100 mb-6">
@@ -767,7 +907,56 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     <input className="w-full p-3 bg-white border border-indigo-100 rounded-lg text-sm font-bold" placeholder="تشخیص پزشک (Diagnosis)" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
                  </div>
 
-                 <div className="flex-1 overflow-x-auto"><table className="w-full text-right"><thead><tr className="border-b border-gray-200"><th className="pb-3 text-sm text-gray-500 w-10">#</th><th className="pb-3 text-sm text-gray-500 w-1/3">نام دارو (Drug)</th><th className="pb-3 text-sm text-gray-500 w-1/4">دوز (Dosage)</th><th className="pb-3 text-sm text-gray-500">دستور مصرف (Sig)</th><th className="pb-3 w-10"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (<tr key={idx} className="group"><td className="py-3 text-gray-400 text-sm">{idx + 1}</td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none font-medium" value={item.drug} onChange={e => updateItem(idx, 'drug', e.target.value)} placeholder="نام دارو" /></td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="دوز" /></td><td className="py-3 px-1"><input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="دستور" /></td><td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button></td></tr>))}</tbody></table><button onClick={addItem} className="mt-4 text-indigo-600 font-bold text-sm flex items-center gap-1 hover:bg-indigo-50 px-3 py-1 rounded-lg transition-colors"><Plus size={16} />افزودن قلم دارو</button></div>
+                 <div className="flex-1 overflow-x-auto overflow-y-visible">
+                    <table className="w-full text-right border-separate border-spacing-y-2">
+                       <thead><tr className="border-b border-gray-200"><th className="pb-3 text-sm text-gray-500 w-10">#</th><th className="pb-3 text-sm text-gray-500 w-1/3">نام دارو (Drug)</th><th className="pb-3 text-sm text-gray-500 w-1/4">دوز (Dosage)</th><th className="pb-3 text-sm text-gray-500">دستور مصرف (Sig)</th><th className="pb-3 w-10"></th></tr></thead>
+                       <tbody className="divide-y divide-gray-50">
+                          {items.map((item, idx) => (
+                             <tr key={idx} className="group relative">
+                                <td className="py-3 text-gray-400 text-sm">{idx + 1}</td>
+                                <td className="py-3 px-1 relative">
+                                   <input 
+                                      className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none font-bold" 
+                                      value={item.drug} 
+                                      onChange={e => updateItem(idx, 'drug', e.target.value)} 
+                                      placeholder="نام دارو" 
+                                   />
+                                   {/* Smart Suggestions Overlay (Below Input for Desktop) */}
+                                   {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
+                                     <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-xl border border-gray-100 z-[100] overflow-hidden mt-1 min-w-[250px]">
+                                        {getDrugSuggestions().map(d => (
+                                           <button key={d.id} onClick={() => selectSuggestedDrug(d.name)} className="w-full text-right p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors">
+                                              <div className="flex items-center gap-3">
+                                                 {getFormIcon(d.name)}
+                                                 <span>{d.name}</span>
+                                              </div>
+                                              <Zap size={14} className="text-amber-400" />
+                                           </button>
+                                        ))}
+                                     </div>
+                                   )}
+                                </td>
+                                <td className="py-3 px-1">
+                                   <input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="دوز" />
+                                </td>
+                                <td className="py-3 px-1 relative">
+                                   <input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="دستور" />
+                                   {/* Quick Sig Overlay (Desktop) */}
+                                   {item.drug && activeItemIndex === idx && suggestionType === 'instruction' && (
+                                      <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-xl border border-gray-100 z-[100] overflow-hidden mt-1 p-2 flex flex-col gap-1">
+                                         {getQuickInstructions(item.drug).map(ins => (
+                                            <button key={ins} onClick={() => selectSuggestedInstruction(ins)} className="text-right p-2 hover:bg-indigo-50 rounded-lg text-xs font-bold text-gray-600">{ins}</button>
+                                         ))}
+                                      </div>
+                                   )}
+                                </td>
+                                <td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button></td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                    <button onClick={addItem} className="mt-4 text-indigo-600 font-bold text-sm flex items-center gap-1 hover:bg-indigo-50 px-3 py-1 rounded-lg transition-colors"><Plus size={16} />افزودن قلم دارو</button>
+                 </div>
                  <div className="mt-8 pt-6 border-t border-gray-100 flex justify-end gap-3"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-6 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-2"><Save size={18} />ذخیره در قالب‌ها</button><button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="px-6 py-3 rounded-xl font-bold text-white bg-indigo-600 shadow-lg hover:bg-indigo-700 flex items-center gap-2"><Printer size={18} />تایید نهایی و چاپ نسخه</button></div>
               </div>
            </div>

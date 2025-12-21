@@ -58,6 +58,22 @@ export interface PrescriptionTemplate {
   items: PrescriptionItem[];
 }
 
+// Drug Bank Types
+export interface Drug {
+  id: string;
+  name: string; // Generic or Common Name
+  category?: string;
+  isCustom: boolean;
+  createdAt: number;
+}
+
+export interface DrugUsage {
+  drugName: string;
+  count: number;
+  lastUsed: number;
+  commonInstructions: string[]; // Top 3 most used instructions for this drug
+}
+
 // Phase 24: Advanced Layout Types
 export interface LayoutElement {
   id: string;

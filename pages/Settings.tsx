@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { DoctorProfile, PrescriptionSettings, LayoutElement } from '../types';
-import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase } from '../services/db';
-import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database } from 'lucide-react';
+import { DoctorProfile, PrescriptionSettings, LayoutElement, Drug, DrugUsage } from '../types';
+import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase, getAllDrugs, saveDrug, deleteDrug, getUsageStats } from '../services/db';
+import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database, Pill, Plus, Search, TrendingUp, Edit2, X } from 'lucide-react';
 
-type Tab = 'profile' | 'paper' | 'backup';
+type Tab = 'profile' | 'paper' | 'drugs' | 'backup';
 
 // ISO Standard Dimensions (at 96 DPI approx)
 const A4_DIMS = { w: 794, h: 1123 };
@@ -37,28 +37,40 @@ const Settings: React.FC = () => {
     topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', backgroundImage: '', paperSize: 'A4', printBackground: true, elements: DEFAULT_ELEMENTS
   });
 
+  // Drug Bank Local State
+  const [drugs, setDrugs] = useState<Drug[]>([]);
+  const [usageStats, setUsageStats] = useState<DrugUsage[]>([]);
+  const [drugSearch, setDrugSearch] = useState('');
+  const [newDrugName, setNewDrugName] = useState('');
+  const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
+
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ x: number, y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const p = await getDoctorProfile();
-        if (p) setProfile(p);
-        const s = await getSettings();
-        if (s) {
-           setPaperSettings(prev => ({
-             ...prev, 
-             ...s, 
-             elements: s.elements && s.elements.length > 0 ? s.elements : DEFAULT_ELEMENTS 
-           }));
-        }
-      } catch (e) { console.error(e); }
-    };
-    load();
+    loadData();
   }, []);
+
+  const loadData = async () => {
+    try {
+      const p = await getDoctorProfile();
+      if (p) setProfile(p);
+      const s = await getSettings();
+      if (s) {
+         setPaperSettings(prev => ({
+           ...prev, 
+           ...s, 
+           elements: s.elements && s.elements.length > 0 ? s.elements : DEFAULT_ELEMENTS 
+         }));
+      }
+      const d = await getAllDrugs();
+      setDrugs(d);
+      const stats = await getUsageStats();
+      setUsageStats(stats);
+    } catch (e) { console.error(e); }
+  };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -91,6 +103,50 @@ const Settings: React.FC = () => {
     }
   };
 
+  const handleAddDrug = async () => {
+    if (!newDrugName) return;
+    setLoading(true);
+    try {
+        const d: Drug = {
+            id: crypto.randomUUID(),
+            name: newDrugName,
+            isCustom: true,
+            createdAt: Date.now()
+        };
+        await saveDrug(d);
+        setNewDrugName('');
+        await loadData();
+        showMessage('success', 'دارو به بانک اضافه شد.');
+    } catch (e) {
+        showMessage('error', 'خطا در افزودن دارو.');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleUpdateDrug = async () => {
+    if (!editingDrug || !editingDrug.name) return;
+    setLoading(true);
+    try {
+        await saveDrug(editingDrug);
+        setEditingDrug(null);
+        await loadData();
+        showMessage('success', 'تغییرات دارو ذخیره شد.');
+    } catch (e) {
+        showMessage('error', 'خطا در ویرایش دارو.');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleDeleteDrug = async (id: string) => {
+    if (confirm('آیا از حذف این دارو از بانک محلی مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) {
+        await deleteDrug(id);
+        await loadData();
+        showMessage('success', 'دارو حذف گردید.');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
     if (e.target.files && e.target.files[0]) {
       const reader = new FileReader();
@@ -105,7 +161,7 @@ const Settings: React.FC = () => {
     return paperSettings.paperSize === 'A4' ? A4_DIMS : A5_DIMS;
   };
 
-  // --- MOUSE & TOUCH HANDLERS ---
+  // --- Drag Handlers ---
   const handleStart = (clientX: number, clientY: number, elId: string) => {
     setSelectedElementId(elId);
     setIsDragging(true);
@@ -133,27 +189,11 @@ const Settings: React.FC = () => {
     dragStartRef.current = null;
   };
 
-  // Mouse Wrappers
-  const handleMouseDown = (e: React.MouseEvent, elId: string) => {
-    e.stopPropagation();
-    handleStart(e.clientX, e.clientY, elId);
-  };
+  const handleMouseDown = (e: React.MouseEvent, elId: string) => { e.stopPropagation(); handleStart(e.clientX, e.clientY, elId); };
   const handleMouseMove = (e: React.MouseEvent) => handleMove(e.clientX, e.clientY);
   const handleMouseUp = () => handleEnd();
-
-  // Touch Wrappers
-  const handleTouchStart = (e: React.TouchEvent, elId: string) => {
-    e.stopPropagation();
-    if (e.touches.length === 1) {
-      handleStart(e.touches[0].clientX, e.touches[0].clientY, elId);
-    }
-  };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (isDragging) e.preventDefault(); // Prevent scrolling while dragging
-    if (e.touches.length === 1) {
-      handleMove(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  };
+  const handleTouchStart = (e: React.TouchEvent, elId: string) => { e.stopPropagation(); if (e.touches.length === 1) handleStart(e.touches[0].clientX, e.touches[0].clientY, elId); };
+  const handleTouchMove = (e: React.TouchEvent) => { if (isDragging) e.preventDefault(); if (e.touches.length === 1) handleMove(e.touches[0].clientX, e.touches[0].clientY); };
   const handleTouchEnd = () => handleEnd();
 
   const updateSelectedElement = (key: keyof LayoutElement, value: any) => {
@@ -173,15 +213,11 @@ const Settings: React.FC = () => {
       const json = await exportDatabase();
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `tabib_backup_${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
+      const a = document.body.appendChild(document.createElement('a'));
+      a.href = url; a.download = `tabib_backup_${new Date().toISOString().split('T')[0]}.json`; a.click();
       document.body.removeChild(a);
       showMessage('success', 'نسخه پشتیبان دانلود شد.');
     } catch (e) {
-      console.error(e);
       showMessage('error', 'خطا در تهیه نسخه پشتیبان.');
     } finally {
       setLoading(false);
@@ -193,13 +229,11 @@ const Settings: React.FC = () => {
       if (!confirm('آیا مطمئن هستید؟ این کار اطلاعات فعلی را بازنویسی می‌کند.')) return;
       setLoading(true);
       try {
-        const file = e.target.files[0];
-        const text = await file.text();
+        const text = await e.target.files[0].text();
         await importDatabase(text);
         showMessage('success', 'اطلاعات با موفقیت بازیابی شد.');
         setTimeout(() => window.location.reload(), 1500); 
       } catch (e) {
-        console.error(e);
         showMessage('error', 'فایل نامعتبر است.');
       } finally {
         setLoading(false);
@@ -215,7 +249,7 @@ const Settings: React.FC = () => {
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="block">
+      <div>
         <div className="flex items-center gap-3 mb-6">
           <div className="bg-gray-800 p-3 rounded-2xl text-white">
              <SettingsIcon size={32} />
@@ -227,12 +261,15 @@ const Settings: React.FC = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-3xl overflow-x-auto no-scrollbar">
+        <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-4xl overflow-x-auto no-scrollbar">
           <button onClick={() => setActiveTab('profile')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'profile' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
             <User size={20} /> اطلاعات مطب
           </button>
           <button onClick={() => setActiveTab('paper')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'paper' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
             <Grid size={20} /> طراحی نسخه
+          </button>
+          <button onClick={() => setActiveTab('drugs')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'drugs' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
+            <Pill size={20} /> بانک دارو
           </button>
           <button onClick={() => setActiveTab('backup')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'backup' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
             <Database size={20} /> مدیریت داده
@@ -240,7 +277,7 @@ const Settings: React.FC = () => {
         </div>
 
         {message && (
-          <div className={`p-4 rounded-xl flex items-center gap-2 mt-4 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`p-4 rounded-xl flex items-center gap-2 mt-4 animate-slide-up ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
              {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
              {message.text}
           </div>
@@ -253,29 +290,12 @@ const Settings: React.FC = () => {
             <div className="max-w-2xl mx-auto space-y-6">
                <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">اطلاعات مطب و پزشک</h3>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <div className="space-y-2">
-                   <label className="text-sm font-bold text-gray-600">نام و نام خانوادگی پزشک</label>
-                   <input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} placeholder="دکتر ..." />
-                 </div>
-                 <div className="space-y-2">
-                   <label className="text-sm font-bold text-gray-600">تخصص</label>
-                   <input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500" value={profile.specialty} onChange={e => setProfile({...profile, specialty: e.target.value})} placeholder="متخصص داخلی..." />
-                 </div>
-                 <div className="space-y-2">
-                   <label className="text-sm font-bold text-gray-600">شماره نظام پزشکی</label>
-                   <input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500" value={profile.medicalCouncilNumber} onChange={e => setProfile({...profile, medicalCouncilNumber: e.target.value})} />
-                 </div>
-                 <div className="space-y-2">
-                   <label className="text-sm font-bold text-gray-600">شماره تماس مطب</label>
-                   <input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500" value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} />
-                 </div>
+                 <div className="space-y-2"><label className="text-sm font-bold text-gray-600">نام پزشک</label><input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" value={profile.name} onChange={e => setProfile({...profile, name: e.target.value})} placeholder="دکتر ..." /></div>
+                 <div className="space-y-2"><label className="text-sm font-bold text-gray-600">تخصص</label><input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" value={profile.specialty} onChange={e => setProfile({...profile, specialty: e.target.value})} placeholder="متخصص..." /></div>
+                 <div className="space-y-2"><label className="text-sm font-bold text-gray-600">شماره نظام</label><input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" value={profile.medicalCouncilNumber} onChange={e => setProfile({...profile, medicalCouncilNumber: e.target.value})} /></div>
+                 <div className="space-y-2"><label className="text-sm font-bold text-gray-600">تلفن</label><input type="text" className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200" value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} /></div>
                </div>
-               
-               <div className="space-y-2">
-                 <label className="text-sm font-bold text-gray-600">آدرس مطب</label>
-                 <textarea className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-blue-500 h-24 resize-none" value={profile.address} onChange={e => setProfile({...profile, address: e.target.value})} />
-               </div>
-
+               <div className="space-y-2"><label className="text-sm font-bold text-gray-600">آدرس</label><textarea className="w-full p-3 bg-gray-50 rounded-xl border border-gray-200 h-24 resize-none" value={profile.address} onChange={e => setProfile({...profile, address: e.target.value})} /></div>
                <div className="space-y-2">
                   <label className="text-sm font-bold text-gray-600">لوگوی مطب</label>
                   <div className="flex items-center gap-4">
@@ -283,11 +303,96 @@ const Settings: React.FC = () => {
                      <input type="file" accept="image/*" onChange={e => handleFileChange(e, val => setProfile({...profile, logo: val}))} className="text-sm text-gray-500" />
                   </div>
                </div>
+               <button onClick={handleSaveProfile} disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Save />} ذخیره اطلاعات</button>
+            </div>
+          )}
 
-               <button onClick={handleSaveProfile} disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2">
-                  {loading ? <Loader2 className="animate-spin" /> : <Save />}
-                  ذخیره اطلاعات
-               </button>
+          {/* DRUG BANK TAB */}
+          {activeTab === 'drugs' && (
+            <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-indigo-600" /> بانک داروی هوشمند</h3>
+                    <p className="text-xs text-gray-400 mt-1">مدیریت لیست داروها (۱۵۰۰+ مورد) و ویرایش آزادانه</p>
+                  </div>
+                  <div className="flex gap-2 w-full md:w-auto">
+                    <input type="text" className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 text-sm font-bold" placeholder="نام داروی جدید..." value={newDrugName} onChange={e => setNewDrugName(e.target.value)} />
+                    <button onClick={handleAddDrug} disabled={!newDrugName || loading} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100"><Plus size={18} /> افزودن</button>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  {/* Usage Stats (Hidden initially if empty, or just smaller) */}
+                  <div className="md:col-span-1 space-y-4">
+                     <h4 className="font-bold text-gray-700 flex items-center gap-2 text-sm"><TrendingUp size={16} className="text-teal-500" /> پرمصرف‌ترین‌ها</h4>
+                     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                        {usageStats.length === 0 ? <p className="text-center text-xs text-gray-400 py-10">هنوز آماری ثبت نشده</p> : 
+                         usageStats.slice(0, 10).map((u, i) => (
+                           <div key={i} className="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
+                              <span className="text-xs font-bold text-gray-700">{u.drugName}</span>
+                              <span className="bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full text-[10px] font-black">{u.count} بار</span>
+                           </div>
+                         ))
+                        }
+                     </div>
+                  </div>
+
+                  {/* Complete List with Search and CRUD */}
+                  <div className="md:col-span-2 space-y-4">
+                     <div className="relative">
+                        <input type="text" className="w-full p-4 pr-12 bg-white rounded-2xl border border-gray-200 shadow-sm outline-none focus:border-indigo-500" placeholder="جستجو در تمام اشکال دارویی..." value={drugSearch} onChange={e => setDrugSearch(e.target.value)} />
+                        <Search className="absolute right-4 top-4 text-gray-400" />
+                     </div>
+                     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-right text-sm">
+                           <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100">
+                              <tr><th className="p-4">نام کامل دارو</th><th className="p-4">نوع</th><th className="p-4 text-center">عملیات</th></tr>
+                           </thead>
+                           <tbody className="divide-y divide-gray-50">
+                              {drugs.filter(d => d.name.toLowerCase().includes(drugSearch.toLowerCase())).map(d => (
+                                 <tr key={d.id} className="hover:bg-indigo-50/30 transition-colors group">
+                                    <td className="p-4 font-bold text-gray-700">{d.name}</td>
+                                    <td className="p-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.isCustom ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>{d.isCustom ? 'شخصی' : 'سیستمی'}</span></td>
+                                    <td className="p-4 text-center">
+                                       <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button onClick={() => setEditingDrug(d)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit2 size={14} /></button>
+                                          <button onClick={() => handleDeleteDrug(d.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                                       </div>
+                                    </td>
+                                 </tr>
+                              ))}
+                           </tbody>
+                        </table>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Editing Modal */}
+               {editingDrug && (
+                  <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                     <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-fade-in">
+                        <div className="flex justify-between items-center mb-6">
+                           <h4 className="font-bold text-gray-800 flex items-center gap-2"><Edit2 size={18} /> ویرایش دارو</h4>
+                           <button onClick={() => setEditingDrug(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+                        </div>
+                        <div className="space-y-4">
+                           <div>
+                              <label className="text-xs font-bold text-gray-500 mb-2 block">نام و مشخصات دارو</label>
+                              <input 
+                                 autoFocus
+                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" 
+                                 value={editingDrug.name} 
+                                 onChange={e => setEditingDrug({...editingDrug, name: e.target.value})} 
+                              />
+                           </div>
+                           <button onClick={handleUpdateDrug} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
+                              {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                              ذخیره تغییرات
+                           </button>
+                        </div>
+                     </div>
+                  </div>
+               )}
             </div>
           )}
 
@@ -295,140 +400,31 @@ const Settings: React.FC = () => {
           {activeTab === 'paper' && (
             <div className="space-y-6">
                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b pb-4 gap-4">
-                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                     <Grid className="text-blue-600" />
-                     طراحی سربرگ
-                  </h3>
+                  <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Grid className="text-blue-600" /> طراحی سربرگ</h3>
                   <div className="flex flex-wrap gap-2 w-full lg:w-auto">
                      <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
                         <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A4' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A4' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>A4</button>
                         <button onClick={() => setPaperSettings(p => ({ ...p, paperSize: 'A5' }))} className={`px-3 py-1 rounded text-sm font-bold transition-all ${paperSettings.paperSize === 'A5' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>A5</button>
                      </div>
-                     <div className="relative">
-                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} />
-                        <button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-gray-50">
-                           <Upload size={16} /> سربرگ
-                        </button>
-                     </div>
+                     <div className="relative"><input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer" onChange={e => handleFileChange(e, val => setPaperSettings(p => ({ ...p, backgroundImage: val })))} /><button className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-gray-50"><Upload size={16} /> سربرگ</button></div>
                      <button onClick={() => setPaperSettings(p => ({ ...p, backgroundImage: '' }))} className="text-red-500 text-xs px-2 hover:bg-red-50 rounded">حذف</button>
-                     <button onClick={handleSavePaper} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow hover:bg-emerald-700 ml-auto lg:ml-0">
-                        <Save size={16} /> ذخیره
-                     </button>
+                     <button onClick={handleSavePaper} className="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow hover:bg-emerald-700 ml-auto lg:ml-0"><Save size={16} /> ذخیره</button>
                   </div>
                </div>
-
                <div className="flex flex-col lg:flex-row gap-6 lg:h-[700px]">
                   <div className="flex-1 bg-gray-200 rounded-2xl overflow-auto p-4 lg:p-8 flex justify-center relative shadow-inner min-h-[400px]">
-                     <div 
-                       ref={canvasRef}
-                       style={{ 
-                          width: dims.w + 'px', 
-                          height: dims.h + 'px', 
-                          backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none',
-                          backgroundSize: '100% 100%' 
-                       }}
-                       className="bg-white shadow-2xl relative transition-all duration-300 transform scale-[0.6] origin-top lg:scale-100 lg:origin-center" // Simple scaling for mobile preview
-                     >
-                        {!paperSettings.backgroundImage && (
-                           <div className="absolute inset-0 flex items-center justify-center text-gray-300 pointer-events-none">
-                              <span className="text-4xl font-bold opacity-20 transform -rotate-45">محل آپلود عکس سربرگ</span>
-                           </div>
-                        )}
-
+                     <div ref={canvasRef} style={{ width: dims.w + 'px', height: dims.h + 'px', backgroundImage: paperSettings.backgroundImage ? `url(${paperSettings.backgroundImage})` : 'none', backgroundSize: '100% 100%' }} className="bg-white shadow-2xl relative transition-all duration-300 transform scale-[0.6] origin-top lg:scale-100 lg:origin-center">
+                        {!paperSettings.backgroundImage && <div className="absolute inset-0 flex items-center justify-center text-gray-300 pointer-events-none"><span className="text-4xl font-bold opacity-20 transform -rotate-45">محل آپلود عکس سربرگ</span></div>}
                         {paperSettings.elements.filter(el => el.visible).map(el => (
-                           <div
-                             key={el.id}
-                             onMouseDown={(e) => handleMouseDown(e, el.id)}
-                             onTouchStart={(e) => handleTouchStart(e, el.id)}
-                             style={{
-                                position: 'absolute',
-                                left: el.x + 'px',
-                                top: el.y + 'px',
-                                width: el.width + 'px',
-                                fontSize: el.fontSize + 'pt',
-                                transform: `rotate(${el.rotation}deg)`,
-                                cursor: isDragging ? 'grabbing' : 'grab',
-                                border: selectedElementId === el.id ? '2px dashed #3b82f6' : '1px dotted #ccc',
-                                backgroundColor: selectedElementId === el.id ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.6)',
-                                zIndex: selectedElementId === el.id ? 10 : 1,
-                                textAlign: el.align || 'right'
-                             }}
-                             className="group hover:border-blue-400 select-none touch-none"
-                           >
-                              {el.label}
-                           </div>
+                           <div key={el.id} onMouseDown={(e) => handleMouseDown(e, el.id)} onTouchStart={(e) => handleTouchStart(e, el.id)} style={{ position: 'absolute', left: el.x + 'px', top: el.y + 'px', width: el.width + 'px', fontSize: el.fontSize + 'pt', transform: `rotate(${el.rotation}deg)`, cursor: isDragging ? 'grabbing' : 'grab', border: selectedElementId === el.id ? '2px dashed #3b82f6' : '1px dotted #ccc', backgroundColor: selectedElementId === el.id ? 'rgba(59, 130, 246, 0.1)' : 'rgba(255, 255, 255, 0.6)', zIndex: selectedElementId === el.id ? 10 : 1, textAlign: el.align || 'right' }} className="group hover:border-blue-400 select-none touch-none">{el.label}</div>
                         ))}
                      </div>
                   </div>
-
                   <div className="w-full lg:w-80 bg-white border border-gray-200 rounded-2xl p-6 lg:overflow-y-auto">
-                     <h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center gap-2">
-                       <Layers size={18} className="text-gray-500" />
-                       المان‌ها
-                     </h4>
-                     <div className="space-y-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar">
-                        {paperSettings.elements.map(el => (
-                           <div key={el.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={() => setSelectedElementId(el.id)}>
-                              <div className="flex items-center gap-2">
-                                 <input 
-                                   type="checkbox" 
-                                   checked={el.visible} 
-                                   onChange={(e) => {
-                                      e.stopPropagation();
-                                      setPaperSettings(prev => ({
-                                         ...prev,
-                                         elements: prev.elements.map(item => item.id === el.id ? { ...item, visible: e.target.checked } : item)
-                                      }));
-                                   }}
-                                 />
-                                 <span className={`text-sm ${selectedElementId === el.id ? 'font-bold text-blue-600' : 'text-gray-700'}`}>{el.label}</span>
-                              </div>
-                           </div>
-                        ))}
-                     </div>
-
-                     {selectedEl ? (
-                        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4 animate-fade-in">
-                           <h5 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-                              <Type size={14} />
-                              ویرایش: {selectedEl.label}
-                           </h5>
-                           <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                 <label className="text-xs text-gray-500">سایز</label>
-                                 <input type="number" className="w-full p-2 rounded border border-gray-200 text-sm" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', parseInt(e.target.value))} />
-                              </div>
-                              <div className="space-y-1">
-                                 <label className="text-xs text-gray-500">عرض</label>
-                                 <input type="number" className="w-full p-2 rounded border border-gray-200 text-sm" value={selectedEl.width} onChange={e => updateSelectedElement('width', parseInt(e.target.value))} />
-                              </div>
-                           </div>
-                           <div className="space-y-1">
-                              <label className="text-xs text-gray-500 flex items-center gap-1"><RotateCw size={10} /> چرخش</label>
-                              <input type="range" min="-90" max="90" className="w-full" value={selectedEl.rotation} onChange={e => updateSelectedElement('rotation', parseInt(e.target.value))} />
-                           </div>
-                           <div className="flex justify-between bg-white p-2 rounded border border-gray-200">
-                              <button onClick={() => updateSelectedElement('align', 'right')} className={`p-1 rounded ${selectedEl.align === 'right' ? 'bg-gray-200' : ''}`}>R</button>
-                              <button onClick={() => updateSelectedElement('align', 'center')} className={`p-1 rounded ${selectedEl.align === 'center' ? 'bg-gray-200' : ''}`}>C</button>
-                              <button onClick={() => updateSelectedElement('align', 'left')} className={`p-1 rounded ${selectedEl.align === 'left' ? 'bg-gray-200' : ''}`}>L</button>
-                           </div>
-                        </div>
-                     ) : (
-                        <p className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-xl">یک المان را انتخاب کنید</p>
-                     )}
-
-                     <div className="mt-6 pt-6 border-t border-gray-200">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                           <div className="relative flex items-center">
-                              <input type="checkbox" className="sr-only peer" checked={paperSettings.printBackground} onChange={e => setPaperSettings(p => ({ ...p, printBackground: e.target.checked }))} />
-                              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white peer-checked:bg-blue-600"></div>
-                           </div>
-                           <div>
-                              <span className="text-sm font-bold text-gray-700 block">چاپ عکس سربرگ</span>
-                              <span className="text-xs text-gray-500 block">اگر تیک داشته باشد، عکس پس‌زمینه هم چاپ می‌شود.</span>
-                           </div>
-                        </label>
-                     </div>
+                     <h4 className="font-bold text-gray-800 mb-4 border-b pb-2 flex items-center gap-2"><Layers size={18} className="text-gray-500" /> المان‌ها</h4>
+                     <div className="space-y-2 mb-6 max-h-48 overflow-y-auto custom-scrollbar">{paperSettings.elements.map(el => (<div key={el.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer" onClick={() => setSelectedElementId(el.id)}><div className="flex items-center gap-2"><input type="checkbox" checked={el.visible} onChange={(e) => { e.stopPropagation(); setPaperSettings(prev => ({ ...prev, elements: prev.elements.map(item => item.id === el.id ? { ...item, visible: e.target.checked } : item) })); }} /><span className={`text-sm ${selectedElementId === el.id ? 'font-bold text-blue-600' : 'text-gray-700'}`}>{el.label}</span></div></div>))}</div>
+                     {selectedEl ? (<div className="bg-blue-50 p-4 rounded-xl border border-blue-100 space-y-4 animate-fade-in"><h5 className="font-bold text-blue-900 text-sm flex items-center gap-2"><Type size={14} /> ویرایش: {selectedEl.label}</h5><div className="grid grid-cols-2 gap-2"><div className="space-y-1"><label className="text-xs text-gray-500">سایز</label><input type="number" className="w-full p-2 rounded border border-gray-200 text-sm" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', parseInt(e.target.value))} /></div><div className="space-y-1"><label className="text-xs text-gray-500">عرض</label><input type="number" className="w-full p-2 rounded border border-gray-200 text-sm" value={selectedEl.width} onChange={e => updateSelectedElement('width', parseInt(e.target.value))} /></div></div><div className="space-y-1"><label className="text-xs text-gray-500 flex items-center gap-1"><RotateCw size={10} /> چرخش</label><input type="range" min="-90" max="90" className="w-full" value={selectedEl.rotation} onChange={e => updateSelectedElement('rotation', parseInt(e.target.value))} /></div><div className="flex justify-between bg-white p-2 rounded border border-gray-200"><button onClick={() => updateSelectedElement('align', 'right')} className={`p-1 rounded ${selectedEl.align === 'right' ? 'bg-gray-200' : ''}`}>R</button><button onClick={() => updateSelectedElement('align', 'center')} className={`p-1 rounded ${selectedEl.align === 'center' ? 'bg-gray-200' : ''}`}>C</button><button onClick={() => updateSelectedElement('align', 'left')} className={`p-1 rounded ${selectedEl.align === 'left' ? 'bg-gray-200' : ''}`}>L</button></div></div>) : (<p className="text-sm text-gray-400 text-center py-4 bg-gray-50 rounded-xl">یک المان را انتخاب کنید</p>)}
+                     <div className="mt-6 pt-6 border-t border-gray-200"><label className="flex items-start gap-3 cursor-pointer"><div className="relative flex items-center"><input type="checkbox" className="sr-only peer" checked={paperSettings.printBackground} onChange={e => setPaperSettings(p => ({ ...p, printBackground: e.target.checked }))} /><div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white peer-checked:bg-blue-600"></div></div><div><span className="text-sm font-bold text-gray-700 block">چاپ عکس سربرگ</span><span className="text-xs text-gray-500 block">اگر تیک داشته باشد، عکس پس‌زمینه هم چاپ می‌شود.</span></div></label></div>
                   </div>
                </div>
             </div>
@@ -439,16 +435,8 @@ const Settings: React.FC = () => {
             <div className="max-w-2xl mx-auto space-y-8 text-center">
                <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">پشتیبان‌گیری</h3>
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-green-50 p-8 rounded-3xl border border-green-100 flex flex-col items-center">
-                     <div className="w-16 h-16 bg-green-200 text-green-700 rounded-full flex items-center justify-center mb-4"><Download size={32} /></div>
-                     <h4 className="font-bold text-green-900 text-lg mb-2">خروجی گرفتن</h4>
-                     <button onClick={handleExport} disabled={loading} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Download size={20} />} دانلود فایل پشتیبان</button>
-                  </div>
-                  <div className="bg-orange-50 p-8 rounded-3xl border border-orange-100 flex flex-col items-center">
-                     <div className="w-16 h-16 bg-orange-200 text-orange-700 rounded-full flex items-center justify-center mb-4"><Upload size={32} /></div>
-                     <h4 className="font-bold text-orange-900 text-lg mb-2">بازگردانی</h4>
-                     <div className="relative w-full"><button className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Upload size={20} />} آپلود فایل پشتیبان</button><input type="file" accept=".json" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImport} disabled={loading} /></div>
-                  </div>
+                  <div className="bg-green-50 p-8 rounded-3xl border border-green-100 flex flex-col items-center"><div className="w-16 h-16 bg-green-200 text-green-700 rounded-full flex items-center justify-center mb-4"><Download size={32} /></div><h4 className="font-bold text-green-900 text-lg mb-2">خروجی گرفتن</h4><button onClick={handleExport} disabled={loading} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Download size={20} />} دانلود فایل پشتیبان</button></div>
+                  <div className="bg-orange-50 p-8 rounded-3xl border border-orange-100 flex flex-col items-center"><div className="w-16 h-16 bg-orange-200 text-orange-700 rounded-full flex items-center justify-center mb-4"><Upload size={32} /></div><h4 className="font-bold text-orange-900 text-lg mb-2">بازگردانی</h4><div className="relative w-full"><button className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Upload size={20} />} آپلود فایل پشتیبان</button><input type="file" accept=".json" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImport} disabled={loading} /></div></div>
                </div>
             </div>
           )}
