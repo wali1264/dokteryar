@@ -323,12 +323,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     
     if (field === 'drug') {
       setSearchQuery(value);
-      setActiveItemIndex(index);
-      setSuggestionType('drug');
     } else if (field === 'instruction') {
       setSearchQuery(value);
-      setActiveItemIndex(index);
-      setSuggestionType('instruction');
     }
   };
 
@@ -793,6 +789,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                  className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" 
                                  placeholder="نام دارو را وارد کنید..." 
                                  value={item.drug} 
+                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
+                                 onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
                                  onChange={e => updateItem(idx, 'drug', e.target.value)} 
                               />
                               
@@ -800,7 +798,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
                                 <div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-50 overflow-hidden mb-2 animate-slide-up">
                                    {getDrugSuggestions().map(d => (
-                                      <button key={d.id} onClick={() => selectSuggestedDrug(d.name)} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0">
+                                      <button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0">
                                          <div className="flex items-center gap-3">
                                             {getFormIcon(d.name)}
                                             <span className="font-bold text-gray-700">{d.name}</span>
@@ -819,13 +817,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               </div>
                               <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
                                  <label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label>
-                                 <input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right" placeholder="هر ۸ ساعت..." value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} />
+                                 <input 
+                                    className="w-full bg-transparent font-medium text-gray-700 outline-none text-right" 
+                                    placeholder="هر ۸ ساعت..." 
+                                    value={item.instruction} 
+                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }}
+                                    onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
+                                    onChange={e => updateItem(idx, 'instruction', e.target.value)} 
+                                 />
                                  
-                                 {/* Quick Instructions Overlay (Mobile) */}
-                                 {item.drug && activeItemIndex === idx && !item.instruction && (
-                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100">
+                                 {/* Quick Instructions Overlay (Mobile) - Tied specifically to instruction field focus */}
+                                 {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
+                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
                                        {getQuickInstructions(item.drug).map(ins => (
-                                          <button key={ins} onClick={() => selectSuggestedInstruction(ins)} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>
+                                          <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>
                                        ))}
                                     </div>
                                  )}
@@ -918,6 +923,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                    <input 
                                       className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none font-bold" 
                                       value={item.drug} 
+                                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
+                                      onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
                                       onChange={e => updateItem(idx, 'drug', e.target.value)} 
                                       placeholder="نام دارو" 
                                    />
@@ -925,7 +932,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                    {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
                                      <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-xl border border-gray-100 z-[100] overflow-hidden mt-1 min-w-[250px]">
                                         {getDrugSuggestions().map(d => (
-                                           <button key={d.id} onClick={() => selectSuggestedDrug(d.name)} className="w-full text-right p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors">
+                                           <button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors">
                                               <div className="flex items-center gap-3">
                                                  {getFormIcon(d.name)}
                                                  <span>{d.name}</span>
@@ -940,17 +947,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                    <input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="دوز" />
                                 </td>
                                 <td className="py-3 px-1 relative">
-                                   <input className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" value={item.instruction} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="دستور" />
+                                   <input 
+                                      className="w-full p-2 bg-transparent focus:bg-gray-50 rounded-lg outline-none" 
+                                      value={item.instruction} 
+                                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }}
+                                      onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
+                                      onChange={e => updateItem(idx, 'instruction', e.target.value)} 
+                                      placeholder="دستور" 
+                                   />
                                    {/* Quick Sig Overlay (Desktop) */}
-                                   {item.drug && activeItemIndex === idx && suggestionType === 'instruction' && (
+                                   {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
                                       <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-xl border border-gray-100 z-[100] overflow-hidden mt-1 p-2 flex flex-col gap-1">
                                          {getQuickInstructions(item.drug).map(ins => (
-                                            <button key={ins} onClick={() => selectSuggestedInstruction(ins)} className="text-right p-2 hover:bg-indigo-50 rounded-lg text-xs font-bold text-gray-600">{ins}</button>
+                                            <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-2 hover:bg-indigo-50 rounded-lg text-xs font-bold text-gray-600">{ins}</button>
                                          ))}
                                       </div>
                                    )}
                                 </td>
-                                <td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button></td>
+                                <td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button>td>
                              </tr>
                           ))}
                        </tbody>
@@ -963,7 +977,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       </div>
 
       {showCamera && (<div className="fixed inset-0 z-[60] bg-black flex flex-col"><div className="flex justify-between items-center p-4 bg-black/50 text-white absolute top-0 left-0 right-0 z-10"><h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3><button onClick={stopCamera} className="p-2 bg-white/20 rounded-full"><X /></button></div><div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden"><video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain" /><div className="absolute inset-0 pointer-events-none flex items-center justify-center"><div className="relative border-2 border-white/50 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.7)] transition-all duration-500 ease-in-out" style={{aspectRatio: scanOrientation === 'portrait' ? '210/297' : '297/210',height: scanOrientation === 'portrait' ? '85%' : 'auto',width: scanOrientation === 'landscape' ? '85%' : 'auto',maxHeight: '90vh',maxWidth: '90vw'}}><div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-teal-500 -mt-[2px] -ml-[2px]"></div><div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-teal-500 -mt-[2px] -mr-[2px]"></div><div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-teal-500 -mb-[2px] -ml-[2px]"></div><div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-teal-500 -mb-[2px] -mr-[2px]"></div><div className="absolute inset-0 flex items-center justify-center"><div className="bg-black/50 text-white px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm border border-white/10 flex items-center gap-2"><ScanLine size={14} /><span>قالب {scanOrientation === 'portrait' ? 'عمودی' : 'افقی'} (A4/A5)</span></div></div></div></div><canvas ref={canvasRef} className="hidden" /></div><div className="bg-black p-6 pb-10 flex justify-between items-center"><button onClick={() => setScanOrientation(prev => prev === 'portrait' ? 'landscape' : 'portrait')} className="text-white flex flex-col items-center gap-1 text-xs hover:text-teal-400 transition-colors"><RotateCw size={24} /><span>چرخش قالب</span></button><button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition-transform hover:border-teal-500 hover:scale-105"><div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div></button><div className="w-12 relative overflow-hidden"><input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleFileUpload} /><button className="text-white flex flex-col items-center gap-1 text-xs hover:text-teal-400 transition-colors"><ImageIcon size={24} /><span>گالری</span></button></div></div></div>)}
-      {showSaveModal && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-w-sm"><h3 className="font-bold text-lg mb-4">ذخیره به عنوان قالب</h3><input autoFocus className="w-full p-3 border border-gray-300 rounded-xl mb-4" placeholder="نام قالب (مثال: سرماخوردگی)" value={templateName} onChange={e => setTemplateName(e.target.value)} /><div className="flex justify-end gap-2"><button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-gray-600">لغو</button><button onClick={handleSaveTemplate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">ذخیره</button></div></div></div>)}
+      {showSaveModal && (<div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl p-6 w-full max-sm"><h3 className="font-bold text-lg mb-4">ذخیره به عنوان قالب</h3><input autoFocus className="w-full p-3 border border-gray-300 rounded-xl mb-4" placeholder="نام قالب (مثال: سرماخوردگی)" value={templateName} onChange={e => setTemplateName(e.target.value)} /><div className="flex justify-end gap-2"><button onClick={() => setShowSaveModal(false)} className="px-4 py-2 text-gray-600">لغو</button><button onClick={handleSaveTemplate} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">ذخیره</button></div></div></div>)}
       {showPrintModal && (
          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 w-full max-w-md">
