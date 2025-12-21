@@ -964,7 +964,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                       </div>
                                    )}
                                 </td>
-                                <td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button>td>
+                                <td className="py-3 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500"><Trash size={16} /></button></td>
                              </tr>
                           ))}
                        </tbody>
