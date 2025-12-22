@@ -206,7 +206,6 @@ export interface OphthalmologyAnalysis {
   systemicIndicators?: string[];
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface PediatricsAnalysis {
@@ -269,7 +268,6 @@ export interface GastroenterologyAnalysis {
   organ?: string;
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface UrologyAnalysis {
@@ -282,7 +280,6 @@ export interface UrologyAnalysis {
   kidneyFunction?: { gfr: string; stage: string; mizaj: string };
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface HematologyAnalysis {
