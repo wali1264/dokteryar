@@ -133,6 +133,8 @@ export interface LabAnalysis {
   suspectedOrganism: string;
   recommendations: string[];
   severity: 'low' | 'medium' | 'high';
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface RadiologyAnalysis {
@@ -142,6 +144,8 @@ export interface RadiologyAnalysis {
   impression: string;
   severity: 'normal' | 'abnormal' | 'critical';
   anatomicalLocation?: string;
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface PhysicalExamAnalysis {
@@ -151,6 +155,8 @@ export interface PhysicalExamAnalysis {
   severity: 'low' | 'medium' | 'high';
   traditionalAnalysis?: string;
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface CardiologyAnalysis {
@@ -162,8 +168,13 @@ export interface CardiologyAnalysis {
     rate?: string;
     rhythm?: string;
     intervals?: string;
+    prInterval?: string;
+    qrsComplex?: string;
+    qtInterval?: string;
   };
   recommendations: string[];
+  confidence?: string;
+  differentialDiagnosis?: string[];
 }
 
 export interface NeurologyAnalysis {
@@ -173,6 +184,7 @@ export interface NeurologyAnalysis {
   severity: 'normal' | 'abnormal' | 'critical';
   confidenceScore?: string;
   recommendations: string[];
+  clinicalCorrelations?: string[];
 }
 
 export interface PsychologyAnalysis {
@@ -181,8 +193,11 @@ export interface PsychologyAnalysis {
   interpretation: string;
   modernAnalysis?: string;
   traditionalAnalysis?: string;
-  severity?: 'normal' | 'concern' | 'critical';
+  severity: 'normal' | 'concern' | 'critical';
   recommendations: string[];
+  confidence?: string;
+  moodMetrics?: { factor: string; score: string }[];
+  nextSteps?: string[];
 }
 
 export interface OphthalmologyAnalysis {
@@ -192,6 +207,8 @@ export interface OphthalmologyAnalysis {
   severity: 'normal' | 'abnormal' | 'critical';
   systemicIndicators?: string[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface PediatricsAnalysis {
@@ -201,6 +218,7 @@ export interface PediatricsAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   confidenceScore?: string;
   recommendations: string[];
+  nextSteps?: string[];
 }
 
 export interface OrthopedicsAnalysis {
@@ -210,6 +228,8 @@ export interface OrthopedicsAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   angles?: string[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface DentistryAnalysis {
@@ -219,6 +239,8 @@ export interface DentistryAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   toothNumbers?: string[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface GynecologyAnalysis {
@@ -228,6 +250,8 @@ export interface GynecologyAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   measurements?: string[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface PulmonologyAnalysis {
@@ -237,6 +261,8 @@ export interface PulmonologyAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   metrics?: string[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface GastroenterologyAnalysis {
@@ -248,6 +274,8 @@ export interface GastroenterologyAnalysis {
   nutrients?: string[];
   organ?: string;
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface UrologyAnalysis {
@@ -259,6 +287,8 @@ export interface UrologyAnalysis {
   stoneDetails?: { size: string; location: string; passability: string };
   kidneyFunction?: { gfr: string; stage: string; mizaj: string };
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface HematologyAnalysis {
@@ -269,6 +299,8 @@ export interface HematologyAnalysis {
   cellTypes?: { name: string; count: string; status: string }[];
   markersTrend?: { name: string; trend: string; significance: string }[];
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface EmergencyAnalysis {
@@ -279,6 +311,7 @@ export interface EmergencyAnalysis {
   actions: string[];
   triageLevel?: string;
   antidote?: string;
+  confidence?: string;
 }
 
 export interface GeneticsAnalysis {
@@ -288,7 +321,10 @@ export interface GeneticsAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   risks?: { condition: string; probability: string }[];
   drugCompatibility?: { drug: string; status: string; recommendation: string };
+  inheritancePattern?: string;
   recommendations: string[];
+  confidence?: string;
+  nextSteps?: string[];
 }
 
 export interface ChatMessage {
