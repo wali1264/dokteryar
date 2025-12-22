@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { analyzeHematology } from '../services/geminiService';
 import { HematologyAnalysis } from '../types';
-import { Droplet, Microscope, FileText, TrendingUp, AlertCircle, CheckCircle, Upload, Activity, ArrowLeft, Loader2, Sparkles, ChevronRight } from 'lucide-react';
+import { Droplet, Microscope, FileText, TrendingUp, AlertCircle, CheckCircle, Upload, Activity, ArrowLeft, Loader2 } from 'lucide-react';
 
 type Tab = 'smear' | 'pathology' | 'markers';
 
@@ -11,11 +11,17 @@ const Hematology: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<HematologyAnalysis | null>(null);
 
+  // Image State (Smear/Pathology)
   const [image, setImage] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
+  // Markers Data
   const [markerData, setMarkerData] = useState({
-    name: 'PSA', current: '', unit: 'ng/mL', previous: '', history: ''
+    name: 'PSA',
+    current: '',
+    unit: 'ng/mL',
+    previous: '',
+    history: ''
   });
 
   const handleImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -28,21 +34,30 @@ const Hematology: React.FC = () => {
   };
 
   const handleAnalyze = async () => {
-    setLoading(true);
-    try {
-      let res;
-      if (activeTab === 'markers') {
-          res = await analyzeHematology(markerData, 'markers');
-      } else {
-          if (!image) return;
-          res = await analyzeHematology(image, activeTab);
-      }
-      setResult(res);
-    } catch (e) {
-      console.error(e);
-      alert('خطا در آنالیز خون');
-    } finally {
-      setLoading(false);
+    if (activeTab === 'markers') {
+        if (!markerData.current) return;
+        setLoading(true);
+        try {
+            const res = await analyzeHematology(markerData, 'markers');
+            setResult(res);
+        } catch (e) {
+            console.error(e);
+            alert('خطا در تحلیل تومور مارکر');
+        } finally {
+            setLoading(false);
+        }
+    } else {
+        if (!image) return;
+        setLoading(true);
+        try {
+            const res = await analyzeHematology(image, activeTab);
+            setResult(res);
+        } catch (e) {
+            console.error(e);
+            alert('خطا در آنالیز تصویر');
+        } finally {
+            setLoading(false);
+        }
     }
   };
 
@@ -52,50 +67,55 @@ const Hematology: React.FC = () => {
       <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100 animate-slide-up mb-24">
         <div className={`p-5 text-white flex justify-between items-center ${
           result.severity === 'critical' ? 'bg-red-600' : 
-          result.severity === 'concern' ? 'bg-orange-500' : 'bg-rose-700'
+          result.severity === 'concern' ? 'bg-orange-500' : 'bg-green-600'
         }`}>
            <div>
-             <h3 className="font-bold text-lg">گزارش هماتولوژی تخصصی</h3>
-             <p className="text-white/90 text-[10px] mt-0.5 tracking-widest font-bold uppercase">{result.diagnosis}</p>
+             <h3 className="font-bold text-lg">نتیجه آنالیز خون</h3>
+             <p className="text-white/90 text-xs mt-1">{result.diagnosis}</p>
            </div>
-           {result.severity === 'critical' ? <AlertCircle size={24} /> : <Droplet size={24} />}
+           {result.severity === 'critical' ? <AlertCircle size={24} /> : <CheckCircle size={24} />}
         </div>
         <div className="p-5 space-y-4">
-           {result.confidence && (
-              <div className="space-y-1">
-                 <div className="flex justify-between text-[10px] font-bold text-gray-400"><span>اطمینان تشخیص</span><span>{result.confidence}</span></div>
-                 <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-rose-500 transition-all duration-1000" style={{ width: result.confidence }}></div></div>
-              </div>
-           )}
-           
            {result.cellTypes && (
-             <div className="grid grid-cols-2 gap-2">
-                {result.cellTypes.map((c, i) => (
-                   <div key={i} className="bg-rose-50 p-2 rounded-xl border border-rose-100 text-center">
-                      <span className="text-[8px] text-rose-500 font-bold uppercase block">{c.name}</span>
-                      <p className="text-sm font-black text-rose-900">{c.count}</p>
+             <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+               <h4 className="font-bold text-gray-500 text-xs mb-2">سلول‌های شمارش شده</h4>
+               <div className="grid gap-2">
+                 {result.cellTypes.map((c, i) => (
+                   <div key={i} className="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-100 shadow-sm text-xs">
+                      <span className="font-bold text-gray-800">{c.name}</span>
+                      <div className="text-right">
+                        <span className="block font-mono">{c.count}</span>
+                        <span className="text-[10px] text-gray-400">{c.status}</span>
+                      </div>
                    </div>
-                ))}
+                 ))}
+               </div>
              </div>
            )}
-
-           <div className="space-y-2">
-              <h4 className="font-bold text-gray-700 text-xs uppercase">یافته‌های میکروسکوپی</h4>
-              {result.findings.map((f, i) => (
-                <div key={i} className="text-xs bg-gray-50 p-2.5 rounded-lg text-gray-600 border-r-2 border-rose-400 font-bold">{f}</div>
-              ))}
-           </div>
-
-           {result.nextSteps && result.nextSteps.length > 0 && (
-              <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-lg">
-                 <h4 className="font-black text-xs mb-3 flex items-center gap-2 text-rose-400"><Sparkles size={14} /> پیشنهاد گام بعدی انکولوژی</h4>
-                 <div className="space-y-2">
-                    {result.nextSteps.map((step, i) => (
-                       <div key={i} className="flex gap-2 items-start text-xs opacity-90"><ChevronRight size={14} className="text-rose-400 shrink-0" /><span>{step}</span></div>
-                    ))}
-                 </div>
+           {result.markersTrend && (
+              <div className="bg-rose-50 p-3 rounded-xl border border-rose-100">
+                 <h4 className="font-bold text-rose-800 mb-2 text-xs flex items-center gap-1"><TrendingUp size={12}/> روند تغییرات</h4>
+                 {result.markersTrend.map((m, i) => (
+                   <div key={i} className="space-y-1 mb-2 last:mb-0">
+                      <div className="flex justify-between font-bold text-rose-900 text-xs">
+                        <span>{m.name}</span>
+                        <span>{m.trend}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-600 leading-relaxed">{m.significance}</p>
+                   </div>
+                 ))}
               </div>
            )}
+           <div className="space-y-2">
+              <h4 className="font-bold text-gray-700 text-sm">یافته‌های بالینی</h4>
+              {result.findings.map((f, i) => <div key={i} className="text-sm bg-gray-50 p-2 rounded-lg text-gray-600 border-r-2 border-rose-400">{f}</div>)}
+           </div>
+           <div className="bg-blue-50 p-3 rounded-xl">
+              <h4 className="font-bold text-blue-800 text-sm mb-1">توصیه‌ها</h4>
+              <ul className="space-y-1">
+                {result.recommendations.map((r, i) => <li key={i} className="text-xs text-blue-900">• {r}</li>)}
+              </ul>
+           </div>
         </div>
       </div>
     );
@@ -103,16 +123,19 @@ const Hematology: React.FC = () => {
 
   return (
     <div className="animate-fade-in pb-20 h-full">
+      
+      {/* ======================= MOBILE VIEW ======================= */}
       <div className="lg:hidden flex flex-col h-full">
          <div className="bg-white p-4 sticky top-0 z-30 shadow-sm border-b border-gray-100">
             <div className="flex justify-between items-center mb-4">
                <div className="flex items-center gap-2">
                   <div className="bg-rose-100 p-2 rounded-xl text-rose-600"><Droplet size={20} /></div>
-                  <h2 className="text-lg font-bold text-gray-800 tracking-tight">خون و سرطان‌شناسی</h2>
+                  <h2 className="text-lg font-bold text-gray-800">خون و انکولوژی</h2>
                </div>
             </div>
+            
             <div className="flex bg-gray-100 p-1 rounded-xl">
-               <button onClick={() => { setActiveTab('smear'); setResult(null); setImage(null); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'smear' ? 'bg-white shadow text-rose-600' : 'text-gray-500'}`}>لام خون</button>
+               <button onClick={() => { setActiveTab('smear'); setResult(null); setImage(null); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'smear' ? 'bg-white shadow text-rose-600' : 'text-gray-500'}`}>اسمیر خون</button>
                <button onClick={() => { setActiveTab('pathology'); setResult(null); setImage(null); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'pathology' ? 'bg-white shadow text-rose-600' : 'text-gray-500'}`}>پاتولوژی</button>
                <button onClick={() => { setActiveTab('markers'); setResult(null); }} className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'markers' ? 'bg-white shadow text-rose-600' : 'text-gray-500'}`}>مارکرها</button>
             </div>
@@ -125,14 +148,43 @@ const Hematology: React.FC = () => {
                      <div className="space-y-4">
                         <div className="border-2 border-dashed border-rose-200 bg-rose-50/50 rounded-3xl h-64 flex flex-col items-center justify-center relative overflow-hidden group">
                            <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleImage} />
-                           {preview ? <img src={preview} className="w-full h-full object-contain" alt="Blood" /> : <div className="text-center"><div className="bg-white p-4 rounded-full shadow-sm mb-4 inline-block"><Microscope size={32} className="text-rose-400" /></div><p className="text-gray-500 text-xs font-bold">آپلود عکس میکروسکوپی یا گزارش</p></div>}
+                           {preview ? <img src={preview} className="w-full h-full object-cover" alt="Microscope" /> : <div className="text-center"><div className="bg-white p-3 rounded-full mb-3 shadow-sm inline-block">{activeTab === 'smear' ? <Microscope size={24} className="text-rose-400" /> : <FileText size={24} className="text-rose-400" />}</div><p className="text-gray-500 text-xs font-bold">{activeTab === 'smear' ? 'عکس میکروسکوپی' : 'گزارش پاتولوژی'}</p></div>}
                         </div>
+                        <p className="text-xs text-gray-400 text-center bg-gray-50 p-2 rounded-lg">
+                           {activeTab === 'smear' ? 'تشخیص کم‌خونی و لوسمی از روی لام خون' : 'تفسیر گزارش‌های پیچیده بیوپسی'}
+                        </p>
                      </div>
                   )}
+
                   {activeTab === 'markers' && (
                      <div className="bg-white p-4 rounded-2xl border border-gray-100 space-y-4 shadow-sm">
-                        <select className="w-full p-3 bg-gray-50 rounded-xl outline-none font-bold text-sm" value={markerData.name} onChange={e => setMarkerData({...markerData, name: e.target.value})}><option value="PSA">PSA</option><option value="CEA">CEA</option><option value="CA-125">CA-125</option></select>
-                        <input type="number" placeholder="مقدار فعلی" className="w-full p-3 bg-gray-50 rounded-xl text-center font-bold" value={markerData.current} onChange={e => setMarkerData({...markerData, current: e.target.value})} />
+                        <div className="grid grid-cols-2 gap-3">
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gray-500">نام مارکر</label>
+                              <select className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm font-bold" value={markerData.name} onChange={e => setMarkerData({...markerData, name: e.target.value})}>
+                                 <option value="PSA">PSA</option>
+                                 <option value="CA-125">CA-125</option>
+                                 <option value="CEA">CEA</option>
+                                 <option value="CA 19-9">CA 19-9</option>
+                                 <option value="AFP">AFP</option>
+                              </select>
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gray-500">واحد</label>
+                              <input type="text" className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm font-bold text-center" value={markerData.unit} onChange={e => setMarkerData({...markerData, unit: e.target.value})} />
+                           </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gray-500">مقدار فعلی</label>
+                              <input type="number" step="0.1" className="w-full p-3 bg-gray-50 rounded-xl outline-none text-xl font-bold text-center" value={markerData.current} onChange={e => setMarkerData({...markerData, current: e.target.value})} />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-xs font-bold text-gray-500">مقدار قبلی</label>
+                              <input type="number" step="0.1" className="w-full p-3 bg-gray-50 rounded-xl outline-none text-xl font-bold text-center text-gray-400" value={markerData.previous} onChange={e => setMarkerData({...markerData, previous: e.target.value})} placeholder="-" />
+                           </div>
+                        </div>
+                        <textarea className="w-full p-3 bg-gray-50 rounded-xl outline-none text-sm h-20 resize-none" placeholder="شرح حال (سابقه جراحی...)" value={markerData.history} onChange={e => setMarkerData({...markerData, history: e.target.value})} />
                      </div>
                   )}
                </div>
@@ -144,95 +196,68 @@ const Hematology: React.FC = () => {
          <div className="fixed bottom-[5.5rem] left-0 right-0 px-4 z-40">
             <button 
                onClick={result ? () => setResult(null) : handleAnalyze}
-               disabled={loading}
+               disabled={loading || (activeTab !== 'markers' && !image) || (activeTab === 'markers' && !markerData.current)}
                className={`w-full py-4 rounded-2xl font-bold shadow-2xl flex items-center justify-center gap-2 transition-all ${result ? 'bg-gray-100 text-gray-600' : 'bg-rose-600 text-white shadow-rose-200'}`}
             >
                {loading ? <Loader2 className="animate-spin" /> : result ? <ArrowLeft /> : <Activity />}
-               {loading ? 'در حال پایش سلولی...' : result ? 'تست جدید' : 'شروع آنالیز هماتولوژیک'}
+               {loading ? 'تحلیل سلولی...' : result ? 'بازگشت' : 'شروع آنالیز'}
             </button>
          </div>
       </div>
 
-      <div className="hidden lg:grid grid-cols-1 lg:grid-cols-12 gap-8 h-full">
-        <div className="lg:col-span-7 flex flex-col gap-6">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-100">
-             <h2 className="text-2xl font-black text-gray-800 mb-8 flex items-center gap-3">
-              <Droplet className="text-rose-600" size={32} />
-              <span>کنسول فوق‌تخصصی خون و سرطان (Expert-Link)</span>
-            </h2>
-            <div className="flex bg-gray-100 p-1.5 rounded-2xl mb-8">
-              <button onClick={() => { setActiveTab('smear'); setResult(null); setImage(null); }} className={`flex-1 py-4 px-6 rounded-xl font-black transition-all flex items-center justify-center gap-2 ${activeTab === 'smear' ? 'bg-rose-600 text-white shadow-xl' : 'text-gray-500 hover:bg-gray-50'}`}><Microscope /> اسمیر خون</button>
-              <button onClick={() => { setActiveTab('pathology'); setResult(null); setImage(null); }} className={`flex-1 py-4 px-6 rounded-xl font-black transition-all flex items-center justify-center gap-2 ${activeTab === 'pathology' ? 'bg-rose-600 text-white shadow-xl' : 'text-gray-500 hover:bg-gray-50'}`}><FileText /> مغز استخوان</button>
-              <button onClick={() => { setActiveTab('markers'); setResult(null); }} className={`flex-1 py-4 px-6 rounded-xl font-black transition-all flex items-center justify-center gap-2 ${activeTab === 'markers' ? 'bg-rose-600 text-white shadow-xl' : 'text-gray-500 hover:bg-gray-50'}`}><TrendingUp /> تومور مارکر</button>
-            </div>
-            <div className="min-h-[400px]">
-               {activeTab !== 'markers' ? (
-                 <div className="relative group h-[400px]">
-                    <div className={`border-2 border-dashed rounded-[3rem] h-full flex items-center justify-center relative overflow-hidden transition-all duration-500 ${loading ? 'border-rose-500 bg-rose-50/10' : 'border-gray-200 bg-gray-900'}`}>
-                        <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-30" onChange={handleImage} disabled={loading} />
-                        {preview ? <img src={preview} alt="Blood Scan" className="w-full h-full object-contain z-10" /> : <div className="text-center p-4 z-10"><Upload size={48} className="mx-auto text-rose-400 mb-6 group-hover:scale-110 transition-transform" /><p className="font-black text-gray-300 text-xl tracking-tight">آپلود تصویر لام یا بیوپسی</p></div>}
-                    </div>
-                 </div>
-               ) : (
-                 <div className="bg-gray-50 p-8 rounded-[3rem] space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-widest">نوع مارکر</label><select className="w-full p-4 bg-white border border-gray-100 rounded-2xl outline-none font-bold" value={markerData.name} onChange={e => setMarkerData({...markerData, name: e.target.value})}><option value="PSA">PSA (Prostate)</option><option value="CA-125">CA-125 (Ovarian)</option><option value="CEA">CEA (Colon)</option></select></div>
-                       <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-widest">واحد</label><input type="text" className="w-full p-4 bg-white border border-gray-100 rounded-2xl outline-none font-bold text-center" value={markerData.unit} onChange={e => setMarkerData({...markerData, unit: e.target.value})} /></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-widest">مقدار فعلی</label><input type="number" step="0.1" className="w-full p-4 bg-white border border-gray-100 rounded-2xl outline-none font-bold text-center text-xl text-rose-600" value={markerData.current} onChange={e => setMarkerData({...markerData, current: e.target.value})} /></div>
-                       <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-widest">مقدار قبلی</label><input type="number" step="0.1" className="w-full p-4 bg-white border border-gray-100 rounded-2xl outline-none font-bold text-center text-xl text-gray-400" value={markerData.previous} onChange={e => setMarkerData({...markerData, previous: e.target.value})} /></div>
-                    </div>
-                    <div className="space-y-2"><label className="text-xs font-bold text-gray-500 uppercase tracking-widest">تاریخچه درمان (Surgery/Chemo)</label><textarea className="w-full p-4 bg-white border border-gray-100 rounded-2xl outline-none font-bold text-sm h-24 resize-none" value={markerData.history} onChange={e => setMarkerData({...markerData, history: e.target.value})} /></div>
-                 </div>
-               )}
-            </div>
-            <div className="mt-8"><button onClick={handleAnalyze} disabled={loading} className="w-full bg-rose-600 text-white font-black py-5 rounded-2xl shadow-2xl shadow-rose-200 hover:bg-rose-700 transition-all flex items-center justify-center gap-3 text-lg">{loading ? <><Activity className="animate-spin" /><span>در حال واکاوی الگوهای سلولی...</span></> : <><Droplet /><span>تولید ریپورت فوق‌تخصصی خون</span></>}</button></div>
+      {/* ======================= DESKTOP VIEW (Original) ======================= */}
+      <div className="hidden lg:grid grid-cols-1 lg:grid-cols-2 gap-8 h-full">
+        <div className="flex items-center gap-3 mb-6 col-span-2">
+          <Droplet className="text-rose-600 w-10 h-10" />
+          <div>
+            <h2 className="text-3xl font-bold text-gray-800">دپارتمان خون، سرطان‌شناسی و پاتولوژی</h2>
+            <p className="text-gray-500">Hematology, Oncology & Pathology Intelligence</p>
           </div>
         </div>
 
-        <div className="lg:col-span-5 h-full">
-          {result ? (
-             <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-gray-100 h-full flex flex-col animate-fade-in">
-                <div className={`p-8 text-white ${result.severity === 'critical' ? 'bg-red-600' : result.severity === 'concern' ? 'bg-orange-500' : 'bg-rose-600'}`}>
-                   <div className="flex justify-between items-start">
-                      <div><h3 className="text-2xl font-black">گزارش مشاور خون</h3><p className="text-white/70 text-xs mt-1 uppercase tracking-widest font-bold">HEMATO-ONCO REPORT / {activeTab}</p></div>
-                      <CheckCircle size={40} />
-                   </div>
-                   {result.confidence && (
-                     <div className="mt-8 space-y-2">
-                        <div className="flex justify-between text-[10px] font-black uppercase opacity-60"><span>Machine Diagnostic Confidence</span><span>{result.confidence}</span></div>
-                        <div className="h-1.5 bg-white/20 rounded-full overflow-hidden"><div className="h-full bg-white transition-all duration-1000" style={{ width: result.confidence }}></div></div>
-                     </div>
-                   )}
-                </div>
-                <div className="p-8 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
-                   <div><h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest mb-3">Diagnostic Impression</h4><p className="text-gray-900 text-xl font-black leading-relaxed bg-gray-50 p-6 rounded-3xl border border-gray-100">{result.diagnosis}</p></div>
-                   {result.cellTypes && (
-                     <div className="grid grid-cols-2 gap-3">
-                        {result.cellTypes.map((c, i) => (
-                          <div key={i} className="bg-rose-50 p-4 rounded-2xl border border-rose-100 text-center"><span className="text-[10px] font-black text-rose-400 uppercase">{c.name}</span><p className="text-lg font-black text-rose-900">{c.count}</p><p className="text-[10px] text-rose-300 font-bold">{c.status}</p></div>
-                        ))}
-                     </div>
-                   )}
-                   {result.markersTrend && (
-                     <div className="bg-rose-50 p-6 rounded-3xl border border-rose-100">
-                        <h4 className="font-black text-rose-800 text-xs mb-4 flex items-center gap-2 uppercase tracking-tighter"><TrendingUp size={18} /> پایش روند تومور مارکر</h4>
-                        {result.markersTrend.map((m, i) => (<div key={i} className="mb-4 last:mb-0"><div className="flex justify-between font-bold text-rose-950 text-sm"><span>{m.name}</span><span className="bg-rose-200 px-2 py-0.5 rounded-lg">{m.trend}</span></div><p className="text-xs text-rose-700 mt-1 font-bold leading-relaxed">{m.significance}</p></div>))}
-                     </div>
-                   )}
-                   <div><h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest mb-4">Microscopic/Cellular Findings</h4><ul className="space-y-4">{result.findings.map((f, i) => (<li key={i} className="flex items-start gap-4 text-sm text-gray-700 font-bold"><div className="mt-1.5 w-2 h-2 bg-rose-500 rounded-full shrink-0"></div><span>{f}</span></li>))}</ul></div>
-                   {result.nextSteps && result.nextSteps.length > 0 && (<div className="mt-6 pt-6 border-t border-gray-100"><h4 className="font-black text-slate-700 text-xs mb-4 flex items-center gap-2"><Sparkles size={16} className="text-rose-500" /> گام‌های تشخیصی همکار (Next Steps)</h4><div className="grid gap-3">{result.nextSteps.map((step, i) => (<div key={i} className="bg-slate-900 p-4 rounded-2xl text-rose-200 text-sm font-bold flex items-center gap-3 border border-slate-800"><ChevronRight size={18} className="text-rose-400" />{step}</div>))}</div></div>)}
-                </div>
-                <div className="p-6 bg-gray-50 text-[10px] text-gray-400 text-center font-bold tracking-widest uppercase">Expert-Link Hematology Module / Blood AI</div>
-             </div>
-          ) : (
-              <div className="h-full bg-gray-50 rounded-[3rem] border-4 border-dashed border-gray-100 flex flex-col items-center justify-center text-gray-300 p-12 text-center">
-                 <Droplet size={80} className="mb-6 opacity-10" />
-                 <p className="text-xl font-black tracking-tight text-gray-400">منتظر دریافت نمونه یا مارکر...</p>
-                 <p className="text-sm mt-4 font-bold max-w-xs leading-relaxed">آنالیز نهایی شامل بررسی مورفولوژی گلبول‌ها، تفسیر گزارش مغز استخوان و تحلیل هوشمند روند مارکرهای سرطانی خواهد بود.</p>
+        {/* Tabs */}
+        <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-3xl col-span-2">
+          <button onClick={() => { setActiveTab('smear'); setResult(null); setImage(null); setPreview(null); }} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'smear' ? 'bg-rose-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}><Microscope /> لام خون محیطی</button>
+          <button onClick={() => { setActiveTab('pathology'); setResult(null); setImage(null); setPreview(null); }} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'pathology' ? 'bg-rose-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}><FileText /> پاتولوژی و بیوپسی</button>
+          <button onClick={() => { setActiveTab('markers'); setResult(null); }} className={`flex-1 py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'markers' ? 'bg-rose-600 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}><TrendingUp /> تومور مارکرها</button>
+        </div>
+
+        <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 h-fit">
+          {(activeTab === 'smear' || activeTab === 'pathology') && (
+            <div className="space-y-6">
+              <h3 className="font-bold text-gray-800">{activeTab === 'smear' ? 'آپلود تصویر میکروسکوپی (Smear)' : 'آپلود گزارش یا اسلاید پاتولوژی'}</h3>
+              <p className="text-sm text-gray-500">{activeTab === 'smear' ? 'تشخیص کم‌خونی (داسی شکل/فقر آهن)، لوسمی، مالاریا و ناهنجاری‌های پلاکتی.' : 'تفسیر گزارش‌های پیچیده بیوپسی، تشخیص گرید و استیج سرطان.'}</p>
+              <div className="border-2 border-dashed border-rose-200 bg-rose-50/30 rounded-2xl h-80 flex flex-col items-center justify-center relative overflow-hidden group">
+                 <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleImage} />
+                 {preview ? <img src={preview} className="w-full h-full object-contain" alt="Microscope" /> : <div className="text-center p-4">{activeTab === 'smear' ? <Microscope className="mx-auto text-rose-400 w-12 h-12 mb-3" /> : <FileText className="mx-auto text-rose-400 w-12 h-12 mb-3" />}<p className="text-gray-600 font-medium">تصویر را اینجا رها کنید</p></div>}
               </div>
+            </div>
           )}
+          {activeTab === 'markers' && (
+            <div className="space-y-4">
+               <h3 className="font-bold text-gray-800 mb-4">پایشگر هوشمند تومور مارکر (Onco-Tracker)</h3>
+               <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><label className="text-sm font-medium text-gray-700">نام مارکر</label><select className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-500" value={markerData.name} onChange={e => setMarkerData({...markerData, name: e.target.value})}><option value="PSA">PSA (Prostate)</option><option value="CA-125">CA-125 (Ovarian)</option><option value="CEA">CEA (Colon/Breast)</option><option value="CA 19-9">CA 19-9 (Pancreas)</option><option value="AFP">AFP (Liver)</option></select></div><div className="space-y-2"><label className="text-sm font-medium text-gray-700">واحد</label><input type="text" className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-500" value={markerData.unit} onChange={e => setMarkerData({...markerData, unit: e.target.value})} /></div></div>
+               <div className="grid grid-cols-2 gap-4"><div className="space-y-2"><label className="text-sm font-medium text-gray-700">مقدار فعلی</label><input type="number" step="0.1" className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-500" value={markerData.current} onChange={e => setMarkerData({...markerData, current: e.target.value})} /></div><div className="space-y-2"><label className="text-sm font-medium text-gray-700">مقدار قبلی (اختیاری)</label><input type="number" step="0.1" className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-500" value={markerData.previous} onChange={e => setMarkerData({...markerData, previous: e.target.value})} /></div></div>
+               <div className="space-y-2"><label className="text-sm font-medium text-gray-700">شرح حال (سابقه جراحی/شیمی درمانی)</label><textarea className="w-full p-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 h-24 resize-none" placeholder="مثال: بیمار ۳ ماه پیش پروستاتکتومی رادیکال انجام داده..." value={markerData.history} onChange={e => setMarkerData({...markerData, history: e.target.value})} /></div>
+            </div>
+          )}
+          <button onClick={handleAnalyze} disabled={loading || (activeTab !== 'markers' && !image)} className="w-full mt-6 bg-rose-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-rose-200 hover:bg-rose-700 disabled:opacity-50">{loading ? 'در حال آنالیز سلولی/مولکولی...' : 'شروع آنالیز'}</button>
+        </div>
+
+        <div className="space-y-6">
+           {result ? (
+             <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-200 animate-fade-in">
+                <div className={`p-6 text-white flex justify-between items-center ${result.severity === 'critical' ? 'bg-red-600' : result.severity === 'concern' ? 'bg-orange-500' : 'bg-green-600'}`}><div><h3 className="text-xl font-bold">نتیجه آنالیز</h3><p className="text-white/80 text-sm mt-1">{result.diagnosis}</p></div>{result.severity === 'critical' ? <AlertCircle size={32} /> : <CheckCircle size={32} />}</div>
+                <div className="p-6 space-y-6">
+                   {result.cellTypes && <div className="bg-gray-50 p-4 rounded-xl border border-gray-100"><h4 className="font-bold text-gray-700 mb-3 flex items-center gap-2"><Activity size={18} />شمارش و مورفولوژی سلولی</h4><div className="grid gap-2">{result.cellTypes.map((c, i) => (<div key={i} className="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-100 shadow-sm"><span className="font-bold text-gray-800">{c.name}</span><div className="text-right"><span className="block text-sm font-mono">{c.count}</span><span className="text-xs text-gray-500">{c.status}</span></div></div>))}</div></div>}
+                   {result.markersTrend && <div className="bg-rose-50 p-4 rounded-xl border border-rose-100"><h4 className="font-bold text-rose-800 mb-2 flex items-center gap-2"><TrendingUp size={18} />تحلیل روند مارکر</h4>{result.markersTrend.map((m, i) => (<div key={i} className="space-y-2"><div className="flex justify-between font-bold text-rose-900"><span>{m.name}</span><span>{m.trend}</span></div><p className="text-sm text-gray-700 leading-relaxed">{m.significance}</p></div>))}</div>}
+                   <div><h4 className="font-bold text-gray-800 mb-3 border-b pb-2">یافته‌های بالینی</h4><ul className="space-y-2">{result.findings.map((f, i) => (<li key={i} className="flex items-start gap-2 text-gray-700 text-sm"><span className="w-1.5 h-1.5 bg-rose-500 rounded-full mt-1.5 flex-shrink-0"></span>{f}</li>))}</ul></div>
+                   <div className="bg-blue-50 p-4 rounded-xl"><h4 className="font-bold text-blue-800 mb-2">توصیه‌های انکولوژی</h4><ul className="space-y-1">{result.recommendations.map((r, i) => (<li key={i} className="text-sm text-blue-900">• {r}</li>))}</ul></div>
+                </div>
+             </div>
+           ) : (
+             <div className="h-full bg-gray-100 rounded-3xl border-2 border-dashed border-gray-300 flex flex-col items-center justify-center text-gray-400 p-8 text-center opacity-70"><Droplet size={48} className="mb-4" /><p>منتظر داده‌ها برای آنالیز خون و سرطان...</p></div>
+           )}
         </div>
       </div>
     </div>

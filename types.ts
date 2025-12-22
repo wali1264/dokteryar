@@ -193,11 +193,9 @@ export interface PsychologyAnalysis {
   interpretation: string;
   modernAnalysis?: string;
   traditionalAnalysis?: string;
-  severity: 'normal' | 'concern' | 'critical';
+  severity?: 'normal' | 'concern' | 'critical';
   recommendations: string[];
   confidence?: string;
-  moodMetrics?: { factor: string; score: string }[];
-  nextSteps?: string[];
 }
 
 export interface OphthalmologyAnalysis {
@@ -218,7 +216,6 @@ export interface PediatricsAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   confidenceScore?: string;
   recommendations: string[];
-  nextSteps?: string[];
 }
 
 export interface OrthopedicsAnalysis {
@@ -229,7 +226,6 @@ export interface OrthopedicsAnalysis {
   angles?: string[];
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface DentistryAnalysis {
@@ -240,7 +236,6 @@ export interface DentistryAnalysis {
   toothNumbers?: string[];
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface GynecologyAnalysis {
@@ -251,7 +246,6 @@ export interface GynecologyAnalysis {
   measurements?: string[];
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface PulmonologyAnalysis {
@@ -300,7 +294,6 @@ export interface HematologyAnalysis {
   markersTrend?: { name: string; trend: string; significance: string }[];
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface EmergencyAnalysis {
@@ -321,10 +314,8 @@ export interface GeneticsAnalysis {
   severity: 'normal' | 'concern' | 'critical';
   risks?: { condition: string; probability: string }[];
   drugCompatibility?: { drug: string; status: string; recommendation: string };
-  inheritancePattern?: string;
   recommendations: string[];
   confidence?: string;
-  nextSteps?: string[];
 }
 
 export interface ChatMessage {

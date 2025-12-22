@@ -143,107 +143,97 @@ const ensureArrays = (data: any, fields: string[]) => {
   return clean;
 };
 
-// --- STAGE 5 FINAL UPGRADES (Dentistry, Genetics, Psychology) ---
+// --- STAGE 3 UPGRADES (Ophthalmology, Gastroenterology, Urology) ---
 
-// 15. DENTISTRY (Expert-Link Upgraded)
-export const analyzeDentistry = async (image: File, type: string): Promise<DentistryAnalysis> => {
-  const prompt = `You are a Senior Oral and Maxillofacial Surgeon. Analyze this dental image (${type}).
-  If OPG/X-Ray: Identify impacted teeth, bone resorption levels, periapical lesions, and root anomalies.
-  If Caries: Identify location by ISO tooth numbering system. 
+// 8. OPHTHALMOLOGY (Expert-Link Upgraded)
+export const analyzeOphthalmology = async (image: File, type: string): Promise<OphthalmologyAnalysis> => {
+  const prompt = `You are a Senior Consultant Ophthalmologist (Retina Specialist). Analyze this eye image (${type}).
+  If fundus: Identify AV ratio, presence of exudates, hemorrhages, or disk edema. Grade diabetic retinopathy if applicable.
+  If external: Look for pterygium, cataracts, or lid pathologies. 
+  Correlate with systemic conditions like Hypertension or Diabetes.
   
   RETURN RAW JSON ONLY (Values in Persian):
   {
     "type": "${type}",
-    "findings": ["Precise surgical/radiological findings"],
-    "diagnosis": "Diagnostic Impression with clinical grading",
-    "severity": "normal" | "concern" | "critical",
-    "toothNumbers": ["Affected teeth in ISO system"],
+    "findings": ["Precise clinical findings"],
+    "diagnosis": "Diagnostic Impression with Grading",
+    "severity": "normal" | "abnormal" | "critical",
+    "systemicIndicators": ["Markers of Hypertension/DM/Systemic diseases"],
     "confidence": "94%",
-    "recommendations": ["Surgical/Medical/Prosthodontic strategy"],
-    "nextSteps": ["CBCT needed", "Endodontic referral", "Biopsy suggested"]
+    "recommendations": ["Surgical or Pharmacological strategy"],
+    "nextSteps": ["Optical Coherence Tomography (OCT) needed", "Fluorescein Angiography (FA) suggested"]
   }`;
-  const res = await analyzeSpecialized(image, prompt, ['findings', 'toothNumbers', 'recommendations', 'nextSteps']);
-  return res as DentistryAnalysis;
+  const res = await analyzeSpecialized(image, prompt, ['findings', 'systemicIndicators', 'recommendations', 'nextSteps']);
+  return res as OphthalmologyAnalysis;
 };
 
-// 16. GENETICS (Expert-Link Upgraded)
-export const analyzeGenetics = async (input: any, type: string): Promise<GeneticsAnalysis> => {
-  const prompt = `You are a Senior Medical Geneticist. Analyze this ${type}.
-  If report: Interpret karyotype, NGS variants (Pathogenic/VUS), or penetrance.
-  If family: Identify inheritance patterns (Autosomal Dominant, X-linked, etc.).
+// 9. GASTROENTEROLOGY (Expert-Link Upgraded)
+export const analyzeGastroenterology = async (input: any, type: string): Promise<GastroenterologyAnalysis> => {
+  const prompt = `You are a Senior Gastroenterologist and Endoscopist. Analyze this ${type}.
+  If endoscopy: Describe mucosa color, vascular patterns, and presence of lesions (grading ulcers/polyps).
+  If pain mapper: Correlate location with referred pain patterns (e.g., Kehr's sign, Murphy's sign).
   
   RETURN RAW JSON ONLY (Persian values):
   {
     "type": "${type}",
-    "findings": ["Genomic variants/Mutation findings"],
-    "diagnosis": "Clinical Genetic Syndrome Impression",
+    "findings": ["Technical findings (Mucosal/Structural)"],
+    "diagnosis": "Clinical Impression",
+    "severity": "normal" | "concern" | "critical",
+    "confidence": "92%",
+    "mizaj": "Systemic state based on Traditional Medicine integration",
+    "nutrients": ["Beneficial foods for this condition"],
+    "organ": "Precise anatomical involvement",
+    "recommendations": ["Pharmacological/Dietary plan"],
+    "nextSteps": ["Urea Breath Test", "Endoscopic Biopsy suggested", "Imaging follow-up"]
+  }`;
+  const res = await analyzeSpecialized(input, prompt, ['findings', 'nutrients', 'recommendations', 'nextSteps']);
+  return res as GastroenterologyAnalysis;
+};
+
+// 10. UROLOGY (Expert-Link Upgraded)
+export const analyzeUrology = async (input: any, type: string): Promise<UrologyAnalysis> => {
+  const prompt = `You are a Senior Consultant Urologist. Analyze this ${type}.
+  If dipstick: Quantify Glucose, Protein, Blood, and Nitrites based on color scales.
+  If stone: Identify location, estimate size (mm), and calculate "Passability Index".
+  If kidney function: Interpret eGFR and stage of CKD.
+  
+  RETURN RAW JSON ONLY (Persian values):
+  {
+    "type": "${type}",
+    "findings": ["Detailed clinical/lab findings"],
+    "diagnosis": "Impression (e.g., Nephrolithiasis, UTI, CKD)",
     "severity": "normal" | "concern" | "critical",
     "confidence": "95%",
-    "risks": [{ "condition": "Condition Name", "probability": "Percentage/Level" }],
-    "inheritancePattern": "Mendelian pattern identified",
-    "drugCompatibility": { "drug": "Name", "status": "Safe/Warning", "recommendation": "Dose adjustment" },
-    "recommendations": ["Counseling strategy", "Prenatal screening info"],
-    "nextSteps": ["WES suggested", "Family member screening", "Validation by Sanger"]
+    "dipstickValues": [{ "parameter": "string", "value": "string", "status": "string" }],
+    "stoneDetails": { "size": "mm", "location": "string", "passability": "High/Low %" },
+    "kidneyFunction": { "gfr": "numeric value", "stage": "CKD Stage", "mizaj": "Traditional context" },
+    "recommendations": ["Treatment plan"],
+    "nextSteps": ["CT KUB suggested", "24-hour urine collection", "Lithotripsy referral"]
   }`;
-  const res = await analyzeSpecialized(input, prompt, ['findings', 'risks', 'recommendations', 'nextSteps']);
-  return res as GeneticsAnalysis;
+  const res = await analyzeSpecialized(input, prompt, ['findings', 'recommendations', 'nextSteps']);
+  return res as UrologyAnalysis;
 };
 
-// 17. PSYCHOLOGY (Expert-Link Upgraded)
-export const analyzePsychologyImage = async (image: File): Promise<PsychologyAnalysis> => {
-  const prompt = `You are a Senior Psychoanalyst and Cognitive Scientist. Analyze this psychological drawing (e.g., Clock Test, HTP, or Free Art).
-  Identify markers of cognitive decline, defense mechanisms, and personality traits.
-  
-  RETURN RAW JSON ONLY (Values in Persian):
-  {
-    "type": "art",
-    "findings": ["Visual psychological markers identified"],
-    "interpretation": "Psychoanalytic Impression",
-    "severity": "normal" | "concern" | "critical",
-    "confidence": "88%",
-    "moodMetrics": [{ "factor": "Anxiety/Depression/Cognition", "score": "Scale 1-10" }],
-    "recommendations": ["Therapeutic approach (CBT/Psychodynamic)"],
-    "nextSteps": ["MMSE screening", "Projective testing suggested"]
-  }`;
-  const res = await analyzeSpecialized(image, prompt, ['findings', 'moodMetrics', 'recommendations', 'nextSteps']);
-  return res as PsychologyAnalysis;
-};
-
-export const analyzeDream = async (text: string): Promise<PsychologyAnalysis> => {
-  const prompt = `You are a Specialist in Dream Interpretation (Merging Jungian Analysis with Traditional Context).
-  Analyze this dream: ${text}.
+// 11. GYNECOLOGY (Expert-Link Upgraded)
+// Added analyzeGynecology to fix missing export error in pages/Gynecology.tsx
+export const analyzeGynecology = async (input: any, type: string): Promise<GynecologyAnalysis> => {
+  const prompt = `You are a Senior Consultant Gynecologist and Obstetrician. Analyze this ${type}.
+  If ultrasound: Identify fetal biometry (BPD, FL, AC, HC), estimate GA, and check for anomalies. 
+  If mammography: Screen for lesions, masses, or micro-calcifications (BI-RADS scoring).
+  If fertility: Analyze PCOS markers, hormonal patterns, and clinical symptoms.
   
   RETURN RAW JSON ONLY (Persian values):
   {
-    "type": "dream",
-    "findings": ["Symbolic elements identified"],
-    "interpretation": "Subconscious integration summary",
-    "modernAnalysis": "Jungian/Freudian perspective",
-    "traditionalAnalysis": "Traditional/Spiritual perspective",
+    "type": "${type}",
+    "findings": ["Detailed clinical/radiological findings"],
+    "diagnosis": "Clinical Impression/Grading",
     "severity": "normal" | "concern" | "critical",
-    "recommendations": ["Reflective practices"],
-    "nextSteps": ["Dream journaling", "Focusing therapy"]
+    "confidence": "93%",
+    "measurements": ["List of biometry or lab metrics if applicable"],
+    "recommendations": ["Management plan (Surgical/Medical/Lifestyle)"]
   }`;
-  const res = await analyzeSpecialized(text, prompt, ['findings', 'recommendations']);
-  return res as PsychologyAnalysis;
-};
-
-export const analyzeSentiment = async (audio: Blob): Promise<PsychologyAnalysis> => {
-  const prompt = `You are a Senior Consultant in Affective Neuroscience. Analyze this patient's speech for sentiment and mood.
-  Identify prosody, word choice patterns, and underlying emotional states.
-  
-  RETURN RAW JSON ONLY (Persian values):
-  {
-    "type": "sentiment",
-    "findings": ["Acoustic/Linguistic markers"],
-    "interpretation": "Mood State Summary (e.g., Euthymic, Dysthymic, Manic)",
-    "severity": "normal" | "concern" | "critical",
-    "confidence": "91%",
-    "moodMetrics": [{ "factor": "Factor Name", "score": "0-100" }],
-    "recommendations": ["Immediate intervention if needed", "Therapy suggestion"]
-  }`;
-  const res = await analyzeSpecialized(audio, prompt, ['findings', 'moodMetrics', 'recommendations']);
-  return res as PsychologyAnalysis;
+  const res = await analyzeSpecialized(input, prompt, ['findings', 'measurements', 'recommendations']);
+  return res as GynecologyAnalysis;
 };
 
 // --- CORE ANALYSIS FUNCTIONS (UNCHANGED) ---
@@ -338,51 +328,6 @@ export const analyzePulmonology = async (input: any, type: string) => {
   const prompt = `You are a Consultant Pulmonologist...`;
   return analyzeSpecialized(input, prompt, ['findings', 'metrics', 'recommendations', 'nextSteps']);
 };
-export const analyzeOphthalmology = async (image: File, type: string): Promise<OphthalmologyAnalysis> => {
-  const prompt = `You are a Senior Consultant Ophthalmologist (Retina Specialist)...`;
-  const res = await analyzeSpecialized(image, prompt, ['findings', 'systemicIndicators', 'recommendations', 'nextSteps']);
-  return res as OphthalmologyAnalysis;
-};
-export const analyzeGastroenterology = async (input: any, type: string): Promise<GastroenterologyAnalysis> => {
-  const prompt = `You are a Senior Gastroenterologist and Endoscopist...`;
-  const res = await analyzeSpecialized(input, prompt, ['findings', 'nutrients', 'recommendations', 'nextSteps']);
-  return res as GastroenterologyAnalysis;
-};
-export const analyzeUrology = async (input: any, type: string): Promise<UrologyAnalysis> => {
-  const prompt = `You are a Senior Consultant Urologist...`;
-  const res = await analyzeSpecialized(input, prompt, ['findings', 'recommendations', 'nextSteps']);
-  return res as UrologyAnalysis;
-};
-export const analyzeGynecology = async (input: any, type: string): Promise<GynecologyAnalysis> => {
-  const prompt = `You are a Senior Consultant Gynecologist and Obstetrician...`;
-  const res = await analyzeSpecialized(input, prompt, ['findings', 'measurements', 'recommendations']);
-  return res as GynecologyAnalysis;
-};
-export const analyzeBabyCry = async (audio: Blob): Promise<PediatricsAnalysis> => {
-  const prompt = `You are a Senior Consultant Pediatrician. Analyze this baby cry sound...`;
-  const res = await analyzeSpecialized(audio, prompt, ['findings', 'recommendations', 'nextSteps']);
-  return res as PediatricsAnalysis;
-};
-export const analyzeChildDevelopment = async (video: File): Promise<PediatricsAnalysis> => {
-  const prompt = `You are a Specialist in Developmental Pediatrics. Analyze this video...`;
-  const res = await analyzeSpecialized(video, prompt, ['findings', 'recommendations', 'nextSteps']);
-  return res as PediatricsAnalysis;
-};
-export const calculateGrowthProjection = async (data: any): Promise<PediatricsAnalysis> => {
-  const prompt = `You are a Pediatric Endocrinologist. Analyze this growth data...`;
-  const res = await analyzeSpecialized(data, prompt, ['findings', 'recommendations', 'nextSteps']);
-  return res as PediatricsAnalysis;
-};
-export const analyzeHematology = async (input: any, type: string): Promise<HematologyAnalysis> => {
-  const prompt = `You are a Senior Consultant Hematologist and Oncologist. Analyze this ${type}...`;
-  const res = await analyzeSpecialized(input, prompt, ['findings', 'recommendations', 'nextSteps', 'cellTypes', 'markersTrend']);
-  return res as HematologyAnalysis;
-};
-export const analyzeOrthopedics = async (image: File, type: string): Promise<OrthopedicsAnalysis> => {
-  const prompt = `You are a Senior Orthopedic Surgeon. Analyze this ${type}...`;
-  const res = await analyzeSpecialized(image, prompt, ['findings', 'recommendations', 'nextSteps', 'angles']);
-  return res as OrthopedicsAnalysis;
-};
 
 // --- REMAINING UTILS (UNCHANGED) ---
 
@@ -414,3 +359,15 @@ export const generateTimelineAnalysis = async (current: any, history: any[]): Pr
 export const createMedicalChat = (patientData: PatientData, diagnosis: DualDiagnosis, consensus: string) => {
   return new ProxyChatSession("gemini-2.5-flash", {}, `Medical Council for ${patientData.name}. Answer in Persian.`);
 };
+
+// --- REMAINING DEPARTMENTS (FOR FUTURE STAGES) ---
+export const analyzeBabyCry = async (audio: Blob) => analyzeSpecialized(audio, "Baby Cry Analysis");
+export const analyzeChildDevelopment = async (video: File) => analyzeSpecialized(video, "Child Development");
+export const calculateGrowthProjection = async (data: any) => analyzeSpecialized(data, "Growth Projection");
+export const analyzeOrthopedics = async (image: File, type: string) => analyzeSpecialized(image, "Orthopedic Analysis");
+export const analyzeDentistry = async (image: File, type: string) => analyzeSpecialized(image, "Dental Analysis");
+export const analyzeHematology = async (input: any, type: string) => analyzeSpecialized(input, "Hematology Analysis");
+export const analyzeGenetics = async (input: any, type: string) => analyzeSpecialized(input, "Genetics Analysis");
+export const analyzePsychologyImage = async (image: File) => analyzeSpecialized(image, "Psychological Art Analysis");
+export const analyzeDream = async (text: string) => analyzeSpecialized(text, "Dream Interpretation");
+export const analyzeSentiment = async (audio: Blob) => analyzeSpecialized(audio, "Sentiment Analysis");
