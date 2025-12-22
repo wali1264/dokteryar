@@ -118,6 +118,7 @@ export interface DoctorDiagnosis {
   treatmentPlan: string[];
   lifestyle: string[];
   warnings: string[];
+  confidence?: string; // New field for Senior Consultant
 }
 
 export interface DualDiagnosis {

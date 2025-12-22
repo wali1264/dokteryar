@@ -181,9 +181,17 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
       - Glucose: ${data.vitals.bloodSugar}
       - Weight: ${data.vitals.weight}kg
       
-      Task: You are two expert doctors analyzing this patient simultaneously.
-      1. A Modern Medical Specialist (Internal Medicine).
-      2. A Master of Iranian Traditional Medicine (Hakim).
+      Task: Provide a "Doctor-to-Doctor" specialized consultation. You are two colleagues advising a physician:
+      1. Senior Clinical Consultant (Modern Medicine):
+         - Analyze data, identify trends, suggest differential diagnoses.
+         - Provide a confidence score (0-100%).
+         - Suggest pharmacological strategy.
+      2. Integrative Lifestyle Specialist (Traditional Medicine - Hakim):
+         - Focus on "The Six Essential Principles" (Lifestyle).
+         - Provide expert dietary advice (Beneficial vs Harmful foods).
+         - Suggest supportive herbal supplements that won't interfere with modern treatment.
+      
+      TONE: Professional, collaborative, colleague-to-colleague.
       
       CRITICAL INSTRUCTION: 
       ALL OUTPUT TEXT MUST BE IN PERSIAN (FARSI).
@@ -192,18 +200,19 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
       RETURN RAW JSON ONLY. NO MARKDOWN.
       {
         "modern": {
-          "diagnosis": "تشخیص (Persian)",
-          "reasoning": "استدلال (Persian)",
-          "treatmentPlan": ["طرح درمان (Persian)"],
-          "lifestyle": ["سبک زندگی (Persian)"],
-          "warnings": ["هشدارها (Persian)"]
+          "diagnosis": "عنوان تشخیص اصلی (Persian)",
+          "confidence": "90%",
+          "reasoning": "استدلال بالینی بر اساس شواهد (Persian)",
+          "treatmentPlan": ["پیشنهاد استراتژی دارویی (Persian)"],
+          "lifestyle": ["توصیه مراقبتی بالینی (Persian)"],
+          "warnings": ["هشدارها و موارد اورژانسی (Persian)"]
         },
         "traditional": {
-          "diagnosis": "تشخیص مزاج/اخلاط (Persian)",
-          "reasoning": "استدلال (Persian)",
-          "treatmentPlan": ["تدابیر گیاهی (Persian)"],
-          "lifestyle": ["سته ضروریه (Persian)"],
-          "warnings": ["پرهیزات (Persian)"]
+          "diagnosis": "تحلیل مزاجی و سیستمی (Persian)",
+          "reasoning": "استدلال بر اساس مبانی طب سنتی (Persian)",
+          "treatmentPlan": ["مکمل‌های گیاهی حمایتی (Persian)"],
+          "lifestyle": ["اصلاح سته ضروریه (Persian)"],
+          "warnings": ["پرهیزات غذایی جدی و بخور و نخورها (Persian)"]
         }
       }
     `;
@@ -245,14 +254,16 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
 
 export const generateConsensus = async (modern: DoctorDiagnosis, traditional: DoctorDiagnosis): Promise<string> => {
     const prompt = `
-      Act as a Medical Board Director. Review these two opinions:
-      Modern: ${JSON.stringify(modern)}
-      Traditional: ${JSON.stringify(traditional)}
+      Act as a Medical Board Director providing a final consultation report to the attending physician.
+      Review these two consultant opinions:
+      Modern Specialist: ${JSON.stringify(modern)}
+      Integrative Specialist: ${JSON.stringify(traditional)}
 
-      1. Identify conflicts (e.g., drug-herb interactions).
-      2. Create a unified, safe plan.
-      3. Simulate a brief dialogue between the two doctors where they agree on the final path.
+      1. Identify Red Alerts: Check for drug-herb interactions or conflicting advice.
+      2. Unified Strategy: Merge the pharmacological plan with dietary and lifestyle modifications into a single cohesive path.
+      3. Colleague Brief: A brief professional summary of why this unified plan is best for the patient.
       
+      Tone: High-level medical consultation.
       Output structured markdown in Persian.
     `;
 
