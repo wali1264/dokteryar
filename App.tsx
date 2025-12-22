@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import PatientIntake from './pages/PatientIntake';
@@ -39,9 +39,12 @@ function App() {
   
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(!hasLocalKey); 
-  // If we have a session key, we initially assume the user is approved based on their last successful session
   const [isApproved, setIsApproved] = useState<boolean | null>(hasLocalKey ? (lastKnownApproval || true) : null);
   const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
+
+  // --- STABILITY REFS ---
+  const lastCheckTimeRef = useRef<number>(0);
+  const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 Minutes - Prevent frequent re-verification loops
 
   // --- AUTO-DISMISS TIMER ---
   useEffect(() => {
@@ -60,7 +63,8 @@ function App() {
       setSession(currentSession);
       
       if (currentSession) {
-        verifySecurityInBackground(currentSession.user.id);
+        // Initial load check is ALWAYS performed
+        verifySecurityInBackground(currentSession.user.id, true);
       } else {
         setAuthLoading(false);
         setIsApproved(null);
@@ -69,11 +73,13 @@ function App() {
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
-      if (newSession) {
+      
+      // Only verify on relevant events to prevent race conditions on Toshiba/Old browsers
+      if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED')) {
          verifySecurityInBackground(newSession.user.id);
-      } else {
+      } else if (!newSession) {
          setAuthLoading(false);
          setIsApproved(null);
       }
@@ -84,16 +90,24 @@ function App() {
     };
   }, []);
 
-  const verifySecurityInBackground = async (userId: string) => {
-    // If clearly offline, don't even try to reach Supabase, just stay in "Last Known" state
-    if (!navigator.onLine) {
-        setSecurityStatus('offline');
-        setAuthLoading(false);
-        // We don't change isApproved here to keep the last known state
+  const verifySecurityInBackground = async (userId: string, force = false) => {
+    const now = Date.now();
+    
+    // THROTTLING: Skip if checked recently (unless it's a forced initial load)
+    if (!force && (now - lastCheckTimeRef.current < SYNC_THRESHOLD)) {
         return;
     }
 
-    setSecurityStatus('syncing');
+    // If clearly offline, don't try to reach Supabase
+    if (!navigator.onLine) {
+        setSecurityStatus('offline');
+        setAuthLoading(false);
+        return;
+    }
+
+    // Only show "Syncing" visually if it's the first time or after a long gap
+    const isFirstTime = lastCheckTimeRef.current === 0;
+    if (isFirstTime) setSecurityStatus('syncing');
     
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error("Verification Timeout")), 4000)
@@ -114,25 +128,28 @@ function App() {
       const result: any = await Promise.race([verificationPromise, timeoutPromise]);
       setIsApproved(result.is_approved);
       
-      // Persist approval status for offline use
-      if (result.is_approved) {
-        localStorage.setItem('tabib_is_approved', 'true');
-      } else {
-        localStorage.setItem('tabib_is_approved', 'false');
-      }
+      // Update local cache
+      localStorage.setItem('tabib_is_approved', result.is_approved ? 'true' : 'false');
       
+      // Update successful check timestamp
+      lastCheckTimeRef.current = now;
+
       const localSessionId = localStorage.getItem('tabib_session_id');
+      
+      // RESILIENT SESSION CHECK: 
+      // Only force logout if we are CERTAIN there is a mismatch. 
+      // Mismatches often happen if result.active_session_id exists but localSessionId is temporarily unreadable.
       if (result.active_session_id && localSessionId && result.active_session_id !== localSessionId) {
-          alert('امنیت: این حساب در دستگاه دیگری باز شده است. خروج اجباری...');
+          alert('امنیت: این حساب در دستگاه دیگری باز شده است. جهت محافظت از داده‌های بیماران، این نشست متوقف شد.');
           handleSignOutForced();
           return;
       }
 
-      setSecurityStatus('verified');
+      if (isFirstTime) setSecurityStatus('verified');
       setAuthLoading(false);
     } catch (e: any) {
-      console.warn("Security sync failed, falling back to cached state", e);
-      // If verification fails due to network/timeout, TRUST the existing session if it exists
+      console.warn("Security sync failed, falling back to cache", e);
+      // Resilience: If verification times out or network blips, trust the existing UI state
       if (hasLocalKey) {
         setSecurityStatus('offline');
       } else {
@@ -235,12 +252,6 @@ function App() {
 
   return (
     <>
-      {/* 
-         DYNAMIC ISLAND STATUS CAPSULE 
-         - Centered on mobile to avoid overlapping buttons
-         - Side-aligned on desktop for focus
-         - Automatically dismisses after success/offline detected
-      */}
       <div className="fixed top-2.5 lg:top-4 left-1/2 -translate-x-1/2 lg:left-10 lg:translate-x-0 z-[100] pointer-events-none transition-all duration-500">
         {securityStatus === 'syncing' && (
           <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-blue-100 animate-slide-down">
