@@ -618,23 +618,41 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
 
 export const processScribeAudio = async (audio: Blob): Promise<{ diagnosis: string, items: PrescriptionItem[] }> => {
     const base64Audio = await blobToBase64(audio);
-    const prompt = `Act as an expert AI Medical Scribe. You will receive an audio file of a doctor dictating a diagnosis and a prescription.
+    const prompt = `Act as an expert AI Medical Scribe for a high-end medical clinic. You will receive audio of a doctor dictating a diagnosis and a multi-item prescription.
     
-    CRITICAL INSTRUCTIONS:
-    1. EXTRACT DIAGNOSIS: Separate the medical diagnosis. If spoken in Persian/Pashto/Dari, keep the text in that language.
-    2. EXTRACT MEDICATIONS:
-       - DRUG NAME: MUST be converted to standard English medical names (Generic or common Brand).
-       - DOSAGE (Quantity): Must be formatted strictly as 'N=XX' where XX is the count (e.g., 20 tablets -> N=20).
-       - INSTRUCTIONS: Keep them in the EXACT language spoken by the doctor (Persian, Pashto, Dari, or English).
-    3. SELF-CORRECTION: If the doctor corrects themselves (e.g. "Amoxicillin 20... no wait, make it 30"), use the final intended value.
-    4. NOISE: Ignore background noise like babies crying or traffic. Focus on the doctor's clinical voice.
+    CRITICAL PROTOCOLS:
+    1. EXTRACT DIAGNOSIS: Separate the medical diagnosis. Keep it in the language it was dictated in (Persian/Pashto/Dari/English).
+    
+    2. EXTRACT MEDICATIONS (MANDATORY FORMATTING):
+       For each drug, fill the following fields:
+       
+       - DRUG NAME (Field 'drug'): Format exactly as "[Form Prefix] [Drug Name] [Strength/Concentration]".
+         * Form Prefixes: Use these standard clinical abbreviations at the VERY BEGINNING: Cap (Capsule), Tab (Tablet), Syr (Syrup), Inj (Ampoule/Vial/Injection), Oint (Ointment), Drop (Drops), Cream, Gel, Spray, Susp (Suspension), Supp (Suppository).
+         * Drug Name: Use the EXACT name dictated by the doctor (Brand name if said, Generic name if said).
+         * Strength: Convert "milligram" to "mg", "microgram" to "mcg", "unit" to "IU". 
+         * Example Output 1: "Cap Amoxicillin 500mg"
+         * Example Output 2: "Syr Diphenhydramine"
+         * Example Output 3: "Inj Neurobion"
+         * Example Output 4: "Tab Aspirin 80mg"
+       
+       - QUANTITY (Field 'dosage'): MUST be formatted strictly as 'N=XX' where XX is the total count/number of units.
+         * Example: "بیست عدد" -> "N=20"
+         * Example: "سی تا" -> "N=30"
+       
+       - INSTRUCTIONS (Field 'instruction'): Keep in the EXACT language spoken (Persian, Pashto, Dari, or English).
+         * Example: "هر ۸ ساعت مصرف شود" -> "هر ۸ ساعت مصرف شود"
+
+    3. INTELLIGENT PARSING:
+       - SELF-CORRECTION: Handle verbal corrections (e.g. "Amoxicillin 20... no wait, 30 tablets"). Use the FINAL intent.
+       - NOISE FILTERING: Ignore background noise (crying, traffic, TV). Focus ONLY on the doctor's voice.
+       - MULTI-LINGUAL: Understand Persian, Pashto, Dari, and English.
     
     OUTPUT: Return RAW JSON only.
     Structure:
     {
       "diagnosis": "The extracted diagnosis",
       "items": [
-        { "drug": "English Drug Name", "dosage": "N=XX", "instruction": "Spoken language instruction" }
+        { "drug": "Formatted Drug Name", "dosage": "N=XX", "instruction": "Spoken language instruction" }
       ]
     }
     `;
