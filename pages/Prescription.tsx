@@ -150,16 +150,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     });
     setPreviousVitals(patient.vitals || null);
 
-    if (patient.diagnosis && patient.status === 'diagnosed') {
-        setDiagnosis(patient.diagnosis.modern.diagnosis);
-        const aiItems = patient.diagnosis.modern.treatmentPlan.map(plan => ({ drug: plan, dosage: '', instruction: '' }));
-        setItems(aiItems);
-    } else {
-        setItems([]);
-        const cp = patient.chiefComplaint || '';
-        // If it was the placeholder text or empty, keep diagnosis empty
-        setDiagnosis(cp === 'ثبت نام اولیه (مستقیم)' ? '' : cp);
-    }
+    // CLEAN DESK PROTOCOL: 
+    // Always start with empty items and empty diagnosis for the final prescription.
+    // We do NOT transfer AI suggestions here to ensure full clinical autonomy of the doctor.
+    setItems([]);
+    setDiagnosis('');
 
     if (!patient.id.startsWith('guest_')) {
       const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);

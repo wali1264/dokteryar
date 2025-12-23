@@ -565,17 +565,43 @@ export const analyzeSentiment = async (audio: Blob) => {
 
 export const digitizePrescription = async (image: File): Promise<{ items: PrescriptionItem[], diagnosis?: string, vitals?: PatientVitals }> => {
     const imgPart = await fileToGenerativePart(image);
-    const prompt = `
-      You are an expert OCR Pharmacist designed for ultra-fast, literal transcription.
-      Task: Transcribe this prescription image EXACTLY as written.
+    const prompt = `You are an expert OCR Pharmacist designed for ultra-fast, literal transcription.
+Task: Transcribe this prescription image EXACTLY as written.
 
-      CRITICAL INSTRUCTIONS (NO DEVIATION):
-      1. DRUG NAMES: Transcribe exactly as seen.
-      2. INSTRUCTIONS (SIG): Transcribe exactly as seen.
-      3. DOSAGE: Extract quantity.
-      4. OUTPUT: Return RAW JSON ONLY. 
-      JSON Structure: { "items": [ { "drug": "string", "dosage": "string", "instruction": "string" } ], "diagnosis": "string", "vitals": { ... } }
-    `;
+CRITICAL INSTRUCTIONS (NO DEVIATION):
+1. DRUG NAMES: Transcribe exactly as seen.
+   - If Brand name is written, write Brand name.
+   - If Generic name is written, write Generic name.
+   - Do NOT normalize, correct, or translate drug names.
+   - Include strength/concentration if visible.
+
+2. INSTRUCTIONS (SIG): Transcribe exactly as seen.
+   - Do NOT translate to Persian.
+   - Do NOT expand abbreviations.
+   - Example: If text is "1x3", output "1x3". If "BID", output "BID".
+   - Keep mathematical symbols like "X", "*", "#" exactly as is.
+
+3. DOSAGE: Extract the quantity/count (e.g., "N=20" -> "20", "#30" -> "30").
+
+4. OUTPUT: Return RAW JSON ONLY. No markdown formatting.
+
+JSON Structure:
+{
+  "items": [
+    { "drug": "Exact Drug Name", "dosage": "Qty", "instruction": "Exact Instruction" }
+  ],
+  "diagnosis": "string (if visible)",
+  "vitals": {
+    "bloodPressure": "string",
+    "heartRate": "string",
+    "temperature": "string",
+    "spO2": "string",
+    "weight": "string",
+    "height": "string",
+    "respiratoryRate": "string",
+    "bloodSugar": "string"
+  }
+}`;
     const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [imgPart, { text: prompt }] }], config: { thinkingConfig: { thinkingBudget: 0 } } });
     return safeParseJSON(response.text || "{}");
 };
