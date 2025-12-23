@@ -616,6 +616,36 @@ export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
     return response.text || "";
 };
 
+export const processScribeAudio = async (audio: Blob): Promise<{ diagnosis: string, items: PrescriptionItem[] }> => {
+    const base64Audio = await blobToBase64(audio);
+    const prompt = `Act as an expert AI Medical Scribe. You will receive an audio file of a doctor dictating a diagnosis and a prescription.
+    
+    CRITICAL INSTRUCTIONS:
+    1. EXTRACT DIAGNOSIS: Separate the medical diagnosis. If spoken in Persian/Pashto/Dari, keep the text in that language.
+    2. EXTRACT MEDICATIONS:
+       - DRUG NAME: MUST be converted to standard English medical names (Generic or common Brand).
+       - DOSAGE (Quantity): Must be formatted strictly as 'N=XX' where XX is the count (e.g., 20 tablets -> N=20).
+       - INSTRUCTIONS: Keep them in the EXACT language spoken by the doctor (Persian, Pashto, Dari, or English).
+    3. SELF-CORRECTION: If the doctor corrects themselves (e.g. "Amoxicillin 20... no wait, make it 30"), use the final intended value.
+    4. NOISE: Ignore background noise like babies crying or traffic. Focus on the doctor's clinical voice.
+    
+    OUTPUT: Return RAW JSON only.
+    Structure:
+    {
+      "diagnosis": "The extracted diagnosis",
+      "items": [
+        { "drug": "English Drug Name", "dosage": "N=XX", "instruction": "Spoken language instruction" }
+      ]
+    }
+    `;
+    const response = await callProxy({
+      model: "gemini-2.5-flash",
+      contents: [{ parts: [ { inlineData: { mimeType: "audio/mp3", data: base64Audio } }, { text: prompt } ] }],
+      config: {}
+    });
+    return safeParseJSON(response.text || "{}");
+};
+
 export const generateAudioSummary = async (text: string): Promise<string> => {
     const prompt = `Read this summary professionally in Persian: ${text.substring(0, 1000)}`;
     const response = await callProxy({

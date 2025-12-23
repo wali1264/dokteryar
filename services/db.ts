@@ -8,7 +8,7 @@ const SETTINGS_STORE = 'settings';
 const PROFILE_STORE = 'doctor_profile';
 const DRUG_STORE = 'drugs';
 const USAGE_STORE = 'drug_usage';
-const VERSION = 5; // Upgraded version for Mega-Bank
+const VERSION = 5; 
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -19,6 +19,7 @@ export const initDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
         store.createIndex('name', 'name', { unique: false });
+        store.createIndex('displayId', 'displayId', { unique: true });
         store.createIndex('visitDate', 'visitDate', { unique: false });
       }
       if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
@@ -57,7 +58,6 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
   });
 
   if (count === 0) {
-    console.log("Generating Mega-Bank (1500+ Items)...");
     const generics = [
       'Amoxicillin', 'Azithromycin', 'Metformin', 'Atorvastatin', 'Amlodipine', 
       'Losartan', 'Metoprolol', 'Omeprazole', 'Sertraline', 'Alprazolam',
@@ -102,8 +102,6 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
     
     generics.forEach(gen => {
       forms.forEach(f => {
-        // Simple logic to avoid nonsensical combinations like "Metformin Ointment" if desired, 
-        // but for a mega-bank, comprehensiveness is better.
         const fullName = `${f.prefix} ${gen}`;
         writeStore.put({ 
           id: crypto.randomUUID(), 
@@ -117,8 +115,26 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
   }
 };
 
-// --- Drug Methods ---
+// --- ID Generation ---
+export const getNextDisplayId = async (): Promise<string> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = () => {
+      const records = request.result as PatientRecord[];
+      const ids = records
+        .map(r => parseInt(r.displayId || "0"))
+        .filter(id => !isNaN(id));
+      const maxId = ids.length > 0 ? Math.max(...ids) : 0;
+      const nextId = maxId + 1;
+      resolve(nextId.toString().padStart(3, '0'));
+    };
+  });
+};
 
+// --- Drug Methods ---
 export const getAllDrugs = async (): Promise<Drug[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -153,7 +169,6 @@ export const deleteDrug = async (id: string): Promise<void> => {
 };
 
 // --- Usage Tracking Methods ---
-
 export interface UsageEntry extends DrugUsage {
   lastDosage?: string;
   lastInstruction?: string;
@@ -206,9 +221,19 @@ export const getUsageStats = async (): Promise<UsageEntry[]> => {
 };
 
 // --- Standard Patient Record Methods ---
-
 export const saveRecord = async (record: PatientRecord): Promise<void> => {
   const db = await initDB();
+  
+  // Ensure patient ID display persistence across records for same patient name
+  if (!record.displayId) {
+      const records = await getRecordsByName(record.name);
+      if (records.length > 0) {
+          record.displayId = records[0].displayId;
+      } else {
+          record.displayId = await getNextDisplayId();
+      }
+  }
+
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
@@ -260,7 +285,6 @@ export const getRecordsByName = async (name: string): Promise<PatientRecord[]> =
 };
 
 // --- Template Methods ---
-
 export const saveTemplate = async (template: PrescriptionTemplate): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -295,7 +319,6 @@ export const deleteTemplate = async (id: string): Promise<void> => {
 };
 
 // --- Settings Methods ---
-
 export const saveSettings = async (settings: PrescriptionSettings): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -319,7 +342,6 @@ export const getSettings = async (): Promise<PrescriptionSettings | undefined> =
 };
 
 // --- Doctor Profile Methods ---
-
 export const saveDoctorProfile = async (profile: DoctorProfile): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -343,7 +365,6 @@ export const getDoctorProfile = async (): Promise<DoctorProfile | undefined> => 
 };
 
 // --- Backup & Restore ---
-
 export const exportDatabase = async (): Promise<string> => {
   const db = await initDB();
   return new Promise(async (resolve, reject) => {

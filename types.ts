@@ -14,6 +14,7 @@ export interface PatientVitals {
 
 export interface PatientData {
   id?: string;
+  displayId?: string; // e.g., "001", "002"
   name: string;
   age: string;
   gender: 'male' | 'female';
@@ -74,7 +75,6 @@ export interface DrugUsage {
   commonInstructions: string[]; // Top 3 most used instructions for this drug
 }
 
-// Phase 24: Advanced Layout Types
 export interface LayoutElement {
   id: string;
   type: 'text' | 'list' | 'container';
@@ -90,12 +90,9 @@ export interface LayoutElement {
 }
 
 export interface PrescriptionSettings {
-  // Legacy fields (kept for backward compatibility if needed)
   topPadding: number; 
   fontFamily: string;
   fontSize: number;
-  
-  // Phase 24 fields
   paperSize: 'A4' | 'A5';
   backgroundImage?: string; // Base64
   printBackground: boolean; // Toggle to print the bg image or not
@@ -118,7 +115,7 @@ export interface DoctorDiagnosis {
   treatmentPlan: string[];
   lifestyle: string[];
   warnings: string[];
-  confidence?: string; // New field for Senior Consultant
+  confidence?: string; 
 }
 
 export interface DualDiagnosis {
