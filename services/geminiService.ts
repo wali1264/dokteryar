@@ -143,7 +143,7 @@ const ensureArrays = (data: any, fields: string[]) => {
   return clean;
 };
 
-// --- CORE ANALYSIS FUNCTIONS (UNCHANGED PER REQUEST) ---
+// --- CORE ANALYSIS FUNCTIONS ---
 
 export const analyzePatient = async (data: PatientData | PatientRecord): Promise<DualDiagnosis> => {
     const parts: any[] = [];
@@ -223,6 +223,44 @@ export const analyzePatient = async (data: PatientData | PatientRecord): Promise
     return parsedData as DualDiagnosis;
 };
 
+export const checkPrescriptionSafety = async (items: PrescriptionItem[], patientRecord: PatientRecord): Promise<any> => {
+  const prompt = `
+    Act as a Senior Clinical Pharmacologist and Patient Safety Officer.
+    
+    PATIENT PROFILE:
+    - Name: ${patientRecord.name}, Age: ${patientRecord.age}, Gender: ${patientRecord.gender}
+    - Medical History: ${patientRecord.history || 'None reported'}
+    - Allergies: ${patientRecord.allergies || 'None reported'}
+    - Current Vitals: BP: ${patientRecord.vitals.bloodPressure}, HR: ${patientRecord.vitals.heartRate}, Weight: ${patientRecord.vitals.weight}kg
+    
+    CURRENT PRESCRIPTION:
+    ${items.map((it, i) => `${i+1}. ${it.drug} (${it.dosage}) - ${it.instruction}`).join('\n')}
+
+    TASK: Perform a comprehensive safety audit.
+    1. Drug-Drug Interactions: Check if drugs in the current prescription interact.
+    2. Drug-History Interactions: Check if drugs are contraindicated given the patient's history (e.g., heart issues, renal state).
+    3. Drug-Allergy Check: Ensure no drugs trigger known allergies.
+    4. Vitals Correlation: Check if dosages or drugs are risky given current BP/HR.
+
+    OUTPUT FORMAT: Return RAW JSON only in PERSIAN (values).
+    Structure:
+    {
+      "status": "safe" | "warning" | "critical",
+      "summary": "Short professional summary in Persian",
+      "alerts": [
+        {
+          "severity": "critical" | "warning",
+          "title": "Short title (Persian)",
+          "description": "Detailed explanation (Persian)",
+          "alternative": "Suggested safer alternative or dose adjustment (Persian)"
+        }
+      ]
+    }
+  `;
+  const response = await callProxy({ model: "gemini-2.5-flash", contents: [{ parts: [{ text: prompt }] }], config: {} });
+  return safeParseJSON(response.text || "{}");
+};
+
 export const generateConsensus = async (modern: DoctorDiagnosis, traditional: DoctorDiagnosis): Promise<string> => {
     const prompt = `
       Act as a Medical Board Director providing a final consultation report to the attending physician.
@@ -241,7 +279,7 @@ export const generateConsensus = async (modern: DoctorDiagnosis, traditional: Do
     return response.text || "خطا در جمع‌بندی";
 };
 
-// --- SPECIALIZED DEPARTMENTS IMPLEMENTATION (UPGRADED STAGE 1 & 2) ---
+// --- SPECIALIZED DEPARTMENTS IMPLEMENTATION ---
 
 async function analyzeSpecialized(
   input: File | Blob | string | object, 
@@ -263,7 +301,6 @@ async function analyzeSpecialized(
   return ensureArrays(parsed, requiredArrays);
 }
 
-// 1. CARDIOLOGY (Expert-Link Upgraded)
 export const analyzeECG = async (image: File, context: string) => {
   const prompt = `You are a Senior Consultant Cardiologist. Analyze this ECG image.
   Identify PR, QRS, and QT intervals. Look for rhythm abnormalities or ischemic changes.
@@ -322,7 +359,6 @@ export const calculateCardiacRisk = async (profile: string) => {
   return analyzeSpecialized(profile, prompt);
 };
 
-// 2. NEUROLOGY (Expert-Link Upgraded)
 export const analyzeNeurologyVideo = async (video: File, type: string) => {
   const prompt = `You are a Senior Neurologist. Analyze this video for ${type} (tremor/gait/motion).
   Observe frequency, amplitude, and patterns. Correlate with common neurological disorders.
@@ -355,7 +391,6 @@ export const analyzeCognitiveSpeech = async (audio: Blob) => {
   return analyzeSpecialized(audio, prompt);
 };
 
-// 3. RADIOLOGY (Expert-Link Upgraded)
 export const analyzeRadiology = async (image: File, modality: string, region: string): Promise<RadiologyAnalysis> => {
     const prompt = `You are a Senior Interventional Radiologist. Analyze this ${modality} of ${region}.
     Use standard medical grading where applicable (e.g., BI-RADS, PI-RADS, AO Classification).
@@ -376,7 +411,6 @@ export const analyzeRadiology = async (image: File, modality: string, region: st
     return response as RadiologyAnalysis;
 };
 
-// 4. EMERGENCY (Expert-Link Upgraded)
 export const analyzeEmergency = async (input: any, type: string) => {
   const prompt = `You are a Senior Emergency Physician. Analyze this ${type}.
   Perform triage assessment. Identify immediate life threats.
@@ -395,9 +429,6 @@ export const analyzeEmergency = async (input: any, type: string) => {
   return analyzeSpecialized(input, prompt, ['findings', 'actions']);
 };
 
-// --- STAGE 2 UPGRADES (Lab, Physical Exam, Pulmonology) ---
-
-// 5. LABORATORY (Expert-Link Upgraded)
 export const analyzeCulture = async (image: File, type: string, notes: string): Promise<LabAnalysis> => {
     const prompt = `You are a Senior Consultant Pathologist and Microbiologist. Analyze this ${type} culture image.
     Identify colony morphology, presence of hemolysis, and lactose fermentation if applicable.
@@ -418,7 +449,6 @@ export const analyzeCulture = async (image: File, type: string, notes: string): 
     return res as LabAnalysis;
 };
 
-// 6. PHYSICAL EXAM (Expert-Link Upgraded)
 export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongue' | 'face'): Promise<PhysicalExamAnalysis> => {
     const prompt = `You are a Senior Clinical Consultant (Dermatology & Internal Medicine). 
     Analyze this physical exam image of the ${examType}.
@@ -442,7 +472,6 @@ export const analyzePhysicalExam = async (image: File, examType: 'skin' | 'tongu
     return res as PhysicalExamAnalysis;
 };
 
-// 7. PULMONOLOGY (Expert-Link Upgraded)
 export const analyzePulmonology = async (input: any, type: string) => {
   const prompt = `You are a Consultant Pulmonologist. Analyze this ${type}.
   If audio: analyze cough frequency and resonance (Bronchial vs Croupy).
@@ -463,8 +492,6 @@ export const analyzePulmonology = async (input: any, type: string) => {
   Tone: Specialized Lung Clinic Report.`;
   return analyzeSpecialized(input, prompt, ['findings', 'metrics', 'recommendations', 'nextSteps']);
 };
-
-// --- REMAINING DEPARTMENTS (To be upgraded in future stages) ---
 
 export const analyzeOphthalmology = async (image: File, type: string) => {
   const prompt = `You are a Consultant Ophthalmologist. Analyze this eye image (${type}). Include confidence percentage.`;

@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { digitizePrescription } from '../services/geminiService';
+import { digitizePrescription, checkPrescriptionSafety } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, ShieldCloseIcon, Info } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -42,6 +42,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [allPatients, setAllPatients] = useState<PatientRecord[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientRecord | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isExpressMode, setIsExpressMode] = useState(false);
   
   const [diagnosis, setDiagnosis] = useState('');
   const [items, setItems] = useState<PrescriptionItem[]>([]);
@@ -70,6 +71,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [templateName, setTemplateName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
+  const [showQuickEntryModal, setShowQuickEntryModal] = useState(false);
+
+  // AI Safety State
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [safetyReport, setSafetyReport] = useState<any | null>(null);
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -77,7 +84,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [showCamera, setShowCamera] = useState(false);
   const [scanOrientation, setScanOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
-  // New Patient Form
+  // New Patient / Quick Form States
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientAge, setNewPatientAge] = useState('');
   const [newPatientGender, setNewPatientGender] = useState<'male' | 'female'>('male');
@@ -108,10 +115,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   }, [initialRecord]);
 
   useEffect(() => {
-    if (!selectedPatient || viewMode !== 'editor') return;
+    if (!selectedPatient || viewMode !== 'editor' || isExpressMode) return;
     const draft = { items, diagnosis, vitals, timestamp: Date.now() };
     localStorage.setItem(`tabib_draft_${selectedPatient.id}`, JSON.stringify(draft));
-  }, [items, diagnosis, vitals, selectedPatient, viewMode]);
+  }, [items, diagnosis, vitals, selectedPatient, viewMode, isExpressMode]);
 
   const loadInitialData = async () => {
     try {
@@ -134,6 +141,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   const handleSelectPatient = (patient: PatientRecord) => {
     setSelectedPatient(patient);
+    setIsExpressMode(patient.id.startsWith('guest_'));
     setViewMode('editor');
     setVitals({
       bloodPressure: '', heartRate: '', temperature: '', spO2: '', 
@@ -149,18 +157,21 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } else {
         setItems([]);
         const cp = patient.chiefComplaint || '';
+        // If it was the placeholder text or empty, keep diagnosis empty
         setDiagnosis(cp === 'ثبت نام اولیه (مستقیم)' ? '' : cp);
     }
 
-    const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
-    if (savedDraft) {
-      try {
-        const parsed = JSON.parse(savedDraft);
-        if (parsed.items.length > 0 || parsed.diagnosis || parsed.vitals.bloodPressure) {
-          setActiveDraft(parsed);
-          setShowDraftBanner(true);
-        }
-      } catch (e) { console.error("Draft parse error", e); }
+    if (!patient.id.startsWith('guest_')) {
+      const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
+      if (savedDraft) {
+        try {
+          const parsed = JSON.parse(savedDraft);
+          if (parsed.items.length > 0 || parsed.diagnosis || parsed.vitals.bloodPressure) {
+            setActiveDraft(parsed);
+            setShowDraftBanner(true);
+          }
+        } catch (e) { console.error("Draft parse error", e); }
+      }
     }
   };
 
@@ -194,9 +205,33 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     };
     await saveRecord(newRecord);
     setShowNewPatientModal(false);
+    clearFormStates();
+    loadInitialData(); handleSelectPatient(newRecord);
+  };
+
+  const handleQuickEntry = () => {
+    const guestRecord: PatientRecord = {
+        id: `guest_${Date.now()}`,
+        name: newPatientName || 'بیمار مهمان',
+        age: newPatientAge,
+        gender: newPatientGender,
+        chiefComplaint: '', // Empty chief complaint for clean start in editor
+        history: '',
+        visitDate: Date.now(),
+        status: 'waiting',
+        vitals: {
+            bloodPressure: '', heartRate: '', temperature: '', spO2: '', 
+            weight: newPatientWeight, height: '', respiratoryRate: '', bloodSugar: ''
+        }
+    };
+    setShowQuickEntryModal(false);
+    clearFormStates();
+    handleSelectPatient(guestRecord);
+  };
+
+  const clearFormStates = () => {
     setNewPatientName(''); setNewPatientAge(''); setNewPatientGender('male'); setNewPatientPhone('');
     setNewPatientWeight(''); setNewPatientHistory(''); setNewPatientAllergies('');
-    loadInitialData(); handleSelectPatient(newRecord);
   };
 
   const startCamera = async () => {
@@ -283,6 +318,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } catch (e) { console.error(e); }
   };
 
+  const handleAuditSafety = async () => {
+    if (!isOnline) {
+      alert("دکتر عزیز، واکاوی ایمنی هوشمند نیازمند اتصال به شبکه می‌باشد.");
+      return;
+    }
+    if (items.length === 0 || !items.some(it => it.drug)) {
+      alert("لطفاً ابتدا اقلام دارویی را وارد کنید.");
+      return;
+    }
+    
+    setSafetyLoading(true);
+    try {
+      const report = await checkPrescriptionSafety(items, { ...selectedPatient!, vitals });
+      setSafetyReport(report);
+      setShowSafetyModal(true);
+    } catch (e) {
+      alert("خطا در واکاوی ایمنی. لطفاً دوباره تلاش کنید.");
+    } finally {
+      setSafetyLoading(false);
+    }
+  };
+
   const loadTemplate = (t: PrescriptionTemplate) => {
     setItems(t.items);
     if(window.innerWidth < 1024) setMobileTab('rx'); 
@@ -339,7 +396,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   };
 
   const handlePrint = (mode: 'plain' | 'custom') => {
-     saveToPatientRecord();
+     if (!isExpressMode) saveToPatientRecord();
      items.forEach(item => { if (item.drug) trackDrugUsage(item.drug, item.dosage, item.instruction); });
      const win = window.open('', '_blank', 'width=900,height=1200');
      if (!win) return;
@@ -404,10 +461,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      }
      win.document.write(`<html dir="rtl"><head><title>پیش‌نمایش چاپ</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${controlHtml}${content}</body></html>`);
      win.document.close(); setShowPrintModal(false);
+     if (isExpressMode) setViewMode('landing');
   };
 
   const saveToPatientRecord = async () => {
-     if (!selectedPatient) return;
+     if (!selectedPatient || isExpressMode) return;
      try {
        const record: PatientRecord = { ...selectedPatient, vitals: { ...selectedPatient.vitals, ...vitals }, status: 'completed', prescriptions: [ ...(selectedPatient.prescriptions || []), { id: crypto.randomUUID(), date: Date.now(), items: items, manualDiagnosis: diagnosis, manualVitals: vitals } ] };
        await saveRecord(record); localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
@@ -421,18 +479,66 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-teal-400"></div>
             <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600"><Stethoscope size={48} /></div>
             <h1 className="text-4xl font-bold text-gray-800 mb-2">میز کار نسخه نویسی</h1>
-            <p className="text-gray-500 mb-10">نام بیمار را جستجو کنید یا از اتاق تشخیص دستور دریافت کنید</p>
-            <div className="relative max-w-xl mx-auto mb-8">
-               <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none"><Search className="text-gray-400" /></div>
-               <input type="text" autoFocus placeholder="جستجوی نام بیمار..." className="w-full p-5 pr-12 text-lg bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-               <button onClick={() => setShowNewPatientModal(true)} className="absolute top-2 left-2 bottom-2 bg-teal-500 hover:bg-teal-600 text-white p-3 rounded-xl transition-all shadow-md"><UserPlus size={24} /></button>
+            <p className="text-gray-500 mb-10 font-medium">نام بیمار را جستجو کنید یا از کپسول عملیاتی برای ثبت آنی استفاده کنید</p>
+            
+            <div className="relative max-w-2xl mx-auto mb-8">
+               <div className="relative group">
+                  {/* Unified Search Terminal */}
+                  <div className="absolute inset-y-2 right-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-teal-600 transition-colors">
+                     <Search size={24} />
+                  </div>
+                  
+                  <input 
+                     type="text" 
+                     autoFocus 
+                     placeholder="جستجوی نام بیمار..." 
+                     className="w-full p-6 pr-14 pl-36 text-xl bg-gray-50 border border-gray-200 rounded-3xl focus:ring-8 focus:ring-teal-50 focus:border-teal-500 outline-none transition-all shadow-inner font-bold text-gray-700" 
+                     value={searchTerm} 
+                     onChange={e => setSearchTerm(e.target.value)} 
+                  />
+
+                  {/* Twin Action Pill (Left Side) */}
+                  <div className="absolute top-2 left-2 bottom-2 bg-white rounded-2xl flex items-center shadow-sm border border-gray-100 p-1 gap-1">
+                     <button 
+                        onClick={() => setShowQuickEntryModal(true)} 
+                        title="نسخه سریع (بدون بایگانی)"
+                        className="h-full px-4 flex items-center justify-center bg-white hover:bg-teal-50 text-teal-600 rounded-xl transition-all active:scale-95 group/quick"
+                     >
+                        <User size={26} className="group-hover/quick:scale-110 transition-transform" />
+                     </button>
+                     
+                     <div className="w-[1px] h-2/3 bg-gray-100 rounded-full"></div>
+
+                     <button 
+                        onClick={() => setShowNewPatientModal(true)} 
+                        title="ثبت نام و تشکیل پرونده" 
+                        className="h-full px-4 flex items-center justify-center bg-teal-500 hover:bg-teal-600 text-white rounded-xl shadow-md shadow-teal-100 transition-all active:scale-95 group/plus"
+                     >
+                        <UserPlus size={26} className="group-hover/plus:rotate-12 transition-transform" />
+                     </button>
+                  </div>
+               </div>
+
                {searchTerm && filteredPatients.length > 0 && (
-                 <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden z-20 max-h-64 overflow-y-auto">
-                    {filteredPatients.map(p => (<button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full text-right p-4 hover:bg-blue-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-colors"><span className="font-bold text-gray-700">{p.name}</span><span className="text-sm text-gray-400 bg-gray-100 px-2 py-1 rounded">{p.age} ساله</span></button>))}
+                 <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-20 max-h-72 overflow-y-auto animate-slide-up">
+                    {filteredPatients.map(p => (
+                       <button 
+                          key={p.id} 
+                          onClick={() => handleSelectPatient(p)} 
+                          className="w-full text-right p-5 hover:bg-teal-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-all group"
+                       >
+                          <div className="flex items-center gap-3">
+                             <div className="w-10 h-10 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 group-hover:bg-teal-500 group-hover:text-white transition-all"><User size={20}/></div>
+                             <span className="font-bold text-gray-700 text-lg">{p.name}</span>
+                          </div>
+                          <span className="text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-full group-hover:bg-white group-hover:shadow-sm">{p.age} ساله</span>
+                       </button>
+                    ))}
                  </div>
                )}
             </div>
          </div>
+
          {showNewPatientModal && (
             <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
                <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
@@ -449,6 +555,48 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                </div>
             </div>
          )}
+         {showQuickEntryModal && (
+            <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
+               <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
+                  <div className="flex justify-between items-center mb-8 relative z-10">
+                     <div>
+                        <h3 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+                           <Zap className="text-teal-600" /> نسخه سریع
+                        </h3>
+                        <p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p>
+                     </div>
+                     <button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button>
+                  </div>
+                  <div className="space-y-5 relative z-10">
+                     <div className="space-y-1">
+                        <label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label>
+                        <input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="---" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} />
+                     </div>
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                           <label className="text-xs font-black text-teal-600 mr-1">سن</label>
+                           <input type="number" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="-" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-xs font-black text-teal-600 mr-1">وزن (kg)</label>
+                           <input type="number" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="-" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} />
+                        </div>
+                     </div>
+                     <div className="space-y-1">
+                        <label className="text-xs font-black text-teal-600 mr-1">جنسیت</label>
+                        <div className="flex bg-gray-100/50 p-1.5 rounded-2xl">
+                           <button onClick={() => setNewPatientGender('male')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'male' ? 'bg-white shadow-md text-blue-600' : 'text-gray-400'}`}>آقا</button>
+                           <button onClick={() => setNewPatientGender('female')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'female' ? 'bg-white shadow-md text-pink-600' : 'text-gray-400'}`}>خانم</button>
+                        </div>
+                     </div>
+                     <button onClick={handleQuickEntry} className="w-full bg-teal-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-teal-200 mt-4 flex items-center justify-center gap-3 text-lg hover:bg-teal-700 transition-all active:scale-95">
+                        <FileSignature size={24} /> شروع نسخه‌نویسی
+                     </button>
+                  </div>
+               </div>
+            </div>
+         )}
       </div>
     );
   }
@@ -462,6 +610,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         }
         .animate-scan-line {
           animation: scan-line 3s linear infinite;
+        }
+        @keyframes safety-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+        .animate-safety-pulse {
+          animation: safety-pulse 2s infinite;
         }
       `}</style>
 
@@ -508,7 +664,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       <div className="lg:hidden flex flex-col gap-4">
          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
-            <div className="flex items-center gap-2"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button><button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button><button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button></div>
+            <div className="flex items-center gap-2">
+               {isExpressMode && <div className="bg-amber-100 text-amber-600 p-2 rounded-xl animate-pulse"><ZapOff size={20} /></div>}
+               <button 
+                  onClick={handleAuditSafety} 
+                  disabled={safetyLoading || items.length === 0} 
+                  className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}
+               >
+                  {safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}
+               </button>
+               {!isExpressMode && <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>}
+               <button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
+               <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
+            </div>
          </div>
 
          <div className="bg-gray-100 p-1 rounded-xl flex">
@@ -597,7 +765,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                </div>
             )}
          </div>
-         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />چاپ و اتمام نسخه</button></div>
+         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden">
+            {!isExpressMode && <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button>}
+            <button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />چاپ و اتمام نسخه</button>
+         </div>
       </div>
 
       {/* DESKTOP UI */}
@@ -607,7 +778,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
              <button onClick={() => setViewMode('landing')} className="p-2 bg-white rounded-xl shadow-sm hover:bg-gray-50 text-gray-500"><ArrowLeft /></button>
              <FileSignature className="text-indigo-600 w-8 h-8" />
              <div>
-               <h2 className="text-2xl font-bold text-gray-800">میز کار دکتر</h2>
+               <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
+                  میز کار دکتر
+                  {isExpressMode && <span className="bg-amber-50 text-amber-600 text-[10px] font-black px-2 py-1 rounded-lg border border-amber-200 flex items-center gap-1 animate-pulse"><ZapOff size={10} /> حالت نسخه سریع (بدون ثبت در بایگانی)</span>}
+               </h2>
                <p className="text-xs text-gray-400">پرونده: {selectedPatient?.name}</p>
              </div>
            </div>
@@ -626,6 +800,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     <h4 className="font-bold text-blue-700 mb-4 flex items-center gap-2 text-sm"><History size={16} />تاریخچه علائم</h4>
                     <div className="space-y-2">
                        {[ { l: 'BP', v: previousVitals?.bloodPressure, c: 'text-red-600' }, { l: 'HR', v: previousVitals?.heartRate, c: 'text-rose-600' }, { l: 'Temp', v: previousVitals?.temperature, c: 'text-orange-600' }, { l: 'BS', v: previousVitals?.bloodSugar, c: 'text-pink-600' }, { l: 'Wt', v: previousVitals?.weight, c: 'text-indigo-600' } ].map(iv => iv.v ? (<div key={iv.l} className="flex justify-between items-center bg-white p-2 rounded-lg border border-blue-50 shadow-sm"><span className="text-[10px] font-bold text-gray-400">{iv.l}</span><span className={`text-xs font-black ${iv.c}`}>{iv.v}</span></div>) : null)}
+                       {!previousVitals && <p className="text-[10px] text-center text-blue-300 py-4">سابقه‌ای موجود نیست</p>}
                     </div>
                  </div>
               </div>
@@ -640,7 +815,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                        <div><span className="text-[10px] text-gray-400 font-bold block mb-0.5 uppercase">سن</span><span className="font-bold text-base text-gray-800">{selectedPatient?.age}</span></div>
                        <div><span className="text-[10px] text-gray-400 font-bold block mb-0.5 uppercase">جنسیت</span><span className="font-bold text-base text-gray-800">{selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'}</span></div>
                     </div>
-                    <div className="relative">
+                    <div className="flex gap-2">
+                       <button 
+                          onClick={handleAuditSafety} 
+                          disabled={safetyLoading || items.length === 0} 
+                          className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-600 text-white animate-safety-pulse hover:bg-indigo-700') : 'bg-gray-100 text-gray-300 cursor-not-allowed border-gray-200 border'}`}
+                       >
+                          {safetyLoading ? <Loader2 size={16} className="animate-spin" /> : <ShieldAlert size={16} />} 
+                          {safetyLoading ? 'پایش ایمنی...' : 'سپر ایمنی هوشمند'}
+                       </button>
                        <button onClick={startCamera} disabled={!isOnline} className={`bg-white border text-blue-600 px-5 py-2 rounded-xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? 'border-blue-200 hover:bg-blue-50 hover:shadow-md' : 'border-gray-200 text-gray-400 cursor-not-allowed'}`}>
                           {isOnline ? <ScanLine size={18} /> : <WifiOff size={18} />} اسکن نسخه هوشمند
                        </button>
@@ -708,14 +891,77 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
                  {/* STICKY BOTTOM ACTIONS */}
                  <div className="mt-6 pt-6 border-t border-gray-100 flex justify-end gap-3 sticky bottom-0 bg-white pb-2 z-20">
-                    <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-8 py-4 rounded-2xl font-black text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"><Save size={20} />ذخیره در قالب‌ها</button>
+                    <button 
+                       onClick={handleAuditSafety} 
+                       disabled={safetyLoading || items.length === 0} 
+                       className={`px-8 py-4 rounded-2xl font-black text-sm transition-all active:scale-95 flex items-center gap-2 ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100') : 'bg-gray-100 text-gray-300 cursor-not-allowed opacity-50'}`}
+                    >
+                       {safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />} 
+                       {safetyLoading ? 'واکاوی ایمنی...' : 'سپر ایمنی AI'}
+                    </button>
+                    {!isExpressMode && <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-8 py-4 rounded-2xl font-black text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"><Save size={20} />ذخیره در قالب‌ها</button>}
                     <button onClick={() => setShowPrintModal(true)} disabled={items.length === 0} className="px-10 py-4 rounded-2xl font-black text-sm text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"><Printer size={20} />تایید نهایی و چاپ نسخه</button>
                  </div>
               </div>
            </div>
       </div>
 
-      {/* Camera and Modals (Unchanged logic, wrapped in portals or high z-index) */}
+      {/* Safety Report Modal */}
+      {showSafetyModal && safetyReport && (
+         <div className="fixed inset-0 z-[180] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
+               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                  <div className="flex items-center gap-4">
+                     <div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert size={32} /></div>
+                     <div>
+                        <h3 className="text-2xl font-black">گزارش واکاوی ایمنی نسخه</h3>
+                        <p className="text-white/80 text-sm font-bold mt-1">توسط واحد فارماکولوژی طبیب هوشمند</p>
+                     </div>
+                  </div>
+                  <button onClick={() => setShowSafetyModal(false)} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><X /></button>
+               </div>
+               <div className="p-8 overflow-y-auto space-y-6">
+                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 italic text-gray-600 text-lg leading-relaxed shadow-inner">
+                     "{safetyReport.summary}"
+                  </div>
+                  
+                  {safetyReport.alerts && safetyReport.alerts.length > 0 ? (
+                     <div className="space-y-4">
+                        <h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest border-b pb-2">تداخلات و هشدارهای شناسایی شده</h4>
+                        {safetyReport.alerts.map((alert: any, i: number) => (
+                           <div key={i} className={`p-5 rounded-3xl border flex gap-4 items-start ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                              <div className={`p-2 rounded-xl shrink-0 ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                                 {alert.severity === 'critical' ? <AlertCircle size={20} /> : <Info size={20} />}
+                              </div>
+                              <div className="space-y-1">
+                                 <h5 className={`font-black ${alert.severity === 'critical' ? 'text-red-800' : 'text-amber-800'}`}>{alert.title}</h5>
+                                 <p className="text-sm text-gray-700 leading-relaxed font-medium">{alert.description}</p>
+                                 {alert.alternative && (
+                                    <div className="mt-3 pt-3 border-t border-white/50">
+                                       <span className="text-[10px] font-black uppercase text-indigo-500 block mb-1">پیشنهاد جایگزین / اصلاح:</span>
+                                       <p className="text-sm font-black text-indigo-900">{alert.alternative}</p>
+                                    </div>
+                                 )}
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                     <div className="py-12 text-center space-y-4">
+                        <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-lg"><ShieldCheck size={40} /></div>
+                        <h4 className="text-xl font-black text-emerald-800">نسخه فاقد تداخل بحرانی</h4>
+                        <p className="text-gray-500 max-w-xs mx-auto font-bold">هیچ تداخل دارویی یا منعی برای این بیمار شناسایی نشد.</p>
+                     </div>
+                  )}
+               </div>
+               <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-center">
+                  <button onClick={() => setShowSafetyModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-2xl font-black shadow-lg hover:bg-black transition-all">تایید و بازگشت</button>
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* Camera and Modals */}
       {showCamera && (<div className="fixed inset-0 z-[150] bg-black flex flex-col"><div className="flex justify-between items-center p-4 bg-black/50 text-white absolute top-0 left-0 right-0 z-10"><h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3><button onClick={stopCamera} className="p-2 bg-white/20 rounded-full"><X /></button></div><div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden"><video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain" /><canvas ref={canvasRef} className="hidden" /></div><div className="bg-black p-6 pb-10 flex justify-between items-center"><button onClick={() => setScanOrientation(prev => prev === 'portrait' ? 'landscape' : 'portrait')} className="text-white flex flex-col items-center gap-1 text-xs"><RotateCw size={24} /><span>چرخش</span></button><button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg"><div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div></button><div className="w-12 relative overflow-hidden"><input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleFileUpload} /><button className="text-white flex flex-col items-center gap-1 text-xs"><ImageIcon size={24} /><span>گالری</span></button></div></div></div>)}
       {showSaveModal && (<div className="fixed inset-0 bg-black/50 z-[160] backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-fade-in"><h3 className="font-black text-xl text-gray-800 mb-6 flex items-center gap-2"><LayoutTemplate className="text-indigo-600" />ذخیره به عنوان قالب</h3><input autoFocus className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl mb-6 outline-none focus:ring-4 focus:ring-indigo-100 font-bold" placeholder="نام قالب (مثال: سرماخوردگی)" value={templateName} onChange={e => setTemplateName(e.target.value)} /><div className="flex justify-end gap-3"><button onClick={() => setShowSaveModal(false)} className="px-6 py-3 font-bold text-gray-500 hover:text-gray-800 transition-colors">لغو</button><button onClick={handleSaveTemplate} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100">ذخیره نسخه</button></div></div></div>)}
       {showPrintModal && (
