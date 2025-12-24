@@ -124,10 +124,13 @@ export const getNextDisplayId = async (): Promise<string> => {
     const request = store.getAll();
     request.onsuccess = () => {
       const records = request.result as PatientRecord[];
-      const ids = records
-        .map(r => parseInt(r.displayId || "0"))
-        .filter(id => !isNaN(id));
-      const maxId = ids.length > 0 ? Math.max(...ids) : 0;
+      // Find the maximum numeric displayId across all patient records
+      const numericIds = records
+        .map(r => {
+            const parsed = parseInt(r.displayId || "0", 10);
+            return isNaN(parsed) ? 0 : parsed;
+        });
+      const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
       const nextId = maxId + 1;
       resolve(nextId.toString().padStart(3, '0'));
     };
@@ -227,7 +230,7 @@ export const saveRecord = async (record: PatientRecord): Promise<void> => {
   // Ensure patient ID display persistence across records for same patient name
   if (!record.displayId) {
       const records = await getRecordsByName(record.name);
-      if (records.length > 0) {
+      if (records.length > 0 && records[0].displayId) {
           record.displayId = records[0].displayId;
       } else {
           record.displayId = await getNextDisplayId();
@@ -241,6 +244,29 @@ export const saveRecord = async (record: PatientRecord): Promise<void> => {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+};
+
+export const deleteRecord = async (id: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const deletePatientRecords = async (name: string): Promise<void> => {
+    const db = await initDB();
+    const records = await getRecordsByName(name);
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        records.forEach(r => store.delete(r.id));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
 };
 
 export const getAllRecords = async (): Promise<PatientRecord[]> => {

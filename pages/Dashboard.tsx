@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
-import { getAllRecords, getDoctorProfile, getSettings, saveRecord } from '../services/db';
+import { getAllRecords, getDoctorProfile, getSettings, saveRecord, deleteRecord, deletePatientRecords } from '../services/db';
 import { PatientRecord, AppRoute, PrescriptionItem, DoctorProfile, PrescriptionSettings, PrescriptionRecord } from '../types';
-import { Search, Archive, User, FileText, ChevronLeft, Clock, Printer, X, Activity, Pill, Edit3, Save, AlertCircle, Hash, Phone, UserPlus, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Archive, User, FileText, ChevronLeft, Clock, Printer, X, Activity, Pill, Edit3, Save, AlertCircle, Hash, Phone, UserPlus, History, Trash2 } from 'lucide-react';
 
 interface DashboardProps {
   onNavigate: (route: AppRoute, record?: PatientRecord) => void;
@@ -72,6 +72,30 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       setIsEditingProfile(false);
   };
 
+  const handleDeleteRecord = async (id: string) => {
+    if (confirm('آیا مایل به حذف این رکورد ویزیت هستید؟')) {
+        await deleteRecord(id);
+        if (selectedPatientName) {
+            const allRecords = await getAllRecords();
+            const updatedHistory = allRecords.filter(r => r.name === selectedPatientName);
+            if (updatedHistory.length === 0) {
+                closePatientFile();
+            } else {
+                setSelectedPatientHistory(updatedHistory);
+            }
+        }
+        await fetchRecords();
+    }
+  };
+
+  const handleDeletePatient = async (name: string) => {
+    if (confirm(`آیا از حذف کامل پرونده «${name}» و تمامی سوابق مراجعات او اطمینان دارید؟ این عمل غیرقابل بازگشت است.`)) {
+        await deletePatientRecords(name);
+        closePatientFile();
+        await fetchRecords();
+    }
+  };
+
   const startEditing = () => {
     if (selectedPatientHistory.length === 0) return;
     const latest = selectedPatientHistory[0];
@@ -112,6 +136,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      
      const snapshotVitals = pres.manualVitals || record.vitals;
      const snapshotDiagnosis = pres.manualDiagnosis || (record.diagnosis ? record.diagnosis.modern.diagnosis : record.chiefComplaint);
+     const snapshotChiefComplaint = pres.manualChiefComplaint || '';
      const items = pres.items || []; 
 
      const win = window.open('', '', 'width=900,height=1200');
@@ -134,7 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
        .btn { padding: 10px 24px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; }
        .btn-print { background: #2563eb; color: white; }
        .btn-close { background: #fee2e2; color: #ef4444; }
-       @media print { .no-print { display: none !important; } html, body { height: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; } .custom-container, .rx-container { width: 100%; height: 100%; max-height: 100%; page-break-after: avoid; page-break-inside: avoid; break-inside: avoid; overflow: hidden; transform: scale(0.98); transform-origin: top center; } }
+       @media print { .no-print { display: none !important; } html, body { height: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; } .custom-container, .rx-container { width: 100%; height: 100%; max-height: 100%; page-break-after: avoid; page-break-inside: avoid; break-inside: avoid; overflow: hidden; transform: scale(0.98); transform-origin: top center; } .print-element { position: absolute; white-space: nowrap; } }
      `;
 
      const controlHtml = `<div class="control-bar no-print"><button class="btn btn-print" onclick="window.print()">چاپ نهایی</button><button class="btn btn-close" onclick="window.close()">بستن</button></div>`;
@@ -146,9 +171,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             let innerHtml = '';
             switch (el.id) {
                case 'patientName': innerHtml = record.name || ''; break;
+               case 'patientId': innerHtml = record.displayId || ''; break;
                case 'age': innerHtml = record.age || ''; break;
                case 'date': innerHtml = new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR'); break;
                case 'diagnosis': innerHtml = snapshotDiagnosis || ''; break;
+               case 'chiefComplaint': innerHtml = snapshotChiefComplaint || ''; break;
                case 'vital_bp': innerHtml = snapshotVitals?.bloodPressure || ''; break;
                case 'vital_hr': innerHtml = snapshotVitals?.heartRate || ''; break;
                case 'vital_rr': innerHtml = snapshotVitals?.respiratoryRate || ''; break;
@@ -160,11 +187,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                default: innerHtml = '';
             }
             if (!innerHtml) return '';
-            return `<div class="print-element" style="position: absolute; left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
+            return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
          }).join('');
          content = `<div class="custom-container" style="position: relative; width: 100%; height: 100%; overflow: hidden;">${bgHtml}${elementsHtml}</div>`;
      } else {
-         content = `<div class="rx-container"><div class="digital-header"><div class="doc-info"><h1 style="margin:0; font-size:24px;">${doctorProfile?.name || 'دکتر ...'}</h1><p style="margin:5px 0;">${doctorProfile?.specialty || ''}</p><p style="font-size:12px;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</p></div>${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 80px; object-fit: contain;" />` : ''}</div><div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${record.name}</div>${record.age ? `<div><strong>سن:</strong> ${record.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR')}</div></div><div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">${snapshotVitals?.bloodPressure ? `<span><strong>BP:</strong> ${snapshotVitals.bloodPressure}</span>` : ''}${snapshotVitals?.heartRate ? `<span><strong>HR:</strong> ${snapshotVitals.heartRate}</span>` : ''}</div>${(snapshotDiagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${snapshotDiagnosis}</div>` : ''}<div class="rx-symbol">Rx</div><table class="rx-table"><thead><tr><th>#</th><th>Drug Name</th><th>Dosage</th><th>Instruction</th></tr></thead><tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td style="font-weight:bold;">${item.drug}</td><td>${item.dosage}</td><td>${item.instruction}</td></tr>`).join('')}</tbody></table></div>`;
+         content = `<div class="rx-container"><div class="digital-header"><div class="doc-info"><h1 style="margin:0; font-size:24px;">${doctorProfile?.name || 'دکتر ...'}</h1><p style="margin:5px 0;">${doctorProfile?.specialty || ''}</p><p style="font-size:12px;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</p></div>${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 80px; object-fit: contain;" />` : ''}</div><div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${record.name} (ID: ${record.displayId})</div>${record.age ? `<div><strong>سن:</strong> ${record.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR')}</div></div><div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">${snapshotVitals?.bloodPressure ? `<span><strong>BP:</strong> ${snapshotVitals.bloodPressure}</span>` : ''}${snapshotVitals?.heartRate ? `<span><strong>HR:</strong> ${snapshotVitals.heartRate}</span>` : ''}</div>${snapshotChiefComplaint ? `<div style="margin-bottom:10px; padding:10px; background:#f9fafb; border-radius:8px;"><strong>شکایت اصلی:</strong> ${snapshotChiefComplaint}</div>` : ''}${(snapshotDiagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${snapshotDiagnosis}</div>` : ''}<div class="rx-symbol">Rx</div><table class="rx-table"><thead><tr><th>#</th><th>Drug Name</th><th>Dosage</th><th>Instruction</th></tr></thead><tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td style="font-weight:bold;">${item.drug}</td><td>${item.dosage}</td><td>${item.instruction}</td></tr>`).join('')}</tbody></table></div>`;
      }
 
      win.document.write(`<html dir="rtl"><head><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${controlHtml}${content}</body></html>`);
@@ -265,7 +292,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                       <button onClick={startEditing} className="hidden lg:flex p-3 bg-white border border-gray-200 rounded-2xl text-blue-600 hover:bg-blue-50 transition-colors shadow-sm items-center gap-2 font-bold text-sm"><Edit3 size={20}/> ویرایش مشخصات</button>
+                       <button onClick={() => handleDeletePatient(selectedPatientName)} className="p-3 bg-white border border-red-100 rounded-2xl text-red-500 hover:bg-red-50 transition-colors shadow-sm flex items-center gap-2 font-bold text-sm">
+                          <Trash2 size={20}/> حذف کل پرونده
+                       </button>
+                       <button onClick={startEditing} className="hidden lg:flex p-3 bg-white border border-gray-200 rounded-2xl text-blue-600 hover:bg-blue-50 transition-colors shadow-sm items-center gap-2 font-bold text-sm">
+                          <Edit3 size={20}/> ویرایش مشخصات
+                       </button>
                        <button onClick={closePatientFile} className="p-3 bg-white border border-gray-200 rounded-2xl text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm"><X size={24} /></button>
                     </div>
                 </div>
@@ -311,6 +343,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                                   <p className="text-xs text-gray-400 font-bold mt-1">{new Date(record.visitDate).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</p>
                                                </div>
                                             </div>
+                                            <button onClick={() => handleDeleteRecord(record.id)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="حذف این ویزیت">
+                                               <Trash2 size={20} />
+                                            </button>
                                         </div>
 
                                         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -373,6 +408,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                                                  </div>
                                                               ))}
                                                            </div>
+                                                           {pres.manualChiefComplaint && <div className="mt-3 text-[10px] text-indigo-600 bg-indigo-50 p-2 rounded-lg font-bold">شکایت اصلی: {pres.manualChiefComplaint}</div>}
                                                            {pres.notes && <div className="mt-3 text-[10px] text-gray-500 bg-gray-50 p-2 rounded-lg italic">یادداشت: {pres.notes}</div>}
                                                         </div>
                                                      ))

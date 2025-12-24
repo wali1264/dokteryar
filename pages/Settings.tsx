@@ -13,10 +13,12 @@ const A5_DIMS = { w: 559, h: 794 };
 // Default Elements if none exist
 const DEFAULT_ELEMENTS: LayoutElement[] = [
   { id: 'patientName', type: 'text', label: 'نام بیمار', x: 500, y: 100, width: 200, fontSize: 16, rotation: 0, visible: true, align: 'right' },
+  { id: 'patientId', type: 'text', label: 'شماره پرونده (ID)', x: 500, y: 130, width: 100, fontSize: 12, rotation: 0, visible: true, align: 'right' },
   { id: 'date', type: 'text', label: 'تاریخ', x: 100, y: 100, width: 150, fontSize: 14, rotation: 0, visible: true, align: 'center' },
   { id: 'age', type: 'text', label: 'سن', x: 300, y: 100, width: 80, fontSize: 14, rotation: 0, visible: true, align: 'center' },
+  { id: 'chiefComplaint', type: 'text', label: 'شکایت اصلی (CC)', x: 50, y: 160, width: 700, fontSize: 12, rotation: 0, visible: true, align: 'right' },
   { id: 'items', type: 'list', label: 'اقلام دارویی (لیست داروها)', x: 50, y: 250, width: 700, fontSize: 14, rotation: 0, visible: true, align: 'right' },
-  { id: 'diagnosis', type: 'text', label: 'تشخیص', x: 50, y: 180, width: 700, fontSize: 14, rotation: 0, visible: true, align: 'right' },
+  { id: 'diagnosis', type: 'text', label: 'تشخیص نهایی', x: 50, y: 190, width: 700, fontSize: 14, rotation: 0, visible: true, align: 'right' },
   { id: 'vital_bp', type: 'text', label: 'فشار (BP)', x: 700, y: 300, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
   { id: 'vital_hr', type: 'text', label: 'ضربان (PR)', x: 700, y: 340, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
   { id: 'vital_rr', type: 'text', label: 'تنفس (RR)', x: 700, y: 380, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },

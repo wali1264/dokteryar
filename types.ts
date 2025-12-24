@@ -51,6 +51,7 @@ export interface PrescriptionRecord {
   notes?: string;
   manualDiagnosis?: string;
   manualVitals?: PatientVitals;
+  manualChiefComplaint?: string;
 }
 
 export interface PrescriptionTemplate {

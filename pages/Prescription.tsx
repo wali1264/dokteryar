@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { digitizePrescription, checkPrescriptionSafety, processScribeAudio } from '../services/geminiService';
+import { digitizePrescription, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, ShieldCloseIcon, Info, Mic, MicOff, List, Monitor } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -64,6 +64,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [isExpressMode, setIsExpressMode] = useState(false);
   
   const [diagnosis, setDiagnosis] = useState('');
+  const [chiefComplaint, setChiefComplaint] = useState('');
   const [items, setItems] = useState<PrescriptionItem[]>([]);
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   
@@ -91,6 +92,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
   const [showQuickEntryModal, setShowQuickEntryModal] = useState(false);
   const [showTemplatesModal, setShowTemplatesModal] = useState(false);
+  const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
 
   // AI Safety State
@@ -103,6 +105,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [isProcessingScribe, setIsProcessingScribe] = useState(false);
   const scribeMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const scribeChunksRef = useRef<Blob[]>([]);
+
+  // --- AUDIO DICTATION STATE FOR CC ---
+  const [isRecordingCC, setIsRecordingCC] = useState(false);
+  const [isProcessingCC, setIsProcessingCC] = useState(false);
+  const ccMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const ccChunksRef = useRef<Blob[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,9 +150,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   useEffect(() => {
     if (!selectedPatient || viewMode !== 'editor' || isExpressMode) return;
-    const draft = { items, diagnosis, vitals, timestamp: Date.now() };
+    const draft = { items, diagnosis, chiefComplaint, vitals, timestamp: Date.now() };
     localStorage.setItem(`tabib_draft_${selectedPatient.id}`, JSON.stringify(draft));
-  }, [items, diagnosis, vitals, selectedPatient, viewMode, isExpressMode]);
+  }, [items, diagnosis, chiefComplaint, vitals, selectedPatient, viewMode, isExpressMode]);
 
   const loadInitialData = async () => {
     try {
@@ -178,13 +186,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
     setItems([]);
     setDiagnosis('');
+    setChiefComplaint('');
 
     if (!patient.id.startsWith('guest_')) {
       const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
       if (savedDraft) {
         try {
           const parsed = JSON.parse(savedDraft);
-          if (parsed.items.length > 0 || parsed.diagnosis || parsed.vitals.bloodPressure) {
+          if (parsed.items.length > 0 || parsed.diagnosis || parsed.chiefComplaint || parsed.vitals.bloodPressure) {
             setActiveDraft(parsed);
             setShowDraftBanner(true);
           }
@@ -201,6 +210,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     if (activeDraft) {
       setItems(activeDraft.items);
       setDiagnosis(activeDraft.diagnosis);
+      setChiefComplaint(activeDraft.chiefComplaint || '');
       setVitals(activeDraft.vitals);
       setShowDraftBanner(false);
       setActiveDraft(null);
@@ -296,6 +306,36 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       if (res.diagnosis) setDiagnosis(res.diagnosis);
       if (res.vitals) setVitals(prev => ({ ...prev, ...res.vitals }));
     } catch (e) { alert('خطا در اسکن نسخه'); } finally { setLoading(false); }
+  };
+
+  // --- CC DICTATION LOGIC ---
+  const startCCRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      ccMediaRecorderRef.current = mediaRecorder;
+      ccChunksRef.current = [];
+      mediaRecorder.ondataavailable = (event) => { if (event.data.size > 0) ccChunksRef.current.push(event.data); };
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(ccChunksRef.current, { type: 'audio/webm' });
+        setIsProcessingCC(true);
+        try {
+          const text = await transcribeMedicalAudio(audioBlob);
+          setChiefComplaint(prev => prev + (prev ? " " : "") + text);
+        } catch (error) { alert("خطا در تبدیل صدا"); } finally {
+          setIsProcessingCC(false); setIsRecordingCC(false);
+          stream.getTracks().forEach(track => track.stop());
+        }
+      };
+      mediaRecorder.start();
+      setIsRecordingCC(true);
+    } catch (err) { alert("دسترسی به میکروفون ندارید."); }
+  };
+
+  const stopCCRecording = () => {
+    if (ccMediaRecorderRef.current && ccMediaRecorderRef.current.state === 'recording') {
+      ccMediaRecorderRef.current.stop();
+    }
   };
 
   // --- AI SCRIBE LOGIC ---
@@ -479,8 +519,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         content = `
           <div class="rx-container">
              <div class="digital-header"><div class="doc-info"><h1 style="margin:0; font-size:24px;">${doctorProfile?.name || 'دکتر ...'}</h1><p style="margin:5px 0;">${doctorProfile?.specialty || ''}</p><p style="font-size:12px;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</p></div>${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 80px; object-fit: contain;" />` : ''}</div>
-             <div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${selectedPatient?.name}</div>${selectedPatient?.age ? `<div><strong>سن:</strong> ${selectedPatient.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date().toLocaleDateString('fa-IR')}</div></div>
+             <div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${selectedPatient?.name} (ID: ${selectedPatient?.displayId})</div>${selectedPatient?.age ? `<div><strong>سن:</strong> ${selectedPatient.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date().toLocaleDateString('fa-IR')}</div></div>
              <div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">${vitals.bloodPressure ? `<span><strong>BP:</strong> ${vitals.bloodPressure}</span>` : ''}${vitals.heartRate ? `<span><strong>HR:</strong> ${vitals.heartRate}</span>` : ''}</div>
+             ${chiefComplaint ? `<div style="margin-bottom:10px; padding:10px; background:#f9fafb; border-radius:8px;"><strong>شکایت اصلی:</strong> ${chiefComplaint}</div>` : ''}
              ${(diagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${diagnosis}</div>` : ''}
              <div class="rx-symbol">Rx</div>
              <table class="rx-table"><thead><tr><th>#</th><th>Drug Name</th><th>Dosage</th><th>Instruction</th></tr></thead><tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td style="font-weight:bold;">${item.drug}</td><td>${item.dosage}</td><td>${item.instruction}</td></tr>`).join('')}</tbody></table>
@@ -492,9 +533,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            let innerHtml = '';
            switch (el.id) {
               case 'patientName': innerHtml = selectedPatient?.name || ''; break;
+              case 'patientId': innerHtml = selectedPatient?.displayId || ''; break;
               case 'age': innerHtml = selectedPatient?.age || ''; break;
               case 'date': innerHtml = new Date().toLocaleDateString('fa-IR'); break;
               case 'diagnosis': innerHtml = diagnosis; break;
+              case 'chiefComplaint': innerHtml = chiefComplaint; break;
               case 'vital_bp': innerHtml = vitals.bloodPressure || ''; break;
               case 'vital_hr': innerHtml = vitals.heartRate || ''; break;
               case 'vital_rr': innerHtml = vitals.respiratoryRate || ''; break;
@@ -516,8 +559,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const saveToPatientRecord = async () => {
      if (!selectedPatient || isExpressMode) return;
      try {
-       const record: PatientRecord = { ...selectedPatient, vitals: { ...selectedPatient.vitals, ...vitals }, status: 'completed', prescriptions: [ ...(selectedPatient.prescriptions || []), { id: crypto.randomUUID(), date: Date.now(), items: items, manualDiagnosis: diagnosis, manualVitals: vitals } ] };
-       await saveRecord(record); localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
+       const record: PatientRecord = { 
+          ...selectedPatient, 
+          vitals: { ...selectedPatient.vitals, ...vitals }, 
+          status: 'completed', 
+          prescriptions: [ 
+             ...(selectedPatient.prescriptions || []), 
+             { 
+               id: crypto.randomUUID(), 
+               date: Date.now(), 
+               items: items, 
+               manualDiagnosis: diagnosis, 
+               manualVitals: vitals,
+               manualChiefComplaint: chiefComplaint 
+             } 
+          ] 
+       };
+       await saveRecord(record); 
+       localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
      } catch (e) { console.error(e); }
   };
 
@@ -699,23 +758,23 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       `}</style>
 
       {/* AI SCANNING OVERLAY PORTAL */}
-      {(loading || isProcessingScribe) && (
+      {(loading || isProcessingScribe || isProcessingCC) && (
         <div className="fixed inset-0 z-[200] bg-white/40 backdrop-blur-2xl flex flex-col items-center justify-center p-8 animate-fade-in overflow-hidden">
            <div className="relative w-full max-w-lg aspect-[3/4] lg:aspect-video rounded-3xl border-2 border-blue-400/50 shadow-2xl overflow-hidden bg-gray-900/10">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_rgba(59,130,246,1)] z-20 animate-scan-line"></div>
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
                  <div className="relative">
                     <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">
-                       {isProcessingScribe ? <Mic size={48} className="text-white" /> : <Brain size={48} className="text-white" />}
+                       {(isProcessingScribe || isProcessingCC) ? <Mic size={48} className="text-white" /> : <Brain size={48} className="text-white" />}
                     </div>
                     <div className="absolute -inset-4 border border-blue-400/30 rounded-full animate-ping"></div>
                  </div>
                  <div className="text-center space-y-3">
                     <h3 className="text-2xl font-black text-blue-900 tracking-tight">
-                       {isProcessingScribe ? 'در حال واکاوی هوشمند گفته‌های پزشک...' : 'در حال واکاوی نسخه توسط هسته هوش مصنوعی...'}
+                       {isProcessingCC ? 'در حال تبدیل گفته‌های شما به متن شکایات...' : isProcessingScribe ? 'در حال واکاوی هوشمند گفته‌های پزشک...' : 'در حال واکاوی نسخه توسط هسته هوش مصنوعی...'}
                     </h3>
                     <p className="text-blue-600/60 font-bold animate-bounce text-sm">
-                       {isProcessingScribe ? 'استخراج موجودیت‌های پزشکی و داروها' : 'لطفاً شکیبا باشید. در حال استخراج اقلام دارویی'}
+                       لطفاً شکیبا باشید. در حال پردازش داده‌های پزشکی
                     </p>
                  </div>
               </div>
@@ -781,7 +840,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                <div className="space-y-4 animate-fade-in">
                   <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}>
                      <div className="flex justify-between items-center mb-2">
-                        <label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label>
+                        <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label>
+                            <button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
+                                <ListChecks size={14} />
+                            </button>
+                        </div>
                         {isRecordingScribe && (
                            <div className="flex gap-1 items-end h-4">
                               {[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}
@@ -937,9 +1001,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                {/* DIAGNOSIS BAR (HORIZONTAL TOP) */}
                <div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}>
                   <div className="flex items-center justify-between mb-2 px-4">
-                     <label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest">
-                       <Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span>
-                     </label>
+                     <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest">
+                          <Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span>
+                        </label>
+                        <button 
+                           onClick={() => setShowComplaintModal(true)}
+                           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                        >
+                           <ListChecks size={14} />
+                           {chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}
+                        </button>
+                     </div>
                      {isRecordingScribe && (
                         <div className="flex gap-1 items-end h-4">
                            {[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}
@@ -1045,6 +1118,43 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       </div>
 
       {/* MODALS */}
+      {showComplaintModal && (
+          <div className="fixed inset-0 z-[195] bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col">
+                  <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div>
+                          <h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3>
+                      </div>
+                      <button onClick={() => { stopCCRecording(); setShowComplaintModal(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div className="relative">
+                          <textarea 
+                              autoFocus
+                              className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg"
+                              placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..."
+                              value={chiefComplaint}
+                              onChange={e => setChiefComplaint(e.target.value)}
+                          />
+                          <button 
+                             onClick={isRecordingCC ? stopCCRecording : startCCRecording}
+                             className={`absolute bottom-4 left-4 p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}
+                             title="دیکته صوتی شکایات"
+                          >
+                             {isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}
+                          </button>
+                      </div>
+                      
+                      <div className="flex gap-4">
+                          <button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button>
+                          <button onClick={() => setShowComplaintModal(false)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {showTemplatesModal && (
          <div className="fixed inset-0 z-[190] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col h-[70vh]">
