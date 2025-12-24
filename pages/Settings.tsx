@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DoctorProfile, PrescriptionSettings, LayoutElement, Drug, DrugUsage } from '../types';
 import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase, getAllDrugs, saveDrug, deleteDrug, getUsageStats } from '../services/db';
-import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database, Pill, Plus, Search, TrendingUp, Edit2, X } from 'lucide-react';
+import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database, Pill, Plus, Search, TrendingUp, Edit2, X, Beaker, Droplet, Zap, Syringe, SprayCan } from 'lucide-react';
 
 type Tab = 'profile' | 'paper' | 'drugs' | 'backup';
 
@@ -43,6 +43,7 @@ const Settings: React.FC = () => {
   const [drugSearch, setDrugSearch] = useState('');
   const [newDrugName, setNewDrugName] = useState('');
   const [editingDrug, setEditingDrug] = useState<Drug | null>(null);
+  const drugInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -154,6 +155,13 @@ const Settings: React.FC = () => {
         setter(reader.result as string);
       };
       reader.readAsDataURL(e.target.files[0]);
+    }
+  };
+
+  const applyDrugFormPrefix = (prefix: string) => {
+    setNewDrugName(prefix + " ");
+    if (drugInputRef.current) {
+        drugInputRef.current.focus();
     }
   };
 
@@ -310,26 +318,66 @@ const Settings: React.FC = () => {
           {/* DRUG BANK TAB */}
           {activeTab === 'drugs' && (
             <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-indigo-600" /> بانک داروی هوشمند</h3>
-                    <p className="text-xs text-gray-400 mt-1">مدیریت لیست داروها (۱۵۰۰+ مورد) و ویرایش آزادانه</p>
+               <div className="flex flex-col space-y-4">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-indigo-600" /> بانک داروی هوشمند</h3>
+                      <p className="text-xs text-gray-400 mt-1">مدیریت لیست داروها (۱۵۰۰+ مورد) و ویرایش آزادانه</p>
+                    </div>
                   </div>
-                  <div className="flex gap-2 w-full md:w-auto">
-                    <input type="text" className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-indigo-500 text-sm font-bold" placeholder="نام داروی جدید..." value={newDrugName} onChange={e => setNewDrugName(e.target.value)} />
-                    <button onClick={handleAddDrug} disabled={!newDrugName || loading} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-100"><Plus size={18} /> افزودن</button>
+
+                  <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 shadow-inner">
+                    <label className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 block mr-1">افزودن داروی جدید</label>
+                    
+                    {/* Quick Form chips */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        {[
+                            { label: 'Tab', icon: Pill },
+                            { label: 'Cap', icon: Pill },
+                            { label: 'Syr', icon: Beaker },
+                            { label: 'Inj', icon: Syringe },
+                            { label: 'Drop', icon: Droplet },
+                            { label: 'Oint', icon: SprayCan },
+                            { label: 'Cream', icon: SprayCan },
+                            { label: 'Susp', icon: Beaker },
+                        ].map((form) => (
+                            <button 
+                                key={form.label}
+                                onClick={() => applyDrugFormPrefix(form.label)}
+                                className="bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                            >
+                                <form.icon size={12} />
+                                {form.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-2 w-full">
+                      <input 
+                        ref={drugInputRef}
+                        type="text" 
+                        className="flex-1 p-4 bg-white border border-indigo-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 text-lg font-bold text-gray-800 shadow-sm transition-all" 
+                        placeholder="ابتدا نوع را انتخاب و سپس نام را بنویسید..." 
+                        value={newDrugName} 
+                        onChange={e => setNewDrugName(e.target.value)} 
+                      />
+                      <button onClick={handleAddDrug} disabled={!newDrugName || loading} className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50">
+                        {loading ? <Loader2 size={24} className="animate-spin" /> : <Plus size={24} />}
+                        ثبت دارو
+                      </button>
+                    </div>
                   </div>
                </div>
 
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                  {/* Usage Stats (Hidden initially if empty, or just smaller) */}
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4 border-t border-gray-50">
+                  {/* Usage Stats */}
                   <div className="md:col-span-1 space-y-4">
-                     <h4 className="font-bold text-gray-700 flex items-center gap-2 text-sm"><TrendingUp size={16} className="text-teal-500" /> پرمصرف‌ترین‌ها</h4>
-                     <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                     <h4 className="font-black text-gray-400 flex items-center gap-2 text-[10px] uppercase tracking-widest"><TrendingUp size={14} className="text-teal-500" /> پرمصرف‌ترین داروها</h4>
+                     <div className="bg-gray-50 rounded-[2rem] p-5 border border-gray-100 space-y-3">
                         {usageStats.length === 0 ? <p className="text-center text-xs text-gray-400 py-10">هنوز آماری ثبت نشده</p> : 
                          usageStats.slice(0, 10).map((u, i) => (
-                           <div key={i} className="flex justify-between items-center bg-white p-2 rounded-lg border border-gray-100 shadow-sm">
-                              <span className="text-xs font-bold text-gray-700">{u.drugName}</span>
+                           <div key={i} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                              <span className="text-xs font-black text-gray-700">{u.drugName}</span>
                               <span className="bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full text-[10px] font-black">{u.count} بار</span>
                            </div>
                          ))
@@ -340,23 +388,23 @@ const Settings: React.FC = () => {
                   {/* Complete List with Search and CRUD */}
                   <div className="md:col-span-2 space-y-4">
                      <div className="relative">
-                        <input type="text" className="w-full p-4 pr-12 bg-white rounded-2xl border border-gray-200 shadow-sm outline-none focus:border-indigo-500" placeholder="جستجو در تمام اشکال دارویی..." value={drugSearch} onChange={e => setDrugSearch(e.target.value)} />
-                        <Search className="absolute right-4 top-4 text-gray-400" />
+                        <input type="text" className="w-full p-4 pr-12 bg-white rounded-[1.5rem] border border-gray-200 shadow-sm outline-none focus:ring-4 focus:ring-indigo-50 font-bold" placeholder="جستجو در تمام اشکال دارویی..." value={drugSearch} onChange={e => setDrugSearch(e.target.value)} />
+                        <Search className="absolute right-4 top-4.5 text-gray-400" />
                      </div>
-                     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar">
+                     <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar shadow-sm">
                         <table className="w-full text-right text-sm">
-                           <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100">
-                              <tr><th className="p-4">نام کامل دارو</th><th className="p-4">نوع</th><th className="p-4 text-center">عملیات</th></tr>
+                           <thead className="bg-gray-50 text-gray-400 font-black border-b border-gray-100 text-[10px] uppercase tracking-widest">
+                              <tr><th className="p-4">نام کامل دارو</th><th className="p-4">منبع</th><th className="p-4 text-center">عملیات</th></tr>
                            </thead>
                            <tbody className="divide-y divide-gray-50">
                               {drugs.filter(d => d.name.toLowerCase().includes(drugSearch.toLowerCase())).map(d => (
                                  <tr key={d.id} className="hover:bg-indigo-50/30 transition-colors group">
-                                    <td className="p-4 font-bold text-gray-700">{d.name}</td>
-                                    <td className="p-4"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${d.isCustom ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>{d.isCustom ? 'شخصی' : 'سیستمی'}</span></td>
+                                    <td className="p-4 font-black text-gray-700 text-base">{d.name}</td>
+                                    <td className="p-4"><span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${d.isCustom ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}>{d.isCustom ? 'شخصی' : 'سیستمی'}</span></td>
                                     <td className="p-4 text-center">
-                                       <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                          <button onClick={() => setEditingDrug(d)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit2 size={14} /></button>
-                                          <button onClick={() => handleDeleteDrug(d.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={14}/></button>
+                                       <div className="flex justify-center gap-1 transition-opacity">
+                                          <button onClick={() => setEditingDrug(d)} title="ویرایش" className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all border border-indigo-100"><Edit2 size={16} /></button>
+                                          <button onClick={() => handleDeleteDrug(d.id)} title="حذف" className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all border border-red-100"><Trash2 size={16}/></button>
                                        </div>
                                     </td>
                                  </tr>
@@ -369,24 +417,24 @@ const Settings: React.FC = () => {
 
                {/* Editing Modal */}
                {editingDrug && (
-                  <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                     <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-fade-in">
-                        <div className="flex justify-between items-center mb-6">
-                           <h4 className="font-bold text-gray-800 flex items-center gap-2"><Edit2 size={18} /> ویرایش دارو</h4>
-                           <button onClick={() => setEditingDrug(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full"><X size={20} /></button>
+                  <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+                     <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-8 animate-fade-in">
+                        <div className="flex justify-between items-center mb-8">
+                           <h4 className="font-black text-xl text-gray-800 flex items-center gap-2"><Edit2 size={24} className="text-indigo-600" /> ویرایش دارو</h4>
+                           <button onClick={() => setEditingDrug(null)} className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-colors"><X size={24} /></button>
                         </div>
-                        <div className="space-y-4">
+                        <div className="space-y-6">
                            <div>
-                              <label className="text-xs font-bold text-gray-500 mb-2 block">نام و مشخصات دارو</label>
+                              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 block mr-1">نام و مشخصات کامل</label>
                               <input 
                                  autoFocus
-                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" 
+                                 className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-800" 
                                  value={editingDrug.name} 
                                  onChange={e => setEditingDrug({...editingDrug, name: e.target.value})} 
                               />
                            </div>
-                           <button onClick={handleUpdateDrug} disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">
-                              {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                           <button onClick={handleUpdateDrug} disabled={loading} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 flex items-center justify-center gap-3 text-lg hover:bg-indigo-700 transition-all active:scale-95">
+                              {loading ? <Loader2 size={20} className="animate-spin" /> : <Save size={20} />}
                               ذخیره تغییرات
                            </button>
                         </div>
