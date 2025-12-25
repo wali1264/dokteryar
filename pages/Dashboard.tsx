@@ -13,16 +13,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   
-  // Patient Centric View State
   const [groupedPatients, setGroupedPatients] = useState<Record<string, PatientRecord[]>>({});
-  
-  // Modal State
   const [selectedPatientName, setSelectedPatientName] = useState<string | null>(null);
   const [selectedPatientHistory, setSelectedPatientHistory] = useState<PatientRecord[]>([]);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editForm, setEditForm] = useState<any>(null);
 
-  // Print State
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
   const [settings, setSettings] = useState<PrescriptionSettings | null>(null);
 
@@ -34,20 +30,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     try {
       const data = await getAllRecords();
       setRecords(data);
-      
-      // Group by Name
       const groups: Record<string, PatientRecord[]> = {};
       data.forEach(r => {
           if (!groups[r.name]) groups[r.name] = [];
           groups[r.name].push(r);
       });
       setGroupedPatients(groups);
-
       const p = await getDoctorProfile();
       if (p) setDoctorProfile(p);
       const s = await getSettings();
       if (s) setSettings(s);
-
     } catch (e) {
       console.error("DB Error", e);
     } finally {
@@ -72,64 +64,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
       setIsEditingProfile(false);
   };
 
-  const handleDeleteRecord = async (id: string) => {
-    if (confirm('آیا مایل به حذف این رکورد ویزیت هستید؟')) {
-        await deleteRecord(id);
-        if (selectedPatientName) {
-            const allRecords = await getAllRecords();
-            const updatedHistory = allRecords.filter(r => r.name === selectedPatientName);
-            if (updatedHistory.length === 0) {
-                closePatientFile();
-            } else {
-                setSelectedPatientHistory(updatedHistory);
-            }
-        }
-        await fetchRecords();
-    }
-  };
-
-  const handleDeletePatient = async (name: string) => {
-    if (confirm(`آیا از حذف کامل پرونده «${name}» و تمامی سوابق مراجعات او اطمینان دارید؟ این عمل غیرقابل بازگشت است.`)) {
-        await deletePatientRecords(name);
-        closePatientFile();
-        await fetchRecords();
-    }
-  };
-
-  const startEditing = () => {
-    if (selectedPatientHistory.length === 0) return;
-    const latest = selectedPatientHistory[0];
-    setEditForm({
-      name: latest.name,
-      age: latest.age,
-      gender: latest.gender,
-      phoneNumber: latest.phoneNumber || '',
-      allergies: latest.allergies || '',
-      history: latest.history || ''
-    });
-    setIsEditingProfile(true);
-  };
-
-  const saveEditedProfile = async () => {
-    if (!selectedPatientName || !editForm) return;
-    try {
-      const recordsToUpdate = groupedPatients[selectedPatientName] || [];
-      for (const record of recordsToUpdate) {
-        const updated = { ...record, ...editForm };
-        await saveRecord(updated);
-      }
-      setIsEditingProfile(false);
-      await fetchRecords();
-      // Re-fetch history for the updated name
-      const allRecords = await getAllRecords();
-      const updatedHistory = allRecords.filter(r => r.name === editForm.name);
-      setSelectedPatientName(editForm.name);
-      setSelectedPatientHistory(updatedHistory);
-    } catch (e) {
-      alert("خطا در بروزرسانی پرونده");
-    }
-  };
-
   const handleReprint = (record: PatientRecord, prescriptionIndex: number) => {
      const pres = record.prescriptions && record.prescriptions[prescriptionIndex];
      if (!pres) return;
@@ -146,48 +80,69 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      frame = document.createElement('iframe');
      frame.id = iframeId;
      frame.style.position = 'fixed';
-     frame.style.right = '0';
-     frame.style.bottom = '0';
-     frame.style.width = '0';
-     frame.style.height = '0';
-     frame.style.border = '0';
+     frame.style.visibility = 'hidden';
      document.body.appendChild(frame);
 
      const win = frame.contentWindow;
      if (!win) return;
 
      const fontFamily = settings?.fontFamily || 'Vazirmatn';
+     const isA4 = settings?.paperSize === 'A4';
+     const paperWidth = isA4 ? '210mm' : '148mm';
+     const paperHeight = isA4 ? '297mm' : '210mm';
      
      let style = `
-       @page { 
-         margin: 0 !important; 
-         size: ${settings?.paperSize === 'Letter' ? 'letter' : settings?.paperSize === 'A5' ? 'A5' : 'A4'}; 
-       }
+       @page { margin: 0 !important; size: ${settings?.paperSize || 'A4'} portrait; }
        html, body { 
          margin: 0 !important; 
          padding: 0 !important; 
-         width: 100%; 
-         height: 100%; 
-         overflow: hidden; 
-         box-sizing: border-box;
+         width: ${paperWidth}; 
+         height: ${paperHeight}; 
+         overflow: hidden;
+         -webkit-print-color-adjust: exact !important;
+         print-color-adjust: exact !important;
        }
-       body { 
-         font-family: '${fontFamily}', 'Vazirmatn', sans-serif; 
-         direction: rtl; 
-         -webkit-print-color-adjust: exact; 
-         print-color-adjust: exact; 
-         color: #1e293b; 
-       }
-       .print-wrapper {
+       body { font-family: '${fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; }
+       
+       /* Full-Bleed Implementation */
+       .full-page-canvas {
          position: fixed;
          top: 0;
          left: 0;
-         width: 100%;
-         height: 100%;
+         width: ${paperWidth};
+         height: ${paperHeight};
          margin: 0 !important;
          padding: 0 !important;
+         z-index: 9999;
+         overflow: hidden;
        }
-       .majestic-container { position: relative; width: 100%; height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
+
+       .bg-image { 
+         position: absolute; 
+         top: 0; 
+         left: 0; 
+         width: 100%; 
+         height: 100%; 
+         object-fit: fill; 
+         z-index: -1; 
+       }
+
+       .print-element { 
+         position: absolute; 
+         white-space: normal; 
+         word-wrap: break-word; 
+         line-height: 1.4; 
+       }
+
+       /* Majestic Mode Style (Alternative if no BG) */
+       .majestic-container { 
+         position: relative; 
+         width: 100%; 
+         height: 100%; 
+         border: 4px double #1e3a8a; 
+         padding: 12mm; 
+         box-sizing: border-box; 
+       }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
        .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
        .dr-name { font-size: 22pt; font-weight: 900; color: #1e3a8a; margin: 0; }
@@ -211,12 +166,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
        .drug-qty { font-weight: 900; color: #1e3a8a; margin-left: 10px; font-size: 13pt; }
        .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
-       .custom-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
-       .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
-       .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
+       .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
      `;
 
-     let content = '';
+     let htmlBody = '';
 
      if (settings?.printBackground && settings?.backgroundImage) {
          let bgHtml = `<img id="bgImgReprint" src="${settings.backgroundImage}" class="bg-image" />`;
@@ -244,10 +197,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             if (!innerHtml) return '';
             return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
          }).join('');
-         content = `<div class="print-wrapper"><div class="custom-container">${bgHtml}${elementsHtml}</div></div>`;
+         htmlBody = `<div class="full-page-canvas">${bgHtml}${elementsHtml}</div>`;
      } else {
-         content = `
-          <div class="print-wrapper">
+         htmlBody = `
+          <div class="full-page-canvas">
             <div class="majestic-container">
                <div class="rx-watermark">℞</div>
                <div class="header-pro">
@@ -310,19 +263,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                   </div>
                   <div class="signature-area">Signature & Stamp</div>
                </div>
+               <div class="footer-motto">"Preserving the integrity of the profession with AI precision."</div>
             </div>
           </div>
         `;
      }
 
-     win.document.write(`<html dir="rtl"><head><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
+     win.document.write(`<!DOCTYPE html><html dir="rtl"><head><meta charset="UTF-8"><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet"><style>${style}</style></head><body>${htmlBody}</body></html>`);
      win.document.close();
 
      const bgImg = win.document.getElementById('bgImgReprint') as HTMLImageElement;
      const triggerPrint = () => {
         setTimeout(() => {
+           win.focus();
            win.print();
-        }, 400);
+        }, 500);
      };
 
      if (bgImg && !bgImg.complete) {
@@ -331,6 +286,63 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      } else {
         triggerPrint();
      }
+  };
+
+  const handleDeleteRecord = async (id: string) => {
+    if (confirm('آیا مایل به حذف این رکورد ویزیت هستید؟')) {
+        await deleteRecord(id);
+        if (selectedPatientName) {
+            const allRecords = await getAllRecords();
+            const updatedHistory = allRecords.filter(r => r.name === selectedPatientName);
+            if (updatedHistory.length === 0) {
+                closePatientFile();
+            } else {
+                setSelectedPatientHistory(updatedHistory);
+            }
+        }
+        await fetchRecords();
+    }
+  };
+
+  const handleDeletePatient = async (name: string) => {
+    if (confirm(`آیا از حذف کامل پرونده «${name}» و تمامی سوابق مراجعات او اطمینان دارید؟ این عمل غیرقابل بازگشت است.`)) {
+        await deletePatientRecords(name);
+        closePatientFile();
+        await fetchRecords();
+    }
+  };
+
+  const startEditing = () => {
+    if (selectedPatientHistory.length === 0) return;
+    const latest = selectedPatientHistory[0];
+    setEditForm({
+      name: latest.name,
+      age: latest.age,
+      gender: latest.gender,
+      phoneNumber: latest.phoneNumber || '',
+      allergies: latest.allergies || '',
+      history: latest.history || ''
+    });
+    setIsEditingProfile(true);
+  };
+
+  const saveEditedProfile = async () => {
+    if (!selectedPatientName || !editForm) return;
+    try {
+      const recordsToUpdate = groupedPatients[selectedPatientName] || [];
+      for (const record of recordsToUpdate) {
+        const updated = { ...record, ...editForm };
+        await saveRecord(updated);
+      }
+      setIsEditingProfile(false);
+      await fetchRecords();
+      const allRecords = await getAllRecords();
+      const updatedHistory = allRecords.filter(r => r.name === editForm.name);
+      setSelectedPatientName(editForm.name);
+      setSelectedPatientHistory(updatedHistory);
+    } catch (e) {
+      alert("خطا در بروزرسانی پرونده");
+    }
   };
 
   return (
