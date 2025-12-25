@@ -157,14 +157,36 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      if (!win) return;
 
      const fontFamily = settings?.fontFamily || 'Vazirmatn';
-     const paperSize = settings?.paperSize || 'A4';
-     const paperWidth = paperSize === 'A4' ? '210mm' : '148mm';
-     const paperHeight = paperSize === 'A4' ? '297mm' : '210mm';
      
      let style = `
-       @page { size: ${paperSize} portrait; margin: 0 !important; }
-       html, body { margin: 0 !important; padding: 0 !important; box-sizing: border-box; width: ${paperWidth}; height: ${paperHeight}; overflow: hidden; }
-       body { font-family: '${fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
+       @page { 
+         margin: 0 !important; 
+         size: ${settings?.paperSize === 'Letter' ? 'letter' : settings?.paperSize === 'A5' ? 'A5' : 'A4'}; 
+       }
+       html, body { 
+         margin: 0 !important; 
+         padding: 0 !important; 
+         width: 100%; 
+         height: 100%; 
+         overflow: hidden; 
+         box-sizing: border-box;
+       }
+       body { 
+         font-family: '${fontFamily}', 'Vazirmatn', sans-serif; 
+         direction: rtl; 
+         -webkit-print-color-adjust: exact; 
+         print-color-adjust: exact; 
+         color: #1e293b; 
+       }
+       .print-wrapper {
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         height: 100%;
+         margin: 0 !important;
+         padding: 0 !important;
+       }
        .majestic-container { position: relative; width: 100%; height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
        .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
@@ -189,8 +211,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
        .drug-qty { font-weight: 900; color: #1e3a8a; margin-left: 10px; font-size: 13pt; }
        .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
-       .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
+       .custom-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
        .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
@@ -223,73 +244,73 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             if (!innerHtml) return '';
             return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
          }).join('');
-         content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
+         content = `<div class="print-wrapper"><div class="custom-container">${bgHtml}${elementsHtml}</div></div>`;
      } else {
          content = `
-          <div class="majestic-container">
-             <div class="rx-watermark">℞</div>
-             <div class="header-pro">
-                <div class="doc-info">
-                   <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
-                   <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
-                   <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
-                </div>
-                ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
-             </div>
-             
-             <div class="patient-summary">
-                <div><span>بیمار:</span> ${record.name}</div>
-                <div><span>ID:</span> ${record.displayId}</div>
-                <div><span>سن:</span> ${record.age || '--'}</div>
-                <div><span>تاریخ:</span> ${new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR')}</div>
-             </div>
+          <div class="print-wrapper">
+            <div class="majestic-container">
+               <div class="rx-watermark">℞</div>
+               <div class="header-pro">
+                  <div class="doc-info">
+                     <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
+                     <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
+                     <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
+                  </div>
+                  ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
+               </div>
+               
+               <div class="patient-summary">
+                  <div><span>بیمار:</span> ${record.name}</div>
+                  <div><span>ID:</span> ${record.displayId}</div>
+                  <div><span>سن:</span> ${record.age || '--'}</div>
+                  <div><span>تاریخ:</span> ${new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR')}</div>
+               </div>
 
-             <div class="vitals-matrix">
-                <div class="vital-cell"><span class="vital-label">BP</span><span class="vital-value">${snapshotVitals?.bloodPressure || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">HR</span><span class="vital-value">${snapshotVitals?.heartRate || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">TEMP</span><span class="vital-value">${snapshotVitals?.temperature || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">RR</span><span class="vital-value">${snapshotVitals?.respiratoryRate || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">SPO2</span><span class="vital-value">${snapshotVitals?.spO2 || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">BS</span><span class="vital-value">${snapshotVitals?.bloodSugar || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">WT</span><span class="vital-value">${snapshotVitals?.weight || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${snapshotVitals?.height || '--'}</span></div>
-             </div>
+               <div class="vitals-matrix">
+                  <div class="vital-cell"><span class="vital-label">BP</span><span class="vital-value">${snapshotVitals?.bloodPressure || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">HR</span><span class="vital-value">${snapshotVitals?.heartRate || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">TEMP</span><span class="vital-value">${snapshotVitals?.temperature || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">RR</span><span class="vital-value">${snapshotVitals?.respiratoryRate || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">SPO2</span><span class="vital-value">${snapshotVitals?.spO2 || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">BS</span><span class="vital-value">${snapshotVitals?.bloodSugar || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">WT</span><span class="vital-value">${snapshotVitals?.weight || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${snapshotVitals?.height || '--'}</span></div>
+               </div>
 
-             ${snapshotChiefComplaint ? `
-             <div class="clinical-section">
-                <div class="section-title">Clinical Findings (CC)</div>
-                <div class="clinical-content">${snapshotChiefComplaint}</div>
-             </div>` : ''}
+               ${snapshotChiefComplaint ? `
+               <div class="clinical-section">
+                  <div class="section-title">Clinical Findings (CC)</div>
+                  <div class="clinical-content">${snapshotChiefComplaint}</div>
+               </div>` : ''}
 
-             ${snapshotDiagnosis ? `
-             <div class="clinical-section">
-                <div class="section-title">Impression / Diagnosis</div>
-                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${snapshotDiagnosis}</div>
-             </div>` : ''}
+               ${snapshotDiagnosis ? `
+               <div class="clinical-section">
+                  <div class="section-title">Impression / Diagnosis</div>
+                  <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${snapshotDiagnosis}</div>
+               </div>` : ''}
 
-             <div class="rx-symbol">℞</div>
-             
-             <ul class="drug-list">
-                ${items.map((item, i) => `
-                <li class="drug-item">
-                   <div class="drug-num">${i + 1}.</div>
-                   <div class="drug-details">
-                      <div class="drug-name">${item.drug}</div>
-                      <div class="drug-sig">Sig: ${item.instruction}</div>
-                   </div>
-                   <div class="drug-qty">${item.dosage}</div>
-                </li>`).join('')}
-             </ul>
+               <div class="rx-symbol">℞</div>
+               
+               <ul class="drug-list">
+                  ${items.map((item, i) => `
+                  <li class="drug-item">
+                     <div class="drug-num">${i + 1}.</div>
+                     <div class="drug-details">
+                        <div class="drug-name">${item.drug}</div>
+                        <div class="drug-sig">Sig: ${item.instruction}</div>
+                     </div>
+                     <div class="drug-qty">${item.dosage}</div>
+                  </li>`).join('')}
+               </ul>
 
-             <div class="footer-pro">
-                <div style="font-size:9pt; color:#64748b;">
-                   <div>${doctorProfile?.address || ''}</div>
-                   <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
-                </div>
-                <div class="signature-area">Signature & Stamp</div>
-             </div>
-             
-             <div class="footer-motto">"Preserving the integrity of the profession with AI precision."</div>
+               <div class="footer-pro">
+                  <div style="font-size:9pt; color:#64748b;">
+                     <div>${doctorProfile?.address || ''}</div>
+                     <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
+                  </div>
+                  <div class="signature-area">Signature & Stamp</div>
+               </div>
+            </div>
           </div>
         `;
      }
@@ -301,7 +322,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      const triggerPrint = () => {
         setTimeout(() => {
            win.print();
-        }, 300);
+        }, 400);
      };
 
      if (bgImg && !bgImg.complete) {

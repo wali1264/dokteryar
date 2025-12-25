@@ -537,13 +537,35 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      const win = frame.contentWindow;
      if (!win) return;
 
-     const paperWidth = settings.paperSize === 'A4' ? '210mm' : '148mm';
-     const paperHeight = settings.paperSize === 'A4' ? '297mm' : '210mm';
-
      let style = `
-       @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0 !important; }
-       html, body { margin: 0 !important; padding: 0 !important; box-sizing: border-box; width: ${paperWidth}; height: ${paperHeight}; overflow: hidden; }
-       body { font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
+       @page { 
+         margin: 0 !important; 
+         size: ${settings.paperSize === 'Letter' ? 'letter' : settings.paperSize === 'A5' ? 'A5' : 'A4'}; 
+       }
+       html, body { 
+         margin: 0 !important; 
+         padding: 0 !important; 
+         width: 100%; 
+         height: 100%; 
+         overflow: hidden; 
+         box-sizing: border-box;
+       }
+       body { 
+         font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; 
+         direction: rtl; 
+         -webkit-print-color-adjust: exact; 
+         print-color-adjust: exact; 
+         color: #1e293b; 
+       }
+       .print-wrapper {
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         height: 100%;
+         margin: 0 !important;
+         padding: 0 !important;
+       }
        .majestic-container { position: relative; width: 100%; height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
        .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
@@ -568,8 +590,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        .drug-qty { font-weight: 900; color: #1e3a8a; margin-left: 10px; font-size: 13pt; }
        .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
-       .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
+       .custom-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
        .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
@@ -577,70 +598,70 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      let content = '';
      if (mode === 'plain') {
         content = `
-          <div class="majestic-container">
-             <div class="rx-watermark">℞</div>
-             <div class="header-pro">
-                <div class="doc-info">
-                   <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
-                   <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
-                   <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
-                </div>
-                ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
-             </div>
-             
-             <div class="patient-summary">
-                <div><span>بیمار:</span> ${selectedPatient?.name}</div>
-                <div><span>ID:</span> ${selectedPatient?.displayId}</div>
-                <div><span>سن:</span> ${selectedPatient?.age || '--'}</div>
-                <div><span>تاریخ:</span> ${new Date().toLocaleDateString('fa-IR')}</div>
-             </div>
+          <div class="print-wrapper">
+            <div class="majestic-container">
+               <div class="rx-watermark">℞</div>
+               <div class="header-pro">
+                  <div class="doc-info">
+                     <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
+                     <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
+                     <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
+                  </div>
+                  ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
+               </div>
+               
+               <div class="patient-summary">
+                  <div><span>بیمار:</span> ${selectedPatient?.name}</div>
+                  <div><span>ID:</span> ${selectedPatient?.displayId}</div>
+                  <div><span>سن:</span> ${selectedPatient?.age || '--'}</div>
+                  <div><span>تاریخ:</span> ${new Date().toLocaleDateString('fa-IR')}</div>
+               </div>
 
-             <div class="vitals-matrix">
-                <div class="vital-cell"><span class="vital-label">BP</span><span class="vital-value">${vitals.bloodPressure || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">HR</span><span class="vital-value">${vitals.heartRate || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">TEMP</span><span class="vital-value">${vitals.temperature || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">RR</span><span class="vital-value">${vitals.respiratoryRate || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">SPO2</span><span class="vital-value">${vitals.spO2 || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">BS</span><span class="vital-value">${vitals.bloodSugar || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">WT</span><span class="vital-value">${vitals.weight || '--'}</span></div>
-                <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${vitals.height || '--'}</span></div>
-             </div>
+               <div class="vitals-matrix">
+                  <div class="vital-cell"><span class="vital-label">BP</span><span class="vital-value">${vitals.bloodPressure || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">HR</span><span class="vital-value">${vitals.heartRate || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">TEMP</span><span class="vital-value">${vitals.temperature || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">RR</span><span class="vital-value">${vitals.respiratoryRate || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">SPO2</span><span class="vital-value">${vitals.spO2 || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">BS</span><span class="vital-value">${vitals.bloodSugar || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">WT</span><span class="vital-value">${vitals.weight || '--'}</span></div>
+                  <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${vitals.height || '--'}</span></div>
+               </div>
 
-             ${chiefComplaint ? `
-             <div class="clinical-section">
-                <div class="section-title">Clinical Findings (CC)</div>
-                <div class="clinical-content">${chiefComplaint}</div>
-             </div>` : ''}
+               ${chiefComplaint ? `
+               <div class="clinical-section">
+                  <div class="section-title">Clinical Findings (CC)</div>
+                  <div class="clinical-content">${chiefComplaint}</div>
+               </div>` : ''}
 
-             ${diagnosis ? `
-             <div class="clinical-section">
-                <div class="section-title">Impression / Diagnosis</div>
-                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div>
-             </div>` : ''}
+               ${diagnosis ? `
+               <div class="clinical-section">
+                  <div class="section-title">Impression / Diagnosis</div>
+                  <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div>
+               </div>` : ''}
 
-             <div class="rx-symbol">℞</div>
-             
-             <ul class="drug-list">
-                ${items.map((item, i) => `
-                <li class="drug-item">
-                   <div class="drug-num">${i + 1}.</div>
-                   <div class="drug-details">
-                      <div class="drug-name">${item.drug}</div>
-                      <div class="drug-sig">Sig: ${item.instruction}</div>
-                   </div>
-                   <div class="drug-qty">${item.dosage}</div>
-                </li>`).join('')}
-             </ul>
+               <div class="rx-symbol">℞</div>
+               
+               <ul class="drug-list">
+                  ${items.map((item, i) => `
+                  <li class="drug-item">
+                     <div class="drug-num">${i + 1}.</div>
+                     <div class="drug-details">
+                        <div class="drug-name">${item.drug}</div>
+                        <div class="drug-sig">Sig: ${item.instruction}</div>
+                     </div>
+                     <div class="drug-qty">${item.dosage}</div>
+                  </li>`).join('')}
+               </ul>
 
-             <div class="footer-pro">
-                <div style="font-size:9pt; color:#64748b;">
-                   <div>${doctorProfile?.address || ''}</div>
-                   <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
-                </div>
-                <div class="signature-area">Signature & Stamp</div>
-             </div>
-             
-             <div class="footer-motto">"The art of medicine consists of amusing the patient while nature cures the disease."</div>
+               <div class="footer-pro">
+                  <div style="font-size:9pt; color:#64748b;">
+                     <div>${doctorProfile?.address || ''}</div>
+                     <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
+                  </div>
+                  <div class="signature-area">Signature & Stamp</div>
+               </div>
+            </div>
           </div>
         `;
      } else {
@@ -667,7 +688,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            if (!innerHtml) return '';
            return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
         }).join('');
-        content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
+        content = `<div class="print-wrapper"><div class="custom-container">${bgHtml}${elementsHtml}</div></div>`;
      }
 
      win.document.write(`<html dir="rtl"><head><title>Prescription</title><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
@@ -678,7 +699,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         setTimeout(() => {
           win.print();
           if (isExpressMode) setViewMode('landing');
-        }, 300);
+        }, 400);
      };
 
      if (bgImg && !bgImg.complete) {
@@ -780,7 +801,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          )}
          {showQuickEntryModal && (
             <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
-               <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+               <div className="bg-white/80 backdrop-blur-md w-full max-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                   <div className="flex justify-between items-center mb-8 relative z-10">
                      <div>

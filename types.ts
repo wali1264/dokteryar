@@ -94,7 +94,7 @@ export interface PrescriptionSettings {
   topPadding: number; 
   fontFamily: string;
   fontSize: number;
-  paperSize: 'A4' | 'A5';
+  paperSize: 'A4' | 'A5' | 'Letter';
   backgroundImage?: string; // Base64
   printBackground: boolean; // Toggle to print the bg image or not
   elements: LayoutElement[]; // The coordinates for everything
@@ -148,7 +148,7 @@ export interface RadiologyAnalysis {
 
 export interface PhysicalExamAnalysis {
   examType: 'skin' | 'tongue' | 'face';
-  findings: string[];
+  findings: ["string"];
   diagnosis: string;
   severity: 'low' | 'medium' | 'high';
   traditionalAnalysis?: string;
