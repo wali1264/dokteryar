@@ -139,7 +139,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      const snapshotChiefComplaint = pres.manualChiefComplaint || '';
      const items = pres.items || []; 
 
-     const win = window.open('', '', 'width=900,height=1200');
+     // ROBUST HIDDEN IFRAME PRINTING
+     const iframeId = 'tabib-reprint-frame';
+     let frame = document.getElementById(iframeId) as HTMLIFrameElement;
+     if (frame) document.body.removeChild(frame);
+     
+     frame = document.createElement('iframe');
+     frame.id = iframeId;
+     frame.style.position = 'fixed';
+     frame.style.right = '0';
+     frame.style.bottom = '0';
+     frame.style.width = '0';
+     frame.style.height = '0';
+     frame.style.border = '0';
+     document.body.appendChild(frame);
+
+     const win = frame.contentWindow;
      if (!win) return;
 
      const fontFamily = settings?.fontFamily || 'Vazirmatn';
@@ -147,26 +162,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
      
      let style = `
        @page { size: ${paperSize} portrait; margin: 0; }
-       html, body { height: 100%; }
-       body { font-family: '${fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 60px; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+       html, body { height: 100%; width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+       body { font-family: '${fontFamily}', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
        .rx-container { padding: 40px; box-sizing: border-box; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
        .rx-symbol { font-size: 32px; font-weight: bold; margin: 20px 0; font-family: serif; }
        .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
-       .control-bar { position: fixed; top: 0; left: 0; right: 0; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); padding: 12px; display: flex; justify-content: center; gap: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); z-index: 9999; border-bottom: 1px solid #eee; }
-       .btn { padding: 10px 24px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; }
-       .btn-print { background: #2563eb; color: white; }
-       .btn-close { background: #fee2e2; color: #ef4444; }
-       @media print { .no-print { display: none !important; } html, body { height: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; } .custom-container, .rx-container { width: 100%; height: 100%; max-height: 100%; page-break-after: avoid; page-break-inside: avoid; break-inside: avoid; overflow: hidden; transform: scale(0.98); transform-origin: top center; } .print-element { position: absolute; white-space: nowrap; } }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
+       .print-element { position: absolute; white-space: nowrap; }
+       .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
 
-     const controlHtml = `<div class="control-bar no-print"><button class="btn btn-print" onclick="window.print()">چاپ نهایی</button><button class="btn btn-close" onclick="window.close()">بستن</button></div>`;
      let content = '';
 
-     if (settings?.printBackground && settings?.elements && settings.elements.length > 0) {
-         let bgHtml = settings.backgroundImage ? `<img src="${settings.backgroundImage}" style="position: absolute; top:0; left:0; width:100%; height:100%; object-fit: fill; z-index:-1;" />` : '';
+     if (settings?.printBackground && settings?.backgroundImage) {
+         let bgHtml = `<img id="bgImgReprint" src="${settings.backgroundImage}" class="bg-image" />`;
          const elementsHtml = settings.elements.filter(el => el.visible).map(el => {
             let innerHtml = '';
             switch (el.id) {
@@ -189,13 +201,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             if (!innerHtml) return '';
             return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
          }).join('');
-         content = `<div class="custom-container" style="position: relative; width: 100%; height: 100%; overflow: hidden;">${bgHtml}${elementsHtml}</div>`;
+         content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
      } else {
          content = `<div class="rx-container"><div class="digital-header"><div class="doc-info"><h1 style="margin:0; font-size:24px;">${doctorProfile?.name || 'دکتر ...'}</h1><p style="margin:5px 0;">${doctorProfile?.specialty || ''}</p><p style="font-size:12px;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</p></div>${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 80px; object-fit: contain;" />` : ''}</div><div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${record.name} (ID: ${record.displayId})</div>${record.age ? `<div><strong>سن:</strong> ${record.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date(pres.date || record.visitDate).toLocaleDateString('fa-IR')}</div></div><div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">${snapshotVitals?.bloodPressure ? `<span><strong>BP:</strong> ${snapshotVitals.bloodPressure}</span>` : ''}${snapshotVitals?.heartRate ? `<span><strong>HR:</strong> ${snapshotVitals.heartRate}</span>` : ''}</div>${snapshotChiefComplaint ? `<div style="margin-bottom:10px; padding:10px; background:#f9fafb; border-radius:8px;"><strong>شکایت اصلی:</strong> ${snapshotChiefComplaint}</div>` : ''}${(snapshotDiagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${snapshotDiagnosis}</div>` : ''}<div class="rx-symbol">Rx</div><table class="rx-table"><thead><tr><th>#</th><th>Drug Name</th><th>Dosage</th><th>Instruction</th></tr></thead><tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td style="font-weight:bold;">${item.drug}</td><td>${item.dosage}</td><td>${item.instruction}</td></tr>`).join('')}</tbody></table></div>`;
      }
 
-     win.document.write(`<html dir="rtl"><head><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${controlHtml}${content}</body></html>`);
+     win.document.write(`<html dir="rtl"><head><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
      win.document.close();
+
+     const bgImg = win.document.getElementById('bgImgReprint') as HTMLImageElement;
+     const triggerPrint = () => {
+        setTimeout(() => {
+           win.print();
+        }, 150);
+     };
+
+     if (bgImg && !bgImg.complete) {
+        bgImg.onload = triggerPrint;
+        bgImg.onerror = triggerPrint;
+     } else {
+        triggerPrint();
+     }
   };
 
   return (

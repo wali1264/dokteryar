@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats } from '../services/db';
-import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage } from '../types';
+import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage, PrescriptionRecord } from '../types';
 import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks } from 'lucide-react';
 
 interface PrescriptionProps {
@@ -308,6 +308,35 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } catch (e) { alert('خطا در اسکن نسخه'); } finally { setLoading(false); }
   };
 
+  // Fix: Added missing saveToPatientRecord function to persist prescriptions to DB
+  const saveToPatientRecord = async () => {
+    if (!selectedPatient || isExpressMode) return;
+
+    const newPrescription: PrescriptionRecord = {
+      id: crypto.randomUUID(),
+      date: Date.now(),
+      items: items.filter(it => it.drug.trim() !== ''),
+      manualDiagnosis: diagnosis,
+      manualVitals: vitals,
+      manualChiefComplaint: chiefComplaint
+    };
+
+    const updatedRecord: PatientRecord = {
+      ...selectedPatient,
+      status: 'completed',
+      prescriptions: [...(selectedPatient.prescriptions || []), newPrescription],
+      vitals: vitals,
+    };
+
+    try {
+      await saveRecord(updatedRecord);
+      setSelectedPatient(updatedRecord);
+      localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
+    } catch (e) {
+      console.error("Failed to auto-save patient record:", e);
+    }
+  };
+
   // --- CC DICTATION LOGIC ---
   const startCCRecording = async () => {
     try {
@@ -490,30 +519,44 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     return stats?.commonInstructions || ['هر ۸ ساعت', 'روزی یک عدد', 'قبل از غذا'];
   };
 
-  const handlePrint = (mode: 'plain' | 'custom') => {
-     if (!isExpressMode) saveToPatientRecord();
+  // Fix: Made handlePrint async to await saveToPatientRecord
+  const handlePrint = async (mode: 'plain' | 'custom') => {
+     if (!isExpressMode) await saveToPatientRecord();
      items.forEach(item => { if (item.drug) trackDrugUsage(item.drug, item.dosage, item.instruction); });
-     const win = window.open('', '_blank', 'width=900,height=1200');
+     
+     // ROBUST HIDDEN IFRAME PRINTING TECHNIQUE
+     const iframeId = 'tabib-print-frame';
+     let frame = document.getElementById(iframeId) as HTMLIFrameElement;
+     if (frame) document.body.removeChild(frame);
+     
+     frame = document.createElement('iframe');
+     frame.id = iframeId;
+     frame.style.position = 'fixed';
+     frame.style.right = '0';
+     frame.style.bottom = '0';
+     frame.style.width = '0';
+     frame.style.height = '0';
+     frame.style.border = '0';
+     document.body.appendChild(frame);
+
+     const win = frame.contentWindow;
      if (!win) return;
+
      let style = `
        @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
-       html, body { height: 100%; }
-       body { font-family: '${settings.fontFamily}', sans-serif; margin: 0; direction: rtl; padding-top: 40px; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
-       @media print {
-          .no-print { display: none !important; }
-          html, body { height: 100%; margin: 0 !important; padding: 0 !important; overflow: hidden; }
-          .rx-container, .custom-container { width: 100%; height: 100%; max-height: 100%; page-break-after: avoid; page-break-inside: avoid; break-inside: avoid; overflow: hidden; transform: scale(0.98); transform-origin: top center; }
-       }
+       html, body { height: 100%; width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
+       body { font-family: '${settings.fontFamily}', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
        .rx-container { padding: 40px; box-sizing: border-box; }
        .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
        .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
        .rx-table th { background-color: #f8f9fa; }
        .rx-symbol { font-size: 32px; font-weight: bold; margin: 20px 0; font-family: serif; }
        .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
        .print-element { position: absolute; white-space: nowrap; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
+
      let content = '';
      if (mode === 'plain') {
         content = `
@@ -528,7 +571,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           </div>
         `;
      } else {
-        let bgHtml = (settings.printBackground && settings.backgroundImage) ? `<img src="${settings.backgroundImage}" class="bg-image" />` : '';
+        let bgHtml = (settings.printBackground && settings.backgroundImage) ? `<img id="bgImg" src="${settings.backgroundImage}" class="bg-image" />` : '';
         const elementsHtml = (settings.elements || []).filter(el => el.visible).map(el => {
            let innerHtml = '';
            switch (el.id) {
@@ -551,33 +594,25 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         }).join('');
         content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
      }
-     win.document.write(`<html dir="rtl"><head><title>چاپ نسخه</title><meta name="viewport" content="width=device-width, initial-scale=1.0"><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style><script>window.onload = () => { setTimeout(() => { window.print(); window.close(); }, 500); };</script></head><body>${content}</body></html>`);
-     win.document.close();
-     if (isExpressMode) setViewMode('landing');
-  };
 
-  const saveToPatientRecord = async () => {
-     if (!selectedPatient || isExpressMode) return;
-     try {
-       const record: PatientRecord = { 
-          ...selectedPatient, 
-          vitals: { ...selectedPatient.vitals, ...vitals }, 
-          status: 'completed', 
-          prescriptions: [ 
-             ...(selectedPatient.prescriptions || []), 
-             { 
-               id: crypto.randomUUID(), 
-               date: Date.now(), 
-               items: items, 
-               manualDiagnosis: diagnosis, 
-               manualVitals: vitals,
-               manualChiefComplaint: chiefComplaint 
-             } 
-          ] 
-       };
-       await saveRecord(record); 
-       localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
-     } catch (e) { console.error(e); }
+     win.document.write(`<html dir="rtl"><head><title>Prescription</title><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
+     win.document.close();
+
+     // Wait for assets (background image, fonts) to load before printing
+     const bgImg = win.document.getElementById('bgImg') as HTMLImageElement;
+     const triggerPrint = () => {
+        setTimeout(() => {
+          win.print();
+          if (isExpressMode) setViewMode('landing');
+        }, 100);
+     };
+
+     if (bgImg && !bgImg.complete) {
+        bgImg.onload = triggerPrint;
+        bgImg.onerror = triggerPrint; // Fail gracefully
+     } else {
+        triggerPrint();
+     }
   };
 
   const handleAutoPrint = () => {
