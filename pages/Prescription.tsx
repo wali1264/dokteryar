@@ -280,16 +280,26 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      
+      // Visual Feedback: Flash effect
+      const flashEl = document.createElement('div');
+      flashEl.className = 'fixed inset-0 z-[300] bg-white animate-flash-effect pointer-events-none';
+      document.body.appendChild(flashEl);
+      setTimeout(() => { if (flashEl.parentNode) document.body.removeChild(flashEl); }, 500);
+
+      canvas.width = video.videoWidth; 
+      canvas.height = video.videoHeight;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(async (blob) => {
           if (blob) {
             const file = new File([blob], "prescription_scan.jpg", { type: "image/jpeg" });
-            stopCamera(); await processFile(file);
+            // Close camera immediately after getting blob to ensure resources are free for AI
+            stopCamera(); 
+            await processFile(file);
           }
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.9);
       }
     }
   };
@@ -804,7 +814,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          )}
          {showQuickEntryModal && (
             <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
-               <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+               <div className="bg-white/80 backdrop-blur-md w-full max-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                   <div className="flex justify-between items-center mb-8 relative z-10">
                      <div>
@@ -888,6 +898,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           border-radius: 2px;
           animation: waveform 0.8s ease-in-out infinite;
         }
+        @keyframes flash-effect {
+          0% { opacity: 0.8; }
+          100% { opacity: 0; }
+        }
+        .animate-flash-effect {
+          animation: flash-effect 0.5s ease-out forwards;
+        }
       `}</style>
 
       {/* AI SCANNING OVERLAY PORTAL */}
@@ -924,7 +941,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {/* MOBILE UI - UNTOUCHED */}
+      {/* MOBILE UI */}
       <div className="lg:hidden flex flex-col gap-4">
          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
@@ -1084,6 +1101,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"
               >
                 <List size={20} /> قالب‌ها
+              </button>
+
+              <button 
+                onClick={startCamera}
+                disabled={!isOnline}
+                className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"
+              >
+                <Camera size={20} /> اسکن دوربین
               </button>
 
               <button 
@@ -1380,7 +1405,36 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {showCamera && (<div className="fixed inset-0 z-[150] bg-black flex flex-col"><div className="flex justify-between items-center p-4 bg-black/50 text-white absolute top-0 left-0 right-0 z-10"><h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3><button onClick={stopCamera} className="p-2 bg-white/20 rounded-full"><X /></button></div><div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden"><video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain" /><canvas ref={canvasRef} className="hidden" /></div><div className="bg-black p-6 pb-10 flex justify-between items-center"><button onClick={() => setScanOrientation(prev => prev === 'portrait' ? 'landscape' : 'portrait')} className="text-white flex flex-col items-center gap-1 text-xs"><RotateCw size={24} /><span>چرخش</span></button><button onClick={capturePhoto} className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg"><div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div></button><div className="w-12 relative overflow-hidden"><input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleFileUpload} /><button className="text-white flex flex-col items-center gap-1 text-xs"><ImageIcon size={24} /><span>گالری</span></button></div></div></div>)}
+      {showCamera && (
+        <div className="fixed inset-0 z-[150] bg-black flex flex-col">
+          <div className="flex justify-between items-center p-4 bg-black/50 text-white absolute top-0 left-0 right-0 z-10">
+            <h3 className="font-bold text-lg flex items-center gap-2"><ScanLine /> اسکن نسخه</h3>
+            <button onClick={stopCamera} className="p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"><X /></button>
+          </div>
+          <div className="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain" />
+            <canvas ref={canvasRef} className="hidden" />
+          </div>
+          <div className="bg-black p-6 pb-10 flex justify-between items-center">
+            <button onClick={() => setScanOrientation(prev => prev === 'portrait' ? 'landscape' : 'portrait')} className="text-white flex flex-col items-center gap-1 text-xs opacity-60 hover:opacity-100">
+              <RotateCw size={24} /><span>چرخش</span>
+            </button>
+            <button 
+              onClick={capturePhoto} 
+              className="w-20 h-20 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-90 transition-transform"
+            >
+              <div className="w-16 h-16 rounded-full bg-white border-2 border-black/10"></div>
+            </button>
+            <div className="w-12 relative overflow-hidden">
+              <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer z-10" onChange={handleFileUpload} />
+              <button className="text-white flex flex-col items-center gap-1 text-xs opacity-60 hover:opacity-100">
+                <ImageIcon size={24} /><span>گالری</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {showSaveModal && (<div className="fixed inset-0 bg-black/50 z-[160] backdrop-blur-sm flex items-center justify-center p-4"><div className="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl animate-fade-in"><h3 className="font-black text-xl text-gray-800 mb-6 flex items-center gap-2"><LayoutTemplate className="text-indigo-600" />ذخیره به عنوان قالب</h3><input autoFocus className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl mb-6 outline-none focus:ring-4 focus:ring-indigo-100 font-bold" placeholder="نام قالب (مثال: سرماخوردگی)" value={templateName} onChange={e => setTemplateName(e.target.value)} /><div className="flex justify-end gap-3"><button onClick={() => setShowSaveModal(false)} className="px-6 py-3 font-bold text-gray-500 hover:text-gray-800 transition-colors">لغو</button><button onClick={handleSaveTemplate} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100">ذخیره نسخه</button></div></div></div>)}
     </div>
   );
