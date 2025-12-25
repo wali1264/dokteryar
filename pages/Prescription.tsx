@@ -308,7 +308,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } catch (e) { alert('خطا در اسکن نسخه'); } finally { setLoading(false); }
   };
 
-  // Fix: Added missing saveToPatientRecord function to persist prescriptions to DB
   const saveToPatientRecord = async () => {
     if (!selectedPatient || isExpressMode) return;
 
@@ -337,7 +336,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
-  // --- CC DICTATION LOGIC ---
   const startCCRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -367,7 +365,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
-  // --- AI SCRIBE LOGIC ---
   const startScribeRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -519,12 +516,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     return stats?.commonInstructions || ['هر ۸ ساعت', 'روزی یک عدد', 'قبل از غذا'];
   };
 
-  // Fix: Made handlePrint async to await saveToPatientRecord
   const handlePrint = async (mode: 'plain' | 'custom') => {
      if (!isExpressMode) await saveToPatientRecord();
      items.forEach(item => { if (item.drug) trackDrugUsage(item.drug, item.dosage, item.instruction); });
      
-     // ROBUST HIDDEN IFRAME PRINTING TECHNIQUE
      const iframeId = 'tabib-print-frame';
      let frame = document.getElementById(iframeId) as HTMLIFrameElement;
      if (frame) document.body.removeChild(frame);
@@ -543,15 +538,34 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      if (!win) return;
 
      let style = `
-       @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
-       html, body { height: 100%; width: 100%; margin: 0; padding: 0; box-sizing: border-box; }
-       body { font-family: '${settings.fontFamily}', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-       .rx-container { padding: 40px; box-sizing: border-box; }
-       .rx-table { width: 100%; border-collapse: collapse; margin-top: 20px; direction: ltr; }
-       .rx-table th, .rx-table td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; }
-       .rx-table th { background-color: #f8f9fa; }
-       .rx-symbol { font-size: 32px; font-weight: bold; margin: 20px 0; font-family: serif; }
-       .digital-header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+       @page { size: ${settings.paperSize || 'A4'} portrait; margin: 10mm; }
+       html, body { margin: 0; padding: 0; box-sizing: border-box; }
+       body { font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
+       .majestic-container { position: relative; width: 100%; min-height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
+       .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
+       .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
+       .dr-name { font-size: 22pt; font-weight: 900; color: #1e3a8a; margin: 0; }
+       .dr-spec { font-size: 13pt; font-weight: 700; margin-top: 2mm; color: #475569; }
+       .council-box { border: 1px solid #1e3a8a; padding: 2mm 4mm; border-radius: 4px; font-size: 10pt; font-weight: 800; display: inline-block; margin-top: 3mm; }
+       .patient-summary { display: flex; justify-content: space-between; background: #f8fafc; padding: 4mm; border-radius: 8px; margin-bottom: 6mm; font-size: 11pt; font-weight: 700; border: 1px solid #e2e8f0; }
+       .vitals-matrix { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #cbd5e1; margin-bottom: 6mm; background: #fff; }
+       .vital-cell { border: 0.5px solid #cbd5e1; padding: 2mm; text-align: center; }
+       .vital-label { font-size: 8pt; font-weight: 900; color: #64748b; display: block; margin-bottom: 1mm; text-transform: uppercase; }
+       .vital-value { font-size: 11pt; font-weight: 900; color: #1e3a8a; }
+       .clinical-section { margin-bottom: 5mm; }
+       .section-title { font-size: 10pt; font-weight: 900; color: #1e3a8a; border-right: 4px solid #1e3a8a; padding-right: 3mm; margin-bottom: 2mm; text-transform: uppercase; }
+       .clinical-content { font-size: 12pt; line-height: 1.6; color: #334155; padding: 2mm 4mm; background: #fdfdfd; border-radius: 4px; }
+       .rx-symbol { font-size: 32pt; font-weight: bold; font-family: 'Times New Roman', serif; color: #1e3a8a; margin: 5mm 0 2mm 0; border-bottom: 1px solid #e2e8f0; }
+       .drug-list { list-style: none; padding: 0; margin: 0; direction: ltr; }
+       .drug-item { display: flex; align-items: flex-start; margin-bottom: 5mm; font-family: 'Georgia', 'Times New Roman', serif; }
+       .drug-num { font-weight: 900; width: 30px; color: #1e3a8a; font-size: 14pt; }
+       .drug-details { flex: 1; }
+       .drug-name { font-size: 15pt; font-weight: 900; text-transform: capitalize; color: #0f172a; margin-bottom: 1mm; }
+       .drug-sig { font-size: 12pt; color: #334155; font-style: italic; font-weight: 500; }
+       .drug-qty { font-weight: 900; color: #1e3a8a; margin-left: 10px; font-size: 13pt; }
+       .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
+       .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
+       .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
        .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
        .print-element { position: absolute; white-space: nowrap; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
@@ -560,14 +574,70 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      let content = '';
      if (mode === 'plain') {
         content = `
-          <div class="rx-container">
-             <div class="digital-header"><div class="doc-info"><h1 style="margin:0; font-size:24px;">${doctorProfile?.name || 'دکتر ...'}</h1><p style="margin:5px 0;">${doctorProfile?.specialty || ''}</p><p style="font-size:12px;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</p></div>${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 80px; object-fit: contain;" />` : ''}</div>
-             <div style="background:#f3f4f6; padding:15px; border-radius:10px; display:flex; gap:20px; margin-bottom:20px;"><div><strong>نام بیمار:</strong> ${selectedPatient?.name} (ID: ${selectedPatient?.displayId})</div>${selectedPatient?.age ? `<div><strong>سن:</strong> ${selectedPatient.age}</div>` : ''}<div><strong>تاریخ:</strong> ${new Date().toLocaleDateString('fa-IR')}</div></div>
-             <div style="font-size: 12px; margin-bottom: 10px; display: flex; gap: 15px; color: #555;">${vitals.bloodPressure ? `<span><strong>BP:</strong> ${vitals.bloodPressure}</span>` : ''}${vitals.heartRate ? `<span><strong>HR:</strong> ${vitals.heartRate}</span>` : ''}</div>
-             ${chiefComplaint ? `<div style="margin-bottom:10px; padding:10px; background:#f9fafb; border-radius:8px;"><strong>شکایت اصلی:</strong> ${chiefComplaint}</div>` : ''}
-             ${(diagnosis) ? `<div style="margin-bottom:20px; padding:10px; border:1px dashed #ccc;"><strong>تشخیص:</strong> ${diagnosis}</div>` : ''}
-             <div class="rx-symbol">Rx</div>
-             <table class="rx-table"><thead><tr><th>#</th><th>Drug Name</th><th>Dosage</th><th>Instruction</th></tr></thead><tbody>${items.map((item, i) => `<tr><td>${i + 1}</td><td style="font-weight:bold;">${item.drug}</td><td>${item.dosage}</td><td>${item.instruction}</td></tr>`).join('')}</tbody></table>
+          <div class="majestic-container">
+             <div class="rx-watermark">℞</div>
+             <div class="header-pro">
+                <div class="doc-info">
+                   <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
+                   <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
+                   <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
+                </div>
+                ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
+             </div>
+             
+             <div class="patient-summary">
+                <div><span>بیمار:</span> ${selectedPatient?.name}</div>
+                <div><span>ID:</span> ${selectedPatient?.displayId}</div>
+                <div><span>سن:</span> ${selectedPatient?.age || '--'}</div>
+                <div><span>تاریخ:</span> ${new Date().toLocaleDateString('fa-IR')}</div>
+             </div>
+
+             <div class="vitals-matrix">
+                <div class="vital-cell"><span class="vital-label">BP</span><span class="vital-value">${vitals.bloodPressure || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">HR</span><span class="vital-value">${vitals.heartRate || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">TEMP</span><span class="vital-value">${vitals.temperature || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">RR</span><span class="vital-value">${vitals.respiratoryRate || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">SPO2</span><span class="vital-value">${vitals.spO2 || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">BS</span><span class="vital-value">${vitals.bloodSugar || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">WT</span><span class="vital-value">${vitals.weight || '--'}</span></div>
+                <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${vitals.height || '--'}</span></div>
+             </div>
+
+             ${chiefComplaint ? `
+             <div class="clinical-section">
+                <div class="section-title">Clinical Findings (CC)</div>
+                <div class="clinical-content">${chiefComplaint}</div>
+             </div>` : ''}
+
+             ${diagnosis ? `
+             <div class="clinical-section">
+                <div class="section-title">Impression / Diagnosis</div>
+                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div>
+             </div>` : ''}
+
+             <div class="rx-symbol">℞</div>
+             
+             <ul class="drug-list">
+                ${items.map((item, i) => `
+                <li class="drug-item">
+                   <div class="drug-num">${i + 1}.</div>
+                   <div class="drug-details">
+                      <div class="drug-name">${item.drug}</div>
+                      <div class="drug-sig">Sig: ${item.instruction}</div>
+                   </div>
+                   <div class="drug-qty">${item.dosage}</div>
+                </li>`).join('')}
+             </ul>
+
+             <div class="footer-pro">
+                <div style="font-size:9pt; color:#64748b;">
+                   <div>${doctorProfile?.address || ''}</div>
+                   <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
+                </div>
+                <div class="signature-area">Signature & Stamp</div>
+             </div>
+             
+             <div class="footer-motto">"The art of medicine consists of amusing the patient while nature cures the disease."</div>
           </div>
         `;
      } else {
@@ -586,7 +656,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               case 'vital_rr': innerHtml = vitals.respiratoryRate || ''; break;
               case 'vital_temp': innerHtml = vitals.temperature || ''; break;
               case 'vital_weight': innerHtml = vitals.weight || ''; break;
-              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left;">${items.map((item, i) => `<li style="margin-bottom:8px;"><span style="font-weight:bold;">${i+1}. ${item.drug}</span><span style="margin:0 10px;">${item.dosage}</span><div style="font-size:0.9em; color:#444;">${item.instruction}</div></li>`).join('')}</ul>`; break;
+              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`; break;
               default: innerHtml = '';
            }
            if (!innerHtml) return '';
@@ -595,21 +665,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         content = `<div class="custom-container">${bgHtml}${elementsHtml}</div>`;
      }
 
-     win.document.write(`<html dir="rtl"><head><title>Prescription</title><link href="https://fonts.googleapis.com/css2?family=Vazirmatn&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
+     win.document.write(`<html dir="rtl"><head><title>Prescription</title><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;900&display=swap" rel="stylesheet"><style>${style}</style></head><body>${content}</body></html>`);
      win.document.close();
 
-     // Wait for assets (background image, fonts) to load before printing
      const bgImg = win.document.getElementById('bgImg') as HTMLImageElement;
      const triggerPrint = () => {
         setTimeout(() => {
           win.print();
           if (isExpressMode) setViewMode('landing');
-        }, 100);
+        }, 300);
      };
 
      if (bgImg && !bgImg.complete) {
         bgImg.onload = triggerPrint;
-        bgImg.onerror = triggerPrint; // Fail gracefully
+        bgImg.onerror = triggerPrint;
      } else {
         triggerPrint();
      }
@@ -621,7 +690,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     handlePrint(mode);
   };
 
-  const printButtonLabel = settings.backgroundImage ? 'چاپ روی سربرگ مطب' : 'چاپ نسخه دیجیتال (استاندارد)';
+  const printButtonLabel = settings.backgroundImage ? 'چاپ روی سربرگ مطب' : 'چاپ نسخه دیجیتال (Majestic)';
 
   if (viewMode === 'landing') {
     return (
@@ -962,9 +1031,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       </div>
 
-      {/* DESKTOP UI - RECONSTRUCTED FOR PROFESSIONAL DOCTOR VIEW */}
+      {/* DESKTOP UI */}
       <div className="hidden lg:block min-h-screen">
-         {/* HEADER SECTION */}
          <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
            <div className="flex items-center gap-5">
              <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner">
@@ -1013,10 +1081,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            </div>
          </div>
 
-         {/* MAIN EDITOR GRID */}
          <div className="flex gap-6 items-start">
-            
-            {/* 1. LEFT SIDEBAR: VITALS (VERTICAL) - COMPACTED HEIGHT */}
             <div className="w-28 flex flex-col gap-1.5 shrink-0">
                <div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5">
                  <Activity size={20} />
@@ -1030,10 +1095,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                <DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="" field="weight" onChange={handleVitalChange} />
             </div>
 
-            {/* 2. MAIN AREA: DX + MEDS */}
             <div className="flex-1 flex flex-col gap-6">
-               
-               {/* DIAGNOSIS BAR (HORIZONTAL TOP) */}
                <div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}>
                   <div className="flex items-center justify-between mb-2 px-4">
                      <div className="flex items-center gap-3">
@@ -1062,7 +1124,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                   />
                </div>
 
-               {/* PRESCRIPTION TABLE (EXPANDED) - ACCESSIBLE HEIGHT */}
                <div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}>
                   <table className="w-full text-right border-separate border-spacing-y-4">
                     <thead>
