@@ -9,7 +9,8 @@ import { Chat } from "@google/genai";
 
 interface DiagnosisProps {
   patientRecord: PatientRecord | null;
-  onNavigate: (route: AppRoute, record: PatientRecord) => void;
+  // Fix: Made the second argument 'record' optional to match the implementation in App.tsx and resolve "Expected 2 arguments" errors at call sites like onNavigate(AppRoute.INTAKE).
+  onNavigate: (route: AppRoute, record?: PatientRecord) => void;
 }
 
 const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
@@ -743,7 +744,6 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
                        disabled={consensusLoading || !isOnline}
                        className="bg-white text-gray-900 px-8 py-4 rounded-2xl font-black flex items-center gap-3 hover:bg-gray-100 transition-all active:scale-95 shadow-xl disabled:opacity-50"
                      >
-                       {/* Fix: Changed RefreshCw to RefreshCcw as imported above to resolve 'Cannot find name RefreshCw' error */}
                        {consensusLoading ? <Loader2 className="animate-spin" /> : isOnline ? <RefreshCcw /> : <WifiOff />}
                        {isOnline ? 'تشکیل شورای پزشکی هوشمند' : 'آفلاین (غیرفعال)'}
                      </button>
@@ -790,7 +790,7 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
                                 </div>
                               </div>
                             ))}
-                            {chatLoading && <div className="flex justify-start"><div className="bg-gray-800 p-4 rounded-2xl rounded-bl-none shadow-md"><Loader2 className="animate-spin w-5 h-5 text-purple-400" /></div></div>}
+                            {chatLoading && <div className="flex justify-start"><div className="bg-gray-100 p-3 rounded-2xl rounded-bl-sm"><Loader2 className="animate-spin w-4 h-4 text-gray-500" /></div></div>}
                             <div ref={chatEndRef} />
                          </div>
                          <div className="flex gap-3">
