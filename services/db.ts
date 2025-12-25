@@ -1,4 +1,3 @@
-
 import { PatientRecord, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, Drug, DrugUsage } from '../types';
 
 const DB_NAME = 'TabibHooshmandDB';
@@ -8,7 +7,7 @@ const SETTINGS_STORE = 'settings';
 const PROFILE_STORE = 'doctor_profile';
 const DRUG_STORE = 'drugs';
 const USAGE_STORE = 'drug_usage';
-const VERSION = 5; 
+const VERSION = 6; 
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -16,12 +15,32 @@ export const initDB = (): Promise<IDBDatabase> => {
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
+      const transaction = (event.target as IDBOpenDBRequest).transaction!;
+
+      // Patients Store Handling
+      let patientStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('name', 'name', { unique: false });
-        store.createIndex('displayId', 'displayId', { unique: true });
-        store.createIndex('visitDate', 'visitDate', { unique: false });
+        patientStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      } else {
+        patientStore = transaction.objectStore(STORE_NAME);
       }
+
+      // Ensure indexes exist and are correctly configured
+      if (!patientStore.indexNames.contains('name')) {
+        patientStore.createIndex('name', 'name', { unique: false });
+      }
+
+      // CRITICAL FIX: Change displayId to NOT be unique so a patient can have multiple visit records with same ID
+      if (patientStore.indexNames.contains('displayId')) {
+        patientStore.deleteIndex('displayId');
+      }
+      patientStore.createIndex('displayId', 'displayId', { unique: false });
+
+      if (!patientStore.indexNames.contains('visitDate')) {
+        patientStore.createIndex('visitDate', 'visitDate', { unique: false });
+      }
+
+      // Other Stores
       if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
         db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
       }
@@ -31,10 +50,17 @@ export const initDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(PROFILE_STORE)) {
         db.createObjectStore(PROFILE_STORE, { keyPath: 'id' });
       }
+      
+      let drugStore;
       if (!db.objectStoreNames.contains(DRUG_STORE)) {
-        const store = db.createObjectStore(DRUG_STORE, { keyPath: 'id' });
-        store.createIndex('name', 'name', { unique: false });
+        drugStore = db.createObjectStore(DRUG_STORE, { keyPath: 'id' });
+      } else {
+        drugStore = transaction.objectStore(DRUG_STORE);
       }
+      if (!drugStore.indexNames.contains('name')) {
+        drugStore.createIndex('name', 'name', { unique: false });
+      }
+
       if (!db.objectStoreNames.contains(USAGE_STORE)) {
         db.createObjectStore(USAGE_STORE, { keyPath: 'drugName' });
       }
