@@ -185,8 +185,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setPreviousVitals(patient.vitals || null);
 
     setItems([]);
-    setDiagnosis('');
-    setChiefComplaint('');
+    
+    // Fix: Pre-populate diagnosis and complaint from record if available (from AI consult)
+    setDiagnosis(patient.diagnosis?.modern.diagnosis || '');
+    setChiefComplaint(patient.chiefComplaint || '');
 
     if (!patient.id.startsWith('guest_')) {
       const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
@@ -603,16 +605,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${vitals.height || '--'}</span></div>
              </div>
 
-             ${chiefComplaint ? `
+             ${(chiefComplaint || selectedPatient?.chiefComplaint) ? `
              <div class="clinical-section">
                 <div class="section-title">Clinical Findings (CC)</div>
-                <div class="clinical-content">${chiefComplaint}</div>
+                <div class="clinical-content">${chiefComplaint || selectedPatient?.chiefComplaint}</div>
              </div>` : ''}
 
-             ${diagnosis ? `
+             ${(diagnosis || selectedPatient?.diagnosis?.modern.diagnosis) ? `
              <div class="clinical-section">
                 <div class="section-title">Impression / Diagnosis</div>
-                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div>
+                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis || selectedPatient?.diagnosis?.modern.diagnosis}</div>
              </div>` : ''}
 
              <div class="rx-symbol">℞</div>
@@ -649,8 +651,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               case 'patientId': innerHtml = selectedPatient?.displayId || ''; break;
               case 'age': innerHtml = selectedPatient?.age || ''; break;
               case 'date': innerHtml = new Date().toLocaleDateString('fa-IR'); break;
-              case 'diagnosis': innerHtml = diagnosis; break;
-              case 'chiefComplaint': innerHtml = chiefComplaint; break;
+              case 'diagnosis': innerHtml = diagnosis || selectedPatient?.diagnosis?.modern.diagnosis || ''; break;
+              case 'chiefComplaint': innerHtml = chiefComplaint || selectedPatient?.chiefComplaint || ''; break;
               case 'vital_bp': innerHtml = vitals.bloodPressure || ''; break;
               case 'vital_hr': innerHtml = vitals.heartRate || ''; break;
               case 'vital_rr': innerHtml = vitals.respiratoryRate || ''; break;
