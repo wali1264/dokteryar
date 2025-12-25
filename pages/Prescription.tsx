@@ -659,7 +659,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      <div class="drug-num">${i + 1}.</div>
                      <div class="drug-details">
                         <div class="drug-name">${item.drug}</div>
-                        <div class="drug-sig">Sig: ${item.instruction}</div>
+                        <div class="drug-sig: Sig: ${item.instruction}</div>
                      </div>
                      <div class="drug-qty">${item.dosage}</div>
                   </li>`).join('')}
@@ -814,7 +814,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          )}
          {showQuickEntryModal && (
             <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
-               <div className="bg-white/80 backdrop-blur-md w-full max-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+               <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                   <div className="flex justify-between items-center mb-8 relative z-10">
                      <div>
@@ -1430,6 +1430,49 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               <button className="text-white flex flex-col items-center gap-1 text-xs opacity-60 hover:opacity-100">
                 <ImageIcon size={24} /><span>گالری</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showQuickEntryModal && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
+            <div className="flex justify-between items-center mb-8 relative z-10">
+               <div>
+                  <h3 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+                     <Zap className="text-teal-600" /> نسخه سریع
+                  </h3>
+                  <p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p>
+               </div>
+               <button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button>
+            </div>
+            <div className="space-y-5 relative z-10">
+               <div className="space-y-1">
+                  <label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label>
+                  <input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                     <label className="text-xs font-black text-teal-600 mr-1">سن</label>
+                     <input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                     <label className="text-xs font-black text-teal-600 mr-1">وزن</label>
+                     <input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} />
+                  </div>
+               </div>
+               <div className="space-y-1">
+                  <label className="text-xs font-black text-teal-600 mr-1">جنسیت</label>
+                  <div className="flex bg-gray-100/50 p-1.5 rounded-2xl">
+                     <button onClick={() => setNewPatientGender('male')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'male' ? 'bg-white shadow-md text-blue-600' : 'text-gray-400'}`}>آقا</button>
+                     <button onClick={() => setNewPatientGender('female')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'female' ? 'bg-white shadow-md text-pink-600' : 'text-gray-400'}`}>خانم</button>
+                  </div>
+               </div>
+               <button onClick={handleQuickEntry} className="w-full bg-teal-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-teal-200 mt-4 flex items-center justify-center gap-3 text-lg hover:bg-teal-700 transition-all active:scale-95">
+                  <FileSignature size={24} /> شروع نسخه‌نویسی
+               </button>
             </div>
           </div>
         </div>
