@@ -23,6 +23,8 @@ const DEFAULT_ELEMENTS: LayoutElement[] = [
   { id: 'vital_hr', type: 'text', label: 'ضربان (PR)', x: 700, y: 340, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
   { id: 'vital_rr', type: 'text', label: 'تنفس (RR)', x: 700, y: 380, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
   { id: 'vital_temp', type: 'text', label: 'دما (T)', x: 700, y: 420, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
+  { id: 'vital_o2', type: 'text', label: 'اکسیژن (O2)', x: 700, y: 460, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
+  { id: 'vital_bs', type: 'text', label: 'قند خون (BS)', x: 700, y: 500, width: 80, fontSize: 12, rotation: 0, visible: true, align: 'center' },
   { id: 'vital_weight', type: 'text', label: 'وزن', x: 400, y: 100, width: 80, fontSize: 14, rotation: 0, visible: true, align: 'center' },
 ];
 

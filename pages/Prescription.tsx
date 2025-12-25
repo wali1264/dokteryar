@@ -567,7 +567,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
        .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
        .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
-       .print-element { position: absolute; white-space: nowrap; }
+       .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
 
@@ -656,6 +656,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               case 'vital_rr': innerHtml = vitals.respiratoryRate || ''; break;
               case 'vital_temp': innerHtml = vitals.temperature || ''; break;
               case 'vital_weight': innerHtml = vitals.weight || ''; break;
+              case 'vital_o2': innerHtml = vitals.spO2 || ''; break;
+              case 'vital_bs': innerHtml = vitals.bloodSugar || ''; break;
               case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`; break;
               default: innerHtml = '';
            }
@@ -966,7 +968,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label>
                               <input 
                                  className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" 
-                                 placeholder="" 
+                                 placeholder="مثال: Tab Amoxicillin 500" 
                                  value={item.drug} 
                                  onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
                                  onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
@@ -989,13 +991,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                            <div className="flex gap-3">
                               <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100">
                                  <label className="text-[10px] font-bold text-gray-400 block mb-1">دوز / تعداد</label>
-                                 <input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none" placeholder="" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} />
+                                 <input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} />
                               </div>
                               <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
                                  <label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label>
                                  <input 
-                                    className="w-full bg-transparent font-medium text-gray-700 outline-none text-right" 
-                                    placeholder="" 
+                                    className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" 
+                                    placeholder="مثال: هر ۸ ساعت" 
                                     value={item.instruction} 
                                     onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }}
                                     onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
@@ -1141,12 +1143,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                           <td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td>
                           <td className="py-2 px-2 relative">
                              <input 
-                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100" 
+                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
                                 value={item.drug} 
                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
                                 onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
                                 onChange={e => updateItem(idx, 'drug', e.target.value)} 
-                                placeholder="" 
+                                placeholder="مثال: Tab Amoxicillin 500" 
                              />
                              {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
                                <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-[2rem] border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">
@@ -1164,20 +1166,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                           </td>
                           <td className="py-2 px-2">
                             <input 
-                              className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center" 
+                              className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                               value={item.dosage} 
                               onChange={e => updateItem(idx, 'dosage', e.target.value)} 
-                              placeholder="" 
+                              placeholder="N=30" 
                             />
                           </td>
                           <td className="py-2 px-2 relative">
                              <input 
-                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100" 
+                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                                 value={item.instruction} 
                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }} 
                                 onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} 
                                 onChange={e => updateItem(idx, 'instruction', e.target.value)} 
-                                placeholder="" 
+                                placeholder="مثال: هر ۸ ساعت" 
                              />
                              {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
                                 <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]">

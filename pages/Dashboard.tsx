@@ -189,7 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
        .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
        .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
-       .print-element { position: absolute; white-space: nowrap; }
+       .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
 
@@ -211,6 +211,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                case 'vital_rr': innerHtml = snapshotVitals?.respiratoryRate || ''; break;
                case 'vital_temp': innerHtml = snapshotVitals?.temperature || ''; break;
                case 'vital_weight': innerHtml = snapshotVitals?.weight || ''; break;
+               case 'vital_o2': innerHtml = snapshotVitals?.spO2 || ''; break;
+               case 'vital_bs': innerHtml = snapshotVitals?.bloodSugar || ''; break;
                case 'items':
                   innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`;
                   break;
