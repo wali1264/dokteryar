@@ -34,7 +34,7 @@ const MobileVitalInput = ({ label, icon: Icon, value, prevValue, unit, field, co
   </div>
 );
 
-// --- DESKTOP PROFESSIONAL VITAL INPUT ---
+// --- DESKTOP PROFESSIONAL VITAL INPUT - COMPACT VERSION ---
 const DesktopVitalSidebarItem = ({ label, icon: Icon, value, unit, field, color, onChange }: any) => (
   <div className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50 transition-all flex flex-col items-center gap-0">
     <div className="flex items-center justify-between w-full mb-0.5 px-1">
@@ -95,15 +95,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [showComplaintModal, setShowComplaintModal] = useState(false);
   const [templateSearch, setTemplateSearch] = useState('');
 
+  // AI Safety State
   const [safetyLoading, setSafetyLoading] = useState(false);
   const [safetyReport, setSafetyReport] = useState<any | null>(null);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
 
+  // --- AI SCRIBE STATE ---
   const [isRecordingScribe, setIsRecordingScribe] = useState(false);
   const [isProcessingScribe, setIsProcessingScribe] = useState(false);
   const scribeMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const scribeChunksRef = useRef<Blob[]>([]);
 
+  // --- AUDIO DICTATION STATE FOR CC ---
   const [isRecordingCC, setIsRecordingCC] = useState(false);
   const [isProcessingCC, setIsProcessingCC] = useState(false);
   const ccMediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -115,6 +118,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [showCamera, setShowCamera] = useState(false);
   const [scanOrientation, setScanOrientation] = useState<'portrait' | 'landscape'>('portrait');
 
+  // New Patient / Quick Form States
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientAge, setNewPatientAge] = useState('');
   const [newPatientGender, setNewPatientGender] = useState<'male' | 'female'>('male');
@@ -533,21 +537,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      const win = frame.contentWindow;
      if (!win) return;
 
-     // CRITICAL: Set margin to 0 for absolute coordinate precision
      let style = `
        @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
-       html, body { margin: 0; padding: 0; box-sizing: border-box; width: 100%; height: 100%; }
-       body { font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; overflow: hidden; }
-       .majestic-container { position: relative; width: 100%; height: 100%; padding: 12mm; box-sizing: border-box; overflow: hidden; border: 4px double #1e3a8a; }
+       html, body { margin: 0; padding: 0; box-sizing: border-box; }
+       body { font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
+       .majestic-container { position: relative; width: 100%; min-height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
-       .header-pro { display: flex; justify-content: space-between; border-bottom: 2 solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
+       .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
        .dr-name { font-size: 22pt; font-weight: 900; color: #1e3a8a; margin: 0; }
        .dr-spec { font-size: 13pt; font-weight: 700; margin-top: 2mm; color: #475569; }
+       .council-box { border: 1px solid #1e3a8a; padding: 2mm 4mm; border-radius: 4px; font-size: 10pt; font-weight: 800; display: inline-block; margin-top: 3mm; }
        .patient-summary { display: flex; justify-content: space-between; background: #f8fafc; padding: 4mm; border-radius: 8px; margin-bottom: 6mm; font-size: 11pt; font-weight: 700; border: 1px solid #e2e8f0; }
        .vitals-matrix { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #cbd5e1; margin-bottom: 6mm; background: #fff; }
        .vital-cell { border: 0.5px solid #cbd5e1; padding: 2mm; text-align: center; }
        .vital-label { font-size: 8pt; font-weight: 900; color: #64748b; display: block; margin-bottom: 1mm; text-transform: uppercase; }
        .vital-value { font-size: 11pt; font-weight: 900; color: #1e3a8a; }
+       .clinical-section { margin-bottom: 5mm; }
+       .section-title { font-size: 10pt; font-weight: 900; color: #1e3a8a; border-right: 4px solid #1e3a8a; padding-right: 3mm; margin-bottom: 2mm; text-transform: uppercase; }
+       .clinical-content { font-size: 12pt; line-height: 1.6; color: #334155; padding: 2mm 4mm; background: #fdfdfd; border-radius: 4px; }
        .rx-symbol { font-size: 32pt; font-weight: bold; font-family: 'Times New Roman', serif; color: #1e3a8a; margin: 5mm 0 2mm 0; border-bottom: 1px solid #e2e8f0; }
        .drug-list { list-style: none; padding: 0; margin: 0; direction: ltr; }
        .drug-item { display: flex; align-items: flex-start; margin-bottom: 5mm; font-family: 'Georgia', 'Times New Roman', serif; }
@@ -556,7 +563,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        .drug-name { font-size: 15pt; font-weight: 900; text-transform: capitalize; color: #0f172a; margin-bottom: 1mm; }
        .drug-sig { font-size: 12pt; color: #334155; font-style: italic; font-weight: 500; }
        .drug-qty { font-weight: 900; color: #1e3a8a; margin-left: 10px; font-size: 13pt; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; margin: 0; padding: 0; }
+       .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
+       .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
+       .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
        .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
@@ -570,7 +580,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 <div class="doc-info">
                    <h1 class="dr-name">${doctorProfile?.name || 'دکتر متخصص'}</h1>
                    <div class="dr-spec">${doctorProfile?.specialty || ''}</div>
-                   <div class="council-box" style="border:1px solid #1e3a8a; padding:1mm 3mm; border-radius:4px; font-size:10pt; font-weight:800; display:inline-block; margin-top:2mm;">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
+                   <div class="council-box">نظام پزشکی: ${doctorProfile?.medicalCouncilNumber || '---'}</div>
                 </div>
                 ${doctorProfile?.logo ? `<img src="${doctorProfile.logo}" style="height: 90px; object-fit: contain;" />` : ''}
              </div>
@@ -593,10 +603,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 <div class="vital-cell"><span class="vital-label">HT</span><span class="vital-value">${vitals.height || '--'}</span></div>
              </div>
 
-             ${chiefComplaint ? `<div class="clinical-section" style="margin-bottom:5mm;"><div class="section-title" style="font-size:10pt; font-weight:900; color:#1e3a8a; border-right:4px solid #1e3a8a; padding-right:3mm; margin-bottom:2mm;">Clinical Findings (CC)</div><div class="clinical-content" style="font-size:12pt; line-height:1.6; color:#334155; padding:2mm 4mm; background:#fdfdfd;">${chiefComplaint}</div></div>` : ''}
-             ${diagnosis ? `<div class="clinical-section" style="margin-bottom:5mm;"><div class="section-title" style="font-size:10pt; font-weight:900; color:#1e3a8a; border-right:4px solid #1e3a8a; padding-right:3mm; margin-bottom:2mm;">Impression / Diagnosis</div><div class="clinical-content" style="font-weight:bold; color:#1e3a8a; font-size:12pt; padding:2mm 4mm;">${diagnosis}</div></div>` : ''}
+             ${chiefComplaint ? `
+             <div class="clinical-section">
+                <div class="section-title">Clinical Findings (CC)</div>
+                <div class="clinical-content">${chiefComplaint}</div>
+             </div>` : ''}
+
+             ${diagnosis ? `
+             <div class="clinical-section">
+                <div class="section-title">Impression / Diagnosis</div>
+                <div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div>
+             </div>` : ''}
 
              <div class="rx-symbol">℞</div>
+             
              <ul class="drug-list">
                 ${items.map((item, i) => `
                 <li class="drug-item">
@@ -608,10 +628,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                    <div class="drug-qty">${item.dosage}</div>
                 </li>`).join('')}
              </ul>
-             <div class="footer-pro" style="margin-top:auto; padding-top:10mm; display:flex; justify-content:space-between; align-items:flex-end;">
-                <div style="font-size:9pt; color:#64748b;"><div>${doctorProfile?.address || ''}</div><div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div></div>
-                <div class="signature-area" style="text-align:center; border-top:1px solid #1e3a8a; padding-top:2mm; width:50mm;">Signature & Stamp</div>
+
+             <div class="footer-pro">
+                <div style="font-size:9pt; color:#64748b;">
+                   <div>${doctorProfile?.address || ''}</div>
+                   <div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div>
+                </div>
+                <div class="signature-area">Signature & Stamp</div>
              </div>
+             
+             <div class="footer-motto">"The art of medicine consists of amusing the patient while nature cures the disease."</div>
           </div>
         `;
      } else {
@@ -645,8 +671,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      win.document.close();
 
      const bgImg = win.document.getElementById('bgImg') as HTMLImageElement;
-     const triggerPrint = () => { setTimeout(() => { win.print(); if (isExpressMode) setViewMode('landing'); }, 300); };
-     if (bgImg && !bgImg.complete) { bgImg.onload = triggerPrint; bgImg.onerror = triggerPrint; } else { triggerPrint(); }
+     const triggerPrint = () => {
+        setTimeout(() => {
+          win.print();
+          if (isExpressMode) setViewMode('landing');
+        }, 300);
+     };
+
+     if (bgImg && !bgImg.complete) {
+        bgImg.onload = triggerPrint;
+        bgImg.onerror = triggerPrint;
+     } else {
+        triggerPrint();
+     }
   };
 
   const handleAutoPrint = () => {
@@ -743,14 +780,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
                   <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                   <div className="flex justify-between items-center mb-8 relative z-10">
-                     <div><h3 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Zap className="text-teal-600" /> نسخه سریع</h3><p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p></div>
+                     <div>
+                        <h3 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+                           <Zap className="text-teal-600" /> نسخه سریع
+                        </h3>
+                        <p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p>
+                     </div>
                      <button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button>
                   </div>
                   <div className="space-y-5 relative z-10">
-                     <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label><input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div>
+                     <div className="space-y-1">
+                        <label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label>
+                        <input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} />
+                     </div>
                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">سن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} /></div>
-                        <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">وزن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /></div>
+                        <div className="space-y-1">
+                           <label className="text-xs font-black text-teal-600 mr-1">سن</label>
+                           <input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} />
+                        </div>
+                        <div className="space-y-1">
+                           <label className="text-xs font-black text-teal-600 mr-1">وزن</label>
+                           <input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} />
+                        </div>
                      </div>
                      <div className="space-y-1">
                         <label className="text-xs font-black text-teal-600 mr-1">جنسیت</label>
@@ -773,24 +824,65 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   return (
     <div className="space-y-8 animate-fade-in pb-24 lg:pb-20 relative">
       <style>{`
-        @keyframes scan-line { 0% { transform: translateY(-100%); } 100% { transform: translateY(400%); } }
-        .animate-scan-line { animation: scan-line 3s linear infinite; }
-        @keyframes safety-pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
-        .animate-safety-pulse { animation: safety-pulse 2s infinite; }
-        @keyframes scribe-pulse { 0% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.5); transform: scale(1); } 50% { box-shadow: 0 0 0 15px rgba(147, 51, 234, 0); transform: scale(1.05); } 100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0); transform: scale(1); } }
-        .animate-scribe-pulse { animation: scribe-pulse 1.5s infinite ease-in-out; }
-        .scribe-glow { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); border-color: rgba(168, 85, 247, 0.5) !important; }
-        @keyframes waveform { 0%, 100% { height: 4px; } 50% { height: 16px; } }
-        .waveform-bar { width: 3px; background-color: #a855f7; border-radius: 2px; animation: waveform 0.8s ease-in-out infinite; }
+        @keyframes scan-line {
+          0% { transform: translateY(-100%); }
+          100% { transform: translateY(400%); }
+        }
+        .animate-scan-line {
+          animation: scan-line 3s linear infinite;
+        }
+        @keyframes safety-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+          70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+        }
+        .animate-safety-pulse {
+          animation: safety-pulse 2s infinite;
+        }
+        @keyframes scribe-pulse {
+          0% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0.5); transform: scale(1); }
+          50% { box-shadow: 0 0 0 15px rgba(147, 51, 234, 0); transform: scale(1.05); }
+          100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0); transform: scale(1); }
+        }
+        .animate-scribe-pulse {
+          animation: scribe-pulse 1.5s infinite ease-in-out;
+        }
+        .scribe-glow {
+          box-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+          border-color: rgba(168, 85, 247, 0.5) !important;
+        }
+        @keyframes waveform {
+          0%, 100% { height: 4px; }
+          50% { height: 16px; }
+        }
+        .waveform-bar {
+          width: 3px;
+          background-color: #a855f7;
+          border-radius: 2px;
+          animation: waveform 0.8s ease-in-out infinite;
+        }
       `}</style>
 
+      {/* AI SCANNING OVERLAY PORTAL */}
       {(loading || isProcessingScribe || isProcessingCC) && (
         <div className="fixed inset-0 z-[200] bg-white/40 backdrop-blur-2xl flex flex-col items-center justify-center p-8 animate-fade-in overflow-hidden">
            <div className="relative w-full max-w-lg aspect-[3/4] lg:aspect-video rounded-3xl border-2 border-blue-400/50 shadow-2xl overflow-hidden bg-gray-900/10">
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_rgba(59,130,246,1)] z-20 animate-scan-line"></div>
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-                 <div className="relative"><div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">{(isProcessingScribe || isProcessingCC) ? <Mic size={48} className="text-white" /> : <Brain size={48} className="text-white" />}</div><div className="absolute -inset-4 border border-blue-400/30 rounded-full animate-ping"></div></div>
-                 <div className="text-center space-y-3"><h3 className="text-2xl font-black text-blue-900 tracking-tight">{isProcessingCC ? 'در حال تبدیل شکایات...' : isProcessingScribe ? 'در حال واکاوی گفته‌های پزشک...' : 'در حال واکاوی نسخه توسط هوش مصنوعی...'}</h3><p className="text-blue-600/60 font-bold animate-bounce text-sm">لطفاً شکیبا باشید. در حال پردازش داده‌های پزشکی</p></div>
+                 <div className="relative">
+                    <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">
+                       {(isProcessingScribe || isProcessingCC) ? <Mic size={48} className="text-white" /> : <Brain size={48} className="text-white" />}
+                    </div>
+                    <div className="absolute -inset-4 border border-blue-400/30 rounded-full animate-ping"></div>
+                 </div>
+                 <div className="text-center space-y-3">
+                    <h3 className="text-2xl font-black text-blue-900 tracking-tight">
+                       {isProcessingCC ? 'در حال تبدیل گفته‌های شما به متن شکایات...' : isProcessingScribe ? 'در حال واکاوی هوشمند گفته‌های پزشک...' : 'در حال واکاوی نسخه توسط هسته هوش مصنوعی...'}
+                    </h3>
+                    <p className="text-blue-600/60 font-bold animate-bounce text-sm">
+                       لطفاً شکیبا باشید. در حال پردازش داده‌های پزشکی
+                    </p>
+                 </div>
               </div>
            </div>
         </div>
@@ -805,13 +897,26 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
+      {/* MOBILE UI */}
       <div className="lg:hidden flex flex-col gap-4">
          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
             <div className="flex items-center gap-2">
-               <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}>{isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}</button>
+               <button 
+                  onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording}
+                  disabled={isProcessingScribe || !isOnline}
+                  className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}
+               >
+                  {isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}
+               </button>
                {isExpressMode && <div className="bg-amber-100 text-amber-600 p-2 rounded-xl animate-pulse"><ZapOff size={20} /></div>}
-               <button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
+               <button 
+                  onClick={handleAuditSafety} 
+                  disabled={safetyLoading || items.length === 0} 
+                  className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}
+               >
+                  {safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}
+               </button>
                <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
                <button onClick={handleAutoPrint} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
                <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
@@ -841,8 +946,17 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                <div className="space-y-4 animate-fade-in">
                   <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}>
                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label><button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}><ListChecks size={14} /></button></div>
-                        {isRecordingScribe && <div className="flex gap-1 items-end h-4">{[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}</div>}
+                        <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label>
+                            <button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
+                                <ListChecks size={14} />
+                            </button>
+                        </div>
+                        {isRecordingScribe && (
+                           <div className="flex gap-1 items-end h-4">
+                              {[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}
+                           </div>
+                        )}
                      </div>
                      <textarea className={`w-full p-3 bg-gray-50 rounded-xl outline-none text-gray-700 h-20 resize-none focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all ${isRecordingScribe ? 'bg-purple-50/50 italic' : ''}`} placeholder={isRecordingScribe ? "در حال شنیدن تشخیص..." : "تشخیص نهایی را بنویسید..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
                   </div>
@@ -852,18 +966,49 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                            <button onClick={() => removeItem(idx)} className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl"><Trash size={18} /></button>
                            <div className="mb-4 pl-12 relative">
                               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label>
-                              <input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)} onChange={e => updateItem(idx, 'drug', e.target.value)} />
+                              <input 
+                                 className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" 
+                                 placeholder="مثال: Tab Amoxicillin 500" 
+                                 value={item.drug} 
+                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
+                                 onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
+                                 onChange={e => updateItem(idx, 'drug', e.target.value)} 
+                              />
                               {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
                                 <div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">
-                                   {getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0"><div className="flex items-center gap-3">{getFormIcon(d.name)}<span className="font-bold text-gray-700">{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}
+                                   {getDrugSuggestions().map(d => (
+                                      <button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0">
+                                         <div className="flex items-center gap-3">
+                                            {getFormIcon(d.name)}
+                                            <span className="font-bold text-gray-700">{d.name}</span>
+                                         </div>
+                                         <Zap size={14} className="text-amber-500" />
+                                      </button>
+                                   ))}
                                 </div>
                               )}
                            </div>
                            <div className="flex gap-3">
-                              <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد (Qty)</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} /></div>
-                              <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="مثال: هر ۸ ساعت" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }} onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} onChange={e => updateItem(idx, 'instruction', e.target.value)} />
+                              <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100">
+                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">دوز / تعداد</label>
+                                 <input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} />
+                              </div>
+                              <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
+                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label>
+                                 <input 
+                                    className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" 
+                                    placeholder="مثال: هر ۸ ساعت" 
+                                    value={item.instruction} 
+                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }}
+                                    onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
+                                    onChange={e => updateItem(idx, 'instruction', e.target.value)} 
+                                 />
                                  {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
-                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getQuickInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>))}</div>
+                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
+                                       {getQuickInstructions(item.drug).map(ins => (
+                                          <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>
+                                       ))}
+                                    </div>
                                  )}
                               </div>
                            </div>
@@ -874,68 +1019,236 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                </div>
             )}
             {mobileTab === 'templates' && (
-               <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
+               <div className="animate-fade-in space-y-3">
+                  {templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}
+               </div>
             )}
          </div>
-         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
+         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden">
+            <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button>
+            <button onClick={handleAutoPrint} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none">
+              <Printer size={20} />
+              {printButtonLabel}
+            </button>
+         </div>
       </div>
 
+      {/* DESKTOP UI */}
       <div className="hidden lg:block min-h-screen">
          <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
-           <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name} • {selectedPatient?.age} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'})</p></div></div>
+           <div className="flex items-center gap-5">
+             <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner">
+               <Monitor size={32} />
+             </div>
+             <div>
+               <h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">
+                  کنسول نسخه الکترونیک
+                  {isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}
+               </h2>
+               <p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2">
+                 <User size={14} /> {selectedPatient?.name} • {selectedPatient?.age} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'})
+               </p>
+             </div>
+           </div>
+
            <div className="flex gap-2">
-              <button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button>
-              <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button>
-              <button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-600 text-white animate-safety-pulse hover:bg-indigo-700') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button>
-              <button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button>
+              <button 
+                onClick={() => setShowTemplatesModal(true)}
+                className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"
+              >
+                <List size={20} /> قالب‌ها
+              </button>
+
+              <button 
+                onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording}
+                disabled={isProcessingScribe || !isOnline}
+                className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}
+              >
+                {isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}
+                {isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}
+              </button>
+
+              <button 
+                onClick={handleAuditSafety} 
+                disabled={safetyLoading || items.length === 0} 
+                className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-600 text-white animate-safety-pulse hover:bg-indigo-700') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}
+              >
+                {safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}
+                {safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}
+              </button>
+
+              <button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors">
+                <ArrowLeft size={24} />
+              </button>
            </div>
          </div>
 
          <div className="flex gap-6 items-start">
-            <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="" field="weight" onChange={handleVitalChange} /></div>
+            <div className="w-28 flex flex-col gap-1.5 shrink-0">
+               <div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5">
+                 <Activity size={20} />
+               </div>
+               <DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} />
+               <DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="" field="weight" onChange={handleVitalChange} />
+            </div>
+
             <div className="flex-1 flex flex-col gap-6">
                <div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}>
                   <div className="flex items-center justify-between mb-2 px-4">
-                     <div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button></div>
-                     {isRecordingScribe && <div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>}
+                     <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest">
+                          <Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span>
+                        </label>
+                        <button 
+                           onClick={() => setShowComplaintModal(true)}
+                           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                        >
+                           <ListChecks size={14} />
+                           {chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}
+                        </button>
+                     </div>
+                     {isRecordingScribe && (
+                        <div className="flex gap-1 items-end h-4">
+                           {[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}
+                        </div>
+                     )}
                   </div>
-                  <input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
+                  <input 
+                    className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`}
+                    placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."}
+                    value={diagnosis}
+                    onChange={e => setDiagnosis(e.target.value)}
+                  />
                </div>
+
                <div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}>
                   <table className="w-full text-right border-separate border-spacing-y-4">
-                    <thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف</th><th className="pb-4 w-12"></th></tr></thead>
+                    <thead>
+                      <tr className="border-b border-gray-50">
+                        <th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th>
+                        <th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th>
+                        <th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th>
+                        <th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th>
+                        <th className="pb-4 w-12"></th>
+                      </tr>
+                    </thead>
                     <tbody className="divide-y divide-gray-50">
                       {items.map((item, idx) => (
                         <tr key={idx} className="group hover:bg-indigo-50/20 transition-all rounded-2xl overflow-hidden">
                           <td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td>
-                          <td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)} onChange={e => updateItem(idx, 'drug', e.target.value)} placeholder="مثال: Tab Amoxicillin 500" />
+                          <td className="py-2 px-2 relative">
+                             <input 
+                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
+                                value={item.drug} 
+                                onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
+                                onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
+                                onChange={e => updateItem(idx, 'drug', e.target.value)} 
+                                placeholder="مثال: Tab Amoxicillin 500" 
+                             />
                              {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
-                               <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-[2rem] border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors"><div className="flex items-center gap-4">{getFormIcon(d.name)}<span className="text-lg">{d.name}</span></div><Zap size={18} className="text-amber-400" /></button>))}</div>
+                               <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-[2rem] border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">
+                                  {getDrugSuggestions().map(d => (
+                                     <button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors">
+                                        <div className="flex items-center gap-4">
+                                           {getFormIcon(d.name)}
+                                           <span className="text-lg">{d.name}</span>
+                                        </div>
+                                        <Zap size={18} className="text-amber-400" />
+                                     </button>
+                                  ))}
+                                </div>
                              )}
                           </td>
-                          <td className="py-2 px-2"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="N=30" /></td>
-                          <td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }} onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="مثال: هر ۸ ساعت" />
+                          <td className="py-2 px-2">
+                            <input 
+                              className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
+                              value={item.dosage} 
+                              onChange={e => updateItem(idx, 'dosage', e.target.value)} 
+                              placeholder="N=30" 
+                            />
+                          </td>
+                          <td className="py-2 px-2 relative">
+                             <input 
+                                className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
+                                value={item.instruction} 
+                                onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }} 
+                                onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} 
+                                onChange={e => updateItem(idx, 'instruction', e.target.value)} 
+                                placeholder="مثال: هر ۸ ساعت" 
+                             />
                              {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
-                                <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]">{getQuickInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors">{ins}</button>))}</div>
+                                <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]">
+                                   {getQuickInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors">{ins}</button>))}
+                                </div>
                              )}
                           </td>
-                          <td className="py-2 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button></td>
+                          <td className="py-2 text-center">
+                            <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50">
+                              <Trash size={22} />
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button>
-                  <div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={handleAutoPrint} disabled={items.length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Printer size={26} />{printButtonLabel}</button></div>
+                  
+                  <button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start">
+                    <Plus size={24} /> افزودن قلم داروی جدید
+                  </button>
+
+                  <div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10">
+                    <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm">
+                      <Save size={26} /> ذخیره در قالب‌ها
+                    </button>
+                    <button onClick={handleAutoPrint} disabled={items.length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50">
+                      <Printer size={26} />
+                      {printButtonLabel}
+                    </button>
+                  </div>
                </div>
             </div>
          </div>
       </div>
 
+      {/* MODALS */}
       {showComplaintModal && (
           <div className="fixed inset-0 z-[195] bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col">
-                  <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div><h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3></div><button onClick={() => { stopCCRecording(); setShowComplaintModal(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div>
-                  <div className="p-8 space-y-6"><div className="relative"><textarea autoFocus className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg" placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..." value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} /><button onClick={isRecordingCC ? stopCCRecording : startCCRecording} className={`absolute bottom-4 left-4 p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`} title="دیکته صوتی شکایات">{isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}</button></div><div className="flex gap-4"><button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button><button onClick={() => setShowComplaintModal(false)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button></div></div>
+                  <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div>
+                          <h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3>
+                      </div>
+                      <button onClick={() => { stopCCRecording(); setShowComplaintModal(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div className="relative">
+                          <textarea 
+                              autoFocus
+                              className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg"
+                              placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..."
+                              value={chiefComplaint}
+                              onChange={e => setChiefComplaint(e.target.value)}
+                          />
+                          <button 
+                             onClick={isRecordingCC ? stopCCRecording : startCCRecording}
+                             className={`absolute bottom-4 left-4 p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}
+                             title="دیکته صوتی شکایات"
+                          >
+                             {isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}
+                          </button>
+                      </div>
+                      
+                      <div className="flex gap-4">
+                          <button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button>
+                          <button onClick={() => setShowComplaintModal(false)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button>
+                      </div>
+                  </div>
               </div>
           </div>
       )}
@@ -943,9 +1256,45 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       {showTemplatesModal && (
          <div className="fixed inset-0 z-[190] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col h-[70vh]">
-               <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><LayoutTemplate size={24} /></div><h3 className="text-2xl font-black text-gray-800">قالب‌های نسخه آماده</h3></div><button onClick={() => setShowTemplatesModal(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div>
-               <div className="p-6"><div className="relative mb-4"><Search className="absolute right-4 top-4 text-gray-400" /><input className="w-full p-4 pr-12 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 font-bold" placeholder="جستجوی عنوان قالب (سرماخوردگی، میگرن...)" value={templateSearch} onChange={e => setTemplateSearch(e.target.value)} /></div></div>
-               <div className="flex-1 overflow-y-auto px-6 pb-8 space-y-3 custom-scrollbar">{templates.filter(t => t.name.includes(templateSearch)).length === 0 ? (<div className="text-center py-20 text-gray-400 font-bold">قالبی مطابق با جستجوی شما یافت نشد</div>) : (templates.filter(t => t.name.includes(templateSearch)).map(t => (<div key={t.id} className="flex justify-between items-center p-5 bg-white border border-gray-100 rounded-3xl hover:border-indigo-400 hover:shadow-xl transition-all group cursor-pointer" onClick={() => loadTemplate(t)}><div className="flex items-center gap-4"><div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all"><FileText size={24} /></div><div><p className="font-black text-lg text-gray-800">{t.name}</p><p className="text-xs text-gray-400 font-bold mt-1">{t.items.length} قلم دارو در این قالب</p></div></div><div className="flex items-center gap-2"><button onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }} className="p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl opacity-0 group-hover:opacity-100 transition-all"><Trash size={20} /></button><div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all"><ChevronRight size={20} /></div></div></div>)))}</div>
+               <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                     <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><LayoutTemplate size={24} /></div>
+                     <h3 className="text-2xl font-black text-gray-800">قالب‌های نسخه آماده</h3>
+                  </div>
+                  <button onClick={() => setShowTemplatesModal(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
+               </div>
+               <div className="p-6">
+                  <div className="relative mb-4">
+                     <Search className="absolute right-4 top-4 text-gray-400" />
+                     <input 
+                        className="w-full p-4 pr-12 bg-gray-50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-50 font-bold" 
+                        placeholder="جستجوی عنوان قالب (سرماخوردگی، میگرن...)" 
+                        value={templateSearch}
+                        onChange={e => setTemplateSearch(e.target.value)}
+                     />
+                  </div>
+               </div>
+               <div className="flex-1 overflow-y-auto px-6 pb-8 space-y-3 custom-scrollbar">
+                  {templates.filter(t => t.name.includes(templateSearch)).length === 0 ? (
+                    <div className="text-center py-20 text-gray-400 font-bold">قالبی مطابق با جستجوی شما یافت نشد</div>
+                  ) : (
+                    templates.filter(t => t.name.includes(templateSearch)).map(t => (
+                       <div key={t.id} className="flex justify-between items-center p-5 bg-white border border-gray-100 rounded-3xl hover:border-indigo-400 hover:shadow-xl transition-all group cursor-pointer" onClick={() => loadTemplate(t)}>
+                          <div className="flex items-center gap-4">
+                             <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-all"><FileText size={24} /></div>
+                             <div>
+                                <p className="font-black text-lg text-gray-800">{t.name}</p>
+                                <p className="text-xs text-gray-400 font-bold mt-1">{t.items.length} قلم دارو در این قالب</p>
+                             </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                             <button onClick={(e) => { e.stopPropagation(); handleDeleteTemplate(t.id); }} className="p-3 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl opacity-0 group-hover:opacity-100 transition-all"><Trash size={20} /></button>
+                             <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center text-gray-300 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-all"><ChevronRight size={20} /></div>
+                          </div>
+                       </div>
+                    ))
+                  )}
+               </div>
             </div>
          </div>
       )}
@@ -953,9 +1302,53 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       {showSafetyModal && safetyReport && (
          <div className="fixed inset-0 z-[180] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
-               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-600'}`}><div className="flex items-center gap-4"><div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert size={32} /></div><div><h3 className="text-2xl font-black">گزارش واکاوی ایمنی نسخه</h3><p className="text-white/80 text-sm font-bold mt-1">توسط واحد فارماکولوژی طبیب هوشمند</p></div></div><button onClick={() => setShowSafetyModal(false)} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><X /></button></div>
-               <div className="p-8 overflow-y-auto space-y-6"><div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 italic text-gray-600 text-lg leading-relaxed shadow-inner">"{safetyReport.summary}"</div>{safetyReport.alerts && safetyReport.alerts.length > 0 ? (<div className="space-y-4"><h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest border-b pb-2">تداخلات و هشدارهای شناسایی شده</h4>{safetyReport.alerts.map((alert: any, i: number) => (<div key={i} className={`p-5 rounded-3xl border flex gap-4 items-start ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}><div className={`p-2 rounded-xl shrink-0 ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>{alert.severity === 'critical' ? <AlertCircle size={20} /> : <Info size={20} />}</div><div className="space-y-1"><h5 className={`font-black ${alert.severity === 'critical' ? 'text-red-800' : 'text-amber-800'}`}>{alert.title}</h5><p className="text-sm text-gray-700 leading-relaxed font-medium">{alert.description}</p>{alert.alternative && (<div className="mt-3 pt-3 border-t border-white/50"><span className="text-[10px] font-black uppercase text-indigo-500 block mb-1">پیشنهاد جایگزین / اصلاح:</span><p className="text-sm font-black text-indigo-900">{alert.alternative}</p></div>)}</div></div>))}</div>) : (<div className="py-12 text-center space-y-4"><div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-lg"><ShieldCheck size={40} /></div><h4 className="text-xl font-black text-emerald-800">نسخه فاقد تداخل بحرانی</h4><p className="text-gray-500 max-w-xs mx-auto font-bold">هیچ تداخل دارویی یا منعی برای این بیمار شناسایی نشد.</p></div>)}</div>
-               <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-center"><button onClick={() => setShowSafetyModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-2xl font-black shadow-lg hover:bg-black transition-all">تایید و بازگشت</button></div>
+               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+                  <div className="flex items-center gap-4">
+                     <div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert size={32} /></div>
+                     <div>
+                        <h3 className="text-2xl font-black">گزارش واکاوی ایمنی نسخه</h3>
+                        <p className="text-white/80 text-sm font-bold mt-1">توسط واحد فارماکولوژی طبیب هوشمند</p>
+                     </div>
+                  </div>
+                  <button onClick={() => setShowSafetyModal(false)} className="p-2 bg-white/20 rounded-full hover:bg-white/30"><X /></button>
+               </div>
+               <div className="p-8 overflow-y-auto space-y-6">
+                  <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 italic text-gray-600 text-lg leading-relaxed shadow-inner">
+                     "{safetyReport.summary}"
+                  </div>
+                  
+                  {safetyReport.alerts && safetyReport.alerts.length > 0 ? (
+                     <div className="space-y-4">
+                        <h4 className="font-black text-gray-400 text-[10px] uppercase tracking-widest border-b pb-2">تداخلات و هشدارهای شناسایی شده</h4>
+                        {safetyReport.alerts.map((alert: any, i: number) => (
+                           <div key={i} className={`p-5 rounded-3xl border flex gap-4 items-start ${alert.severity === 'critical' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'}`}>
+                              <div className={`p-2 rounded-xl shrink-0 ${alert.severity === 'critical' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+                                 {alert.severity === 'critical' ? <AlertCircle size={20} /> : <Info size={20} />}
+                              </div>
+                              <div className="space-y-1">
+                                 <h5 className={`font-black ${alert.severity === 'critical' ? 'text-red-800' : 'text-amber-800'}`}>{alert.title}</h5>
+                                 <p className="text-sm text-gray-700 leading-relaxed font-medium">{alert.description}</p>
+                                 {alert.alternative && (
+                                    <div className="mt-3 pt-3 border-t border-white/50">
+                                       <span className="text-[10px] font-black uppercase text-indigo-500 block mb-1">پیشنهاد جایگزین / اصلاح:</span>
+                                       <p className="text-sm font-black text-indigo-900">{alert.alternative}</p>
+                                    </div>
+                                 )}
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  ) : (
+                     <div className="py-12 text-center space-y-4">
+                        <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-lg"><ShieldCheck size={40} /></div>
+                        <h4 className="text-xl font-black text-emerald-800">نسخه فاقد تداخل بحرانی</h4>
+                        <p className="text-gray-500 max-w-xs mx-auto font-bold">هیچ تداخل دارویی یا منعی برای این بیمار شناسایی نشد.</p>
+                     </div>
+                  )}
+               </div>
+               <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-center">
+                  <button onClick={() => setShowSafetyModal(false)} className="px-12 py-3 bg-gray-800 text-white rounded-2xl font-black shadow-lg hover:bg-black transition-all">تایید و بازگشت</button>
+               </div>
             </div>
          </div>
       )}

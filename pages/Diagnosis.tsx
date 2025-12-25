@@ -9,7 +9,7 @@ import { Chat } from "@google/genai";
 
 interface DiagnosisProps {
   patientRecord: PatientRecord | null;
-  // Fix: Made the second argument 'record' optional to match the implementation in App.tsx and resolve "Expected 2 arguments" errors at call sites like onNavigate(AppRoute.INTAKE).
+  // Fix: Made record optional to match handleNavigate in App.tsx and fix "Expected 2 arguments, but got 1" errors in function calls
   onNavigate: (route: AppRoute, record?: PatientRecord) => void;
 }
 
