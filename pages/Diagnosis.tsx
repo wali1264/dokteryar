@@ -9,7 +9,7 @@ import { Chat } from "@google/genai";
 
 interface DiagnosisProps {
   patientRecord: PatientRecord | null;
-  // Fix: Made record optional to match handleNavigate in App.tsx and fix "Expected 2 arguments, but got 1" errors in function calls
+  // Fix: Make record optional to align with App.tsx handleNavigate and support 1-argument calls
   onNavigate: (route: AppRoute, record?: PatientRecord) => void;
 }
 
@@ -790,7 +790,7 @@ const Diagnosis: React.FC<DiagnosisProps> = ({ patientRecord, onNavigate }) => {
                                 </div>
                               </div>
                             ))}
-                            {chatLoading && <div className="flex justify-start"><div className="bg-gray-100 p-3 rounded-2xl rounded-bl-sm"><Loader2 className="animate-spin w-4 h-4 text-gray-500" /></div></div>}
+                            {chatLoading && <div className="flex justify-start"><div className="bg-gray-800 p-4 rounded-2xl rounded-bl-none shadow-md"><Loader2 className="animate-spin w-4 h-4 text-purple-400" /></div></div>}
                             <div ref={chatEndRef} />
                          </div>
                          <div className="flex gap-3">

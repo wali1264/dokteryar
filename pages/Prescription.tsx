@@ -537,11 +537,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      const win = frame.contentWindow;
      if (!win) return;
 
+     const paperWidth = settings.paperSize === 'A4' ? '210mm' : '148mm';
+     const paperHeight = settings.paperSize === 'A4' ? '297mm' : '210mm';
+
      let style = `
-       @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0; }
-       html, body { margin: 0; padding: 0; box-sizing: border-box; }
+       @page { size: ${settings.paperSize || 'A4'} portrait; margin: 0 !important; }
+       html, body { margin: 0 !important; padding: 0 !important; box-sizing: border-box; width: ${paperWidth}; height: ${paperHeight}; overflow: hidden; }
        body { font-family: '${settings.fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
-       .majestic-container { position: relative; width: 100%; min-height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
+       .majestic-container { position: relative; width: 100%; height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
        .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
        .dr-name { font-size: 22pt; font-weight: 900; color: #1e3a8a; margin: 0; }
@@ -566,7 +569,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
        .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
        .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
        .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
@@ -623,7 +626,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                    <div class="drug-num">${i + 1}.</div>
                    <div class="drug-details">
                       <div class="drug-name">${item.drug}</div>
-                      <div class="drug-sig">${item.instruction}</div>
+                      <div class="drug-sig">Sig: ${item.instruction}</div>
                    </div>
                    <div class="drug-qty">${item.dosage}</div>
                 </li>`).join('')}
@@ -658,7 +661,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               case 'vital_weight': innerHtml = vitals.weight || ''; break;
               case 'vital_o2': innerHtml = vitals.spO2 || ''; break;
               case 'vital_bs': innerHtml = vitals.bloodSugar || ''; break;
-              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">${item.instruction}</div></li>`).join('')}</ul>`; break;
+              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`; break;
               default: innerHtml = '';
            }
            if (!innerHtml) return '';
@@ -897,7 +900,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {/* MOBILE UI */}
+      {/* MOBILE UI - UNTOUCHED */}
       <div className="lg:hidden flex flex-col gap-4">
          <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
@@ -1302,7 +1305,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       {showSafetyModal && safetyReport && (
          <div className="fixed inset-0 z-[180] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
-               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
+               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-50' : 'bg-emerald-600'}`}>
                   <div className="flex items-center gap-4">
                      <div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert size={32} /></div>
                      <div>

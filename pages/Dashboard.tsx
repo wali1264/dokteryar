@@ -158,12 +158,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
      const fontFamily = settings?.fontFamily || 'Vazirmatn';
      const paperSize = settings?.paperSize || 'A4';
+     const paperWidth = paperSize === 'A4' ? '210mm' : '148mm';
+     const paperHeight = paperSize === 'A4' ? '297mm' : '210mm';
      
      let style = `
-       @page { size: ${paperSize} portrait; margin: 0; }
-       html, body { margin: 0; padding: 0; box-sizing: border-box; }
+       @page { size: ${paperSize} portrait; margin: 0 !important; }
+       html, body { margin: 0 !important; padding: 0 !important; box-sizing: border-box; width: ${paperWidth}; height: ${paperHeight}; overflow: hidden; }
        body { font-family: '${fontFamily}', 'Vazirmatn', sans-serif; direction: rtl; -webkit-print-color-adjust: exact; print-color-adjust: exact; color: #1e293b; }
-       .majestic-container { position: relative; width: 100%; min-height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
+       .majestic-container { position: relative; width: 100%; height: 100%; border: 4px double #1e3a8a; padding: 12mm; box-sizing: border-box; overflow: hidden; }
        .rx-watermark { position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); font-size: 350pt; opacity: 0.04; color: #1e3a8a; z-index: -1; font-family: 'Times New Roman', serif; font-weight: bold; pointer-events: none; }
        .header-pro { display: flex; justify-content: space-between; border-bottom: 2px solid #1e3a8a; padding-bottom: 5mm; margin-bottom: 6mm; }
        .dr-name { font-size: 22pt; font-weight: 900; color: #1e3a8a; margin: 0; }
@@ -188,7 +190,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
        .footer-pro { margin-top: auto; padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-end; }
        .signature-area { text-align: center; border-top: 1px solid #1e3a8a; padding-top: 2mm; width: 50mm; }
        .footer-motto { font-size: 8pt; font-style: italic; color: #94a3b8; text-align: center; width: 100%; border-top: 1px solid #f1f5f9; padding-top: 4mm; margin-top: 8mm; }
-       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; page-break-after: avoid; }
+       .custom-container { position: relative; width: 100%; height: 100%; overflow: hidden; padding: 0 !important; margin: 0 !important; }
        .print-element { position: absolute; white-space: normal; word-wrap: break-word; line-height: 1.4; }
        .bg-image { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: fill; z-index: -1; }
      `;
@@ -214,7 +216,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                case 'vital_o2': innerHtml = snapshotVitals?.spO2 || ''; break;
                case 'vital_bs': innerHtml = snapshotVitals?.bloodSugar || ''; break;
                case 'items':
-                  innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">${item.instruction}</div></li>`).join('')}</ul>`;
+                  innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`;
                   break;
                default: innerHtml = '';
             }
@@ -273,7 +275,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                    <div class="drug-num">${i + 1}.</div>
                    <div class="drug-details">
                       <div class="drug-name">${item.drug}</div>
-                      <div class="drug-sig">${item.instruction}</div>
+                      <div class="drug-sig">Sig: ${item.instruction}</div>
                    </div>
                    <div class="drug-qty">${item.dosage}</div>
                 </li>`).join('')}
@@ -455,7 +457,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                                   <p className="text-xs text-gray-400 font-bold mt-1">{new Date(record.visitDate).toLocaleTimeString('fa-IR', {hour: '2-digit', minute:'2-digit'})}</p>
                                                </div>
                                             </div>
-                                            <button onClick={() => handleDeleteRecord(record.id)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="حذف این ویزیت">
+                                            <button onClick={() => handleDeleteRecord(record.id)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all" title="حذف این وویزیت">
                                                <Trash2 size={20} />
                                             </button>
                                         </div>
@@ -513,7 +515,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                                                                     <div className="flex-1 min-w-0">
                                                                        <p className="text-xs font-black text-gray-800 truncate">{med.drug}</p>
                                                                        <div className="flex justify-between mt-1">
-                                                                          <span className="text-[9px] text-gray-400 font-bold">{med.instruction}</span>
+                                                                          <span className="text-[9px] text-gray-400 font-bold">Sig: {med.instruction}</span>
                                                                           <span className="text-[9px] font-black text-indigo-600">Qty: {med.dosage}</span>
                                                                        </div>
                                                                     </div>
