@@ -1,3 +1,4 @@
+
 import { PatientRecord, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, Drug, DrugUsage } from '../types';
 
 const DB_NAME = 'TabibHooshmandDB';
@@ -17,7 +18,6 @@ export const initDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       const transaction = (event.target as IDBOpenDBRequest).transaction!;
 
-      // Patients Store Handling
       let patientStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         patientStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
@@ -25,12 +25,10 @@ export const initDB = (): Promise<IDBDatabase> => {
         patientStore = transaction.objectStore(STORE_NAME);
       }
 
-      // Ensure indexes exist and are correctly configured
       if (!patientStore.indexNames.contains('name')) {
         patientStore.createIndex('name', 'name', { unique: false });
       }
 
-      // CRITICAL FIX: Change displayId to NOT be unique so a patient can have multiple visit records with same ID
       if (patientStore.indexNames.contains('displayId')) {
         patientStore.deleteIndex('displayId');
       }
@@ -40,7 +38,6 @@ export const initDB = (): Promise<IDBDatabase> => {
         patientStore.createIndex('visitDate', 'visitDate', { unique: false });
       }
 
-      // Other Stores
       if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
         db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
       }
@@ -84,64 +81,54 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
   });
 
   if (count === 0) {
-    const generics = [
-      'Amoxicillin', 'Azithromycin', 'Metformin', 'Atorvastatin', 'Amlodipine', 
-      'Losartan', 'Metoprolol', 'Omeprazole', 'Sertraline', 'Alprazolam',
-      'Gabapentin', 'Tramadol', 'Acetaminophen', 'Ibuprofen', 'Naproxen',
-      'Ciprofloxacin', 'Cephalexin', 'Prednisone', 'Furosemide', 'Levothyroxine',
-      'Warfarin', 'Clopidogrel', 'Aspirin', 'Simvastatin', 'Rosuvastatin',
-      'Valsartan', 'Spironolactone', 'Pantoprazole', 'Esomeprazole', 'Ranitidine',
-      'Diazepam', 'Lorazepam', 'Fluoxetine', 'Escitalopram', 'Venlafaxine',
-      'Duloxetine', 'Quetiapine', 'Risperidone', 'Olanzapine', 'Lithium',
-      'Metronidazole', 'Doxycycline', 'Nitrofurantoin', 'Hydrochlorothiazide',
-      'Lisinopril', 'Enalapril', 'Captopril', 'Montelukast', 'Salbutamol', 'Fluticasone',
-      'Budesonide', 'Tiotropium', 'Glibenclamide', 'Gliclazide', 'Sitagliptin',
-      'Empagliflozin', 'Dapagliflozin', 'Liraglutide', 'Insulin', 'Dexamethasone',
-      'Hydrocortisone', 'Betamethasone', 'Celecoxib', 'Diclofenac', 'Meloxicam',
-      'Sumatriptan', 'Ergotamine', 'Phenobarbital', 'Phenytoin', 'Valproate',
-      'Carbamazepine', 'Levetiracetam', 'Topiramate', 'Pregabalin', 'Donepezil',
-      'Memantine', 'Levodopa', 'Carbidopa', 'Entacapone', 'Selegiline',
-      'Amitriptyline', 'Nortriptyline', 'Imipramine', 'Clomipramine', 'Mirtazapine',
-      'Clarithromycin', 'Loperamide', 'Ondansetron', 'Metoclopramide', 'Domperidone',
-      'Bisoprolol', 'Carvedilol', 'Ramipril', 'Amlodipine/Valsartan', 'Rosuvastatin/Ezetimibe',
-      'Levofloxacin', 'Moxifloxacin', 'Gentamicin', 'Ceftriaxone', 'Cefixime',
-      'Ketotifen', 'Loratadine', 'Cetirizine', 'Fexofenadine', 'Montelukast/Levocetirizine',
-      'Hydroxyzine', 'Promethazine', 'Chlorpheniramine', 'Diphenhydramine'
-    ];
-
-    const forms = [
-      { prefix: 'Tab', name: 'Tablet' },
-      { prefix: 'Cap', name: 'Capsule' },
-      { prefix: 'Syr', name: 'Syrup' },
-      { prefix: 'Susp', name: 'Suspension' },
-      { prefix: 'Oint', name: 'Ointment' },
-      { prefix: 'Drop', name: 'Drops' },
-      { prefix: 'Inj', name: 'Injection' },
-      { prefix: 'Cream', name: 'Cream' },
-      { prefix: 'Gel', name: 'Gel' },
-      { prefix: 'Spray', name: 'Nasal Spray' },
-      { prefix: 'Supp', name: 'Suppository' }
+    // Curated scientific list: One common form per generic
+    const strategicDrugs = [
+      { g: 'Amoxicillin', f: 'Cap' }, { g: 'Metformin', f: 'Tab' }, { g: 'Atorvastatin', f: 'Tab' },
+      { g: 'Amlodipine', f: 'Tab' }, { g: 'Losartan', f: 'Tab' }, { g: 'Omeprazole', f: 'Cap' },
+      { g: 'Azithromycin', f: 'Tab' }, { g: 'Sertraline', f: 'Tab' }, { g: 'Alprazolam', f: 'Tab' },
+      { g: 'Acetaminophen', f: 'Tab' }, { g: 'Ibuprofen', f: 'Tab' }, { g: 'Naproxen', f: 'Tab' },
+      { g: 'Ceftriaxone', f: 'Inj' }, { g: 'Dexamethasone', f: 'Inj' }, { g: 'Neurobion', f: 'Inj' },
+      { g: 'Diphenhydramine', f: 'Syr' }, { g: 'Guaifenesin', f: 'Syr' }, { g: 'Aluminum MG S', f: 'Syr' },
+      { g: 'Hydrocortisone', f: 'Oint' }, { g: 'Betamethasone', f: 'Oint' }, { g: 'Mupirocin', f: 'Cream' },
+      { g: 'Ciprofloxacin', f: 'Drop' }, { g: 'Artificial Tears', f: 'Drop' }, { g: 'Salbutamol', f: 'Spray' },
+      { g: 'Fluticasone', f: 'Spray' }, { g: 'Pantoprazole', f: 'Tab' }, { g: 'Levothyroxine', f: 'Tab' },
+      { g: 'Warfarin', f: 'Tab' }, { g: 'Clopidogrel', f: 'Tab' }, { g: 'Aspirin', f: 'Tab' },
+      { g: 'Gabapentin', f: 'Cap' }, { g: 'Pregabalin', f: 'Cap' }, { g: 'Fluoxetine', f: 'Cap' },
+      { g: 'Risperidone', f: 'Tab' }, { g: 'Quetiapine', f: 'Tab' }, { g: 'Olanzapine', f: 'Tab' },
+      { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Nitrofurantoin', f: 'Cap' },
+      { g: 'Lisinopril', f: 'Tab' }, { g: 'Enalapril', f: 'Tab' }, { g: 'Captopril', f: 'Tab' },
+      { g: 'Montelukast', f: 'Tab' }, { g: 'Budesonide', f: 'Spray' }, { g: 'Tiotropium', f: 'Cap' },
+      { g: 'Gliclazide', f: 'Tab' }, { g: 'Sitagliptin', f: 'Tab' }, { g: 'Empagliflozin', f: 'Tab' },
+      { g: 'Dapagliflozin', f: 'Tab' }, { g: 'Liraglutide', f: 'Inj' }, { g: 'Insulin Glargine', f: 'Inj' },
+      { g: 'Celecoxib', f: 'Cap' }, { g: 'Diclofenac', f: 'Tab' }, { g: 'Meloxicam', f: 'Tab' },
+      { g: 'Sumatriptan', f: 'Tab' }, { g: 'Ergotamine', f: 'Tab' }, { g: 'Valproate Sodium', f: 'Syr' },
+      { g: 'Carbamazepine', f: 'Tab' }, { g: 'Levetiracetam', f: 'Tab' }, { g: 'Topiramate', f: 'Tab' },
+      { g: 'Donepezil', f: 'Tab' }, { g: 'Memantine', f: 'Tab' }, { g: 'Levodopa/Carbidopa', f: 'Tab' },
+      { g: 'Amitriptyline', f: 'Tab' }, { g: 'Nortriptyline', f: 'Tab' }, { g: 'Clarithromycin', f: 'Tab' },
+      { g: 'Ondansetron', f: 'Tab' }, { g: 'Metoclopramide', f: 'Tab' }, { g: 'Domperidone', f: 'Tab' },
+      { g: 'Bisoprolol', f: 'Tab' }, { g: 'Carvedilol', f: 'Tab' }, { g: 'Ramipril', f: 'Tab' },
+      { g: 'Rosuvastatin', f: 'Tab' }, { g: 'Simvastatin', f: 'Tab' }, { g: 'Spironolactone', f: 'Tab' },
+      { g: 'Furosemide', f: 'Tab' }, { g: 'Hydrochlorothiazide', f: 'Tab' }, { g: 'Valsartan', f: 'Tab' },
+      { g: 'Loratadine', f: 'Tab' }, { g: 'Cetirizine', f: 'Tab' }, { g: 'Fexofenadine', f: 'Tab' },
+      { g: 'Promethazine', f: 'Syr' }, { g: 'Chlorpheniramine', f: 'Tab' }, { g: 'Hydroxyzine', f: 'Tab' }
     ];
 
     const writeTx = db.transaction(DRUG_STORE, 'readwrite');
     const writeStore = writeTx.objectStore(DRUG_STORE);
     
-    generics.forEach(gen => {
-      forms.forEach(f => {
-        const fullName = `${f.prefix} ${gen}`;
+    strategicDrugs.forEach(item => {
+        const fullName = `${item.f} ${item.g}`;
         writeStore.put({ 
           id: crypto.randomUUID(), 
           name: fullName, 
-          category: f.name,
+          category: item.f,
           isCustom: false, 
           createdAt: Date.now() 
         });
-      });
     });
   }
 };
 
-// --- ID Generation ---
 export const getNextDisplayId = async (): Promise<string> => {
   const db = await initDB();
   return new Promise((resolve) => {
@@ -150,7 +137,6 @@ export const getNextDisplayId = async (): Promise<string> => {
     const request = store.getAll();
     request.onsuccess = () => {
       const records = request.result as PatientRecord[];
-      // Find the maximum numeric displayId across all patient records
       const numericIds = records
         .map(r => {
             const parsed = parseInt(r.displayId || "0", 10);
@@ -163,7 +149,6 @@ export const getNextDisplayId = async (): Promise<string> => {
   });
 };
 
-// --- Drug Methods ---
 export const getAllDrugs = async (): Promise<Drug[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -197,7 +182,6 @@ export const deleteDrug = async (id: string): Promise<void> => {
   });
 };
 
-// --- Usage Tracking Methods ---
 export interface UsageEntry extends DrugUsage {
   lastDosage?: string;
   lastInstruction?: string;
@@ -224,7 +208,7 @@ export const trackDrugUsage = async (drugName: string, dosage?: string, instruct
             usage.commonInstructions.splice(idx, 1);
         }
         usage.commonInstructions.unshift(instruction);
-        usage.commonInstructions = usage.commonInstructions.slice(0, 3); // Keep top 3
+        usage.commonInstructions = usage.commonInstructions.slice(0, 3); 
       }
 
       store.put(usage);
@@ -249,11 +233,8 @@ export const getUsageStats = async (): Promise<UsageEntry[]> => {
   });
 };
 
-// --- Standard Patient Record Methods ---
 export const saveRecord = async (record: PatientRecord): Promise<void> => {
   const db = await initDB();
-  
-  // Ensure patient ID display persistence across records for same patient name
   if (!record.displayId) {
       const records = await getRecordsByName(record.name);
       if (records.length > 0 && records[0].displayId) {
@@ -336,7 +317,6 @@ export const getRecordsByName = async (name: string): Promise<PatientRecord[]> =
   });
 };
 
-// --- Template Methods ---
 export const saveTemplate = async (template: PrescriptionTemplate): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -370,7 +350,6 @@ export const deleteTemplate = async (id: string): Promise<void> => {
   });
 };
 
-// --- Settings Methods ---
 export const saveSettings = async (settings: PrescriptionSettings): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -393,7 +372,6 @@ export const getSettings = async (): Promise<PrescriptionSettings | undefined> =
   });
 };
 
-// --- Doctor Profile Methods ---
 export const saveDoctorProfile = async (profile: DoctorProfile): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -416,7 +394,6 @@ export const getDoctorProfile = async (): Promise<DoctorProfile | undefined> => 
   });
 };
 
-// --- Backup & Restore ---
 export const exportDatabase = async (): Promise<string> => {
   const db = await initDB();
   return new Promise(async (resolve, reject) => {

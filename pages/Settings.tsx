@@ -6,11 +6,9 @@ import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, Rotate
 
 type Tab = 'profile' | 'paper' | 'drugs' | 'backup';
 
-// ISO Standard Dimensions (at 96 DPI approx)
 const A4_DIMS = { w: 794, h: 1123 };
 const A5_DIMS = { w: 559, h: 794 };
 
-// Default Elements if none exist
 const DEFAULT_ELEMENTS: LayoutElement[] = [
   { id: 'patientName', type: 'text', label: 'نام بیمار', x: 500, y: 100, width: 200, fontSize: 16, rotation: 0, visible: true, align: 'right' },
   { id: 'patientId', type: 'text', label: 'شماره پرونده (ID)', x: 500, y: 130, width: 100, fontSize: 12, rotation: 0, visible: true, align: 'right' },
@@ -41,7 +39,6 @@ const Settings: React.FC = () => {
     topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', backgroundImage: '', paperSize: 'A4', printBackground: true, elements: DEFAULT_ELEMENTS
   });
 
-  // Drug Bank Local State
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [usageStats, setUsageStats] = useState<DrugUsage[]>([]);
   const [drugSearch, setDrugSearch] = useState('');
@@ -173,7 +170,6 @@ const Settings: React.FC = () => {
     return paperSettings.paperSize === 'A4' ? A4_DIMS : A5_DIMS;
   };
 
-  // --- Drag Handlers ---
   const handleStart = (clientX: number, clientY: number, elId: string) => {
     setSelectedElementId(elId);
     setIsDragging(true);
@@ -253,6 +249,16 @@ const Settings: React.FC = () => {
     }
   };
 
+  // Performance Optimization: Search and Slice Rendering
+  const getFilteredDrugs = () => {
+      const q = drugSearch.toLowerCase();
+      const filtered = drugs.filter(d => d.name.toLowerCase().includes(q));
+      // Only show first 100 results to maintain instant performance
+      return filtered.slice(0, 100);
+  };
+
+  const filteredDrugs = getFilteredDrugs();
+
   return (
     <div 
       className="animate-fade-in pb-20 h-full" 
@@ -272,7 +278,6 @@ const Settings: React.FC = () => {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex bg-white rounded-2xl p-2 shadow-sm border border-gray-100 max-w-4xl overflow-x-auto no-scrollbar">
           <button onClick={() => setActiveTab('profile')} className={`flex-1 min-w-[120px] py-3 px-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'profile' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:bg-gray-50'}`}>
             <User size={20} /> اطلاعات مطب
@@ -297,7 +302,6 @@ const Settings: React.FC = () => {
 
         <div className="bg-white p-4 lg:p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[500px] mt-6">
           
-          {/* PROFILE TAB */}
           {activeTab === 'profile' && (
             <div className="max-w-2xl mx-auto space-y-6">
                <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">اطلاعات مطب و پزشک</h3>
@@ -319,39 +323,32 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* DRUG BANK TAB */}
           {activeTab === 'drugs' && (
             <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
                <div className="flex flex-col space-y-4">
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                       <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2"><Pill className="text-indigo-600" /> بانک داروی هوشمند</h3>
-                      <p className="text-xs text-gray-400 mt-1">مدیریت لیست داروها (۱۵۰۰+ مورد) و ویرایش آزادانه</p>
+                      <p className="text-xs text-gray-400 mt-1">مدیریت لیست داروها با سرعت پردازش آنی (Instant Rendering)</p>
                     </div>
                   </div>
 
                   <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 shadow-inner">
                     <label className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3 block mr-1">افزودن داروی جدید</label>
                     
-                    {/* Quick Form chips */}
                     <div className="flex flex-wrap gap-2 mb-4">
                         {[
-                            { label: 'Tab', icon: Pill },
-                            { label: 'Cap', icon: Pill },
-                            { label: 'Syr', icon: Beaker },
-                            { label: 'Inj', icon: Syringe },
-                            { label: 'Drop', icon: Droplet },
-                            { label: 'Oint', icon: SprayCan },
-                            { label: 'Cream', icon: SprayCan },
-                            { label: 'Susp', icon: Beaker },
+                            { label: 'Tab', icon: Pill }, { label: 'Cap', icon: Pill },
+                            { label: 'Syr', icon: Beaker }, { label: 'Inj', icon: Syringe },
+                            { label: 'Drop', icon: Droplet }, { label: 'Oint', icon: SprayCan },
+                            { label: 'Cream', icon: SprayCan }, { label: 'Susp', icon: Beaker },
                         ].map((form) => (
                             <button 
                                 key={form.label}
                                 onClick={() => applyDrugFormPrefix(form.label)}
                                 className="bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
                             >
-                                <form.icon size={12} />
-                                {form.label}
+                                <form.icon size={12} /> {form.label}
                             </button>
                         ))}
                     </div>
@@ -374,7 +371,6 @@ const Settings: React.FC = () => {
                </div>
 
                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-4 border-t border-gray-50">
-                  {/* Usage Stats */}
                   <div className="md:col-span-1 space-y-4">
                      <h4 className="font-black text-gray-400 flex items-center gap-2 text-[10px] uppercase tracking-widest"><TrendingUp size={14} className="text-teal-500" /> پرمصرف‌ترین داروها</h4>
                      <div className="bg-gray-50 rounded-[2rem] p-5 border border-gray-100 space-y-3">
@@ -389,37 +385,42 @@ const Settings: React.FC = () => {
                      </div>
                   </div>
 
-                  {/* Complete List with Search and CRUD */}
                   <div className="md:col-span-2 space-y-4">
                      <div className="relative">
-                        <input type="text" className="w-full p-4 pr-12 bg-white rounded-[1.5rem] border border-gray-200 shadow-sm outline-none focus:ring-4 focus:ring-indigo-50 font-bold" placeholder="جستجو در تمام اشکال دارویی..." value={drugSearch} onChange={e => setDrugSearch(e.target.value)} />
+                        <input type="text" className="w-full p-4 pr-12 bg-white rounded-[1.5rem] border border-gray-200 shadow-sm outline-none focus:ring-4 focus:ring-indigo-50 font-bold" placeholder="جستجو در بانک دارو..." value={drugSearch} onChange={e => setDrugSearch(e.target.value)} />
                         <Search className="absolute right-4 top-4.5 text-gray-400" />
                      </div>
-                     <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden max-h-[500px] overflow-y-auto custom-scrollbar shadow-sm">
+                     <div className="bg-white rounded-[2rem] border border-gray-100 overflow-hidden shadow-sm">
                         <table className="w-full text-right text-sm">
                            <thead className="bg-gray-50 text-gray-400 font-black border-b border-gray-100 text-[10px] uppercase tracking-widest">
                               <tr><th className="p-4">نام کامل دارو</th><th className="p-4">منبع</th><th className="p-4 text-center">عملیات</th></tr>
                            </thead>
                            <tbody className="divide-y divide-gray-50">
-                              {drugs.filter(d => d.name.toLowerCase().includes(drugSearch.toLowerCase())).map(d => (
+                              {filteredDrugs.length === 0 ? (
+                                 <tr><td colSpan={3} className="p-10 text-center text-gray-400 font-bold">دارویی یافت نشد.</td></tr>
+                              ) : filteredDrugs.map(d => (
                                  <tr key={d.id} className="hover:bg-indigo-50/30 transition-colors group">
                                     <td className="p-4 font-black text-gray-700 text-base">{d.name}</td>
                                     <td className="p-4"><span className={`px-2 py-0.5 rounded-lg text-[9px] font-black uppercase ${d.isCustom ? 'bg-amber-100 text-amber-700 border border-amber-200' : 'bg-indigo-50 text-indigo-600 border border-indigo-100'}`}>{d.isCustom ? 'شخصی' : 'سیستمی'}</span></td>
                                     <td className="p-4 text-center">
-                                       <div className="flex justify-center gap-1 transition-opacity">
-                                          <button onClick={() => setEditingDrug(d)} title="ویرایش" className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all border border-indigo-100"><Edit2 size={16} /></button>
-                                          <button onClick={() => handleDeleteDrug(d.id)} title="حذف" className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all border border-red-100"><Trash2 size={16}/></button>
+                                       <div className="flex justify-center gap-1">
+                                          <button onClick={() => setEditingDrug(d)} className="p-2 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all border border-indigo-100"><Edit2 size={16} /></button>
+                                          <button onClick={() => handleDeleteDrug(d.id)} className="p-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-all border border-red-100"><Trash2 size={16}/></button>
                                        </div>
                                     </td>
                                  </tr>
                               ))}
                            </tbody>
                         </table>
+                        {drugs.length > 100 && !drugSearch && (
+                            <div className="p-4 bg-gray-50 text-center text-[10px] text-gray-400 font-black uppercase tracking-widest">
+                                نمایش ۱۰۰ مورد اول از {drugs.length} قلم دارو. جهت یافتن سایر موارد از جستجو استفاده کنید.
+                            </div>
+                        )}
                      </div>
                   </div>
                </div>
 
-               {/* Editing Modal */}
                {editingDrug && (
                   <div className="fixed inset-0 z-[110] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
                      <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-8 animate-fade-in">
@@ -448,7 +449,6 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* PAPER SETTINGS TAB */}
           {activeTab === 'paper' && (
             <div className="space-y-6">
                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b pb-4 gap-4">
@@ -482,7 +482,6 @@ const Settings: React.FC = () => {
             </div>
           )}
 
-          {/* BACKUP TAB */}
           {activeTab === 'backup' && (
             <div className="max-w-2xl mx-auto space-y-8 text-center">
                <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">پشتیبان‌گیری</h3>
