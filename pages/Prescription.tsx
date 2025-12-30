@@ -739,7 +739,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      <div class="drug-num">${i + 1}.</div>
                      <div class="drug-details">
                         <div class="drug-name">${item.drug}</div>
-                        <div class="drug-sig">Sig: ${item.instruction}</div>
+                        <div class="drug-sig: ${item.instruction}</div>
                      </div>
                      <div class="drug-qty">${item.dosage}</div>
                   </li>`).join('')}
@@ -1100,7 +1100,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                  placeholder="مثال: Tab Amoxicillin 500" 
                                  value={item.drug} 
                                  onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
-                                 onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
+                                 onBlur={() => {
+                                    setTimeout(() => {
+                                      setSuggestionType(prev => prev === 'drug' ? null : prev);
+                                    }, 200);
+                                 }}
                                  onChange={e => updateItem(idx, 'drug', e.target.value)} 
                               />
                               {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
@@ -1125,7 +1129,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                     placeholder="N=30" 
                                     value={item.dosage} 
                                     onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }}
-                                    onBlur={() => setTimeout(() => { if(suggestionType === 'dosage') setSuggestionType(null); }, 200)}
+                                    onBlur={() => {
+                                       setTimeout(() => {
+                                         setSuggestionType(prev => prev === 'dosage' ? null : prev);
+                                       }, 200);
+                                    }}
                                     onChange={e => updateItem(idx, 'dosage', e.target.value)} 
                                  />
                                  {suggestionType === 'dosage' && activeItemIndex === idx && (
@@ -1143,7 +1151,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                     placeholder="مثال: هر ۸ ساعت" 
                                     value={item.instruction} 
                                     onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }}
-                                    onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
+                                    onBlur={() => {
+                                       setTimeout(() => {
+                                         setSuggestionType(prev => prev === 'instruction' ? null : prev);
+                                       }, 200);
+                                    }}
                                     onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                                  />
                                  {suggestionType === 'instruction' && activeItemIndex === idx && (
@@ -1313,7 +1325,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                 className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
                                 value={item.drug} 
                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }}
-                                onBlur={() => setTimeout(() => { if(suggestionType === 'drug') setSuggestionType(null); }, 200)}
+                                onBlur={() => {
+                                  setTimeout(() => {
+                                    setSuggestionType(prev => prev === 'drug' ? null : prev);
+                                  }, 200);
+                                }}
                                 onChange={e => updateItem(idx, 'drug', e.target.value)} 
                                 placeholder="مثال: Tab Amoxicillin 500" 
                              />
@@ -1336,7 +1352,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                               value={item.dosage} 
                               onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }}
-                              onBlur={() => setTimeout(() => { if(suggestionType === 'dosage') setSuggestionType(null); }, 200)}
+                              onBlur={() => {
+                                setTimeout(() => {
+                                  setSuggestionType(prev => prev === 'dosage' ? null : prev);
+                                }, 200);
+                              }}
                               onChange={e => updateItem(idx, 'dosage', e.target.value)} 
                               placeholder="N=30" 
                             />
@@ -1352,7 +1372,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                 className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                                 value={item.instruction} 
                                 onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} 
-                                onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} 
+                                onBlur={() => {
+                                  setTimeout(() => {
+                                    setSuggestionType(prev => prev === 'instruction' ? null : prev);
+                                  }, 200);
+                                }} 
                                 onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                                 placeholder="مثال: هر ۸ ساعت" 
                              />
