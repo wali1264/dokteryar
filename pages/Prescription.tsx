@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
-import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats } from '../services/db';
+import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats, saveComplaintTemplate, getAllComplaintTemplates, deleteComplaintTemplate } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage, PrescriptionRecord } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks, BookmarkPlus } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -67,12 +67,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [items, setItems] = useState<PrescriptionItem[]>([]);
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
+  const [complaintTemplates, setComplaintTemplates] = useState<any[]>([]);
+  const [showComplaintTemplateMenu, setShowComplaintTemplateMenu] = useState(false);
   
   const [allDrugs, setAllDrugs] = useState<Drug[]>([]);
   const [usageStats, setUsageStats] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
-  const [suggestionType, setSuggestionType] = useState<'drug' | 'instruction' | null>(null);
+  const [suggestionType, setSuggestionType] = useState<'drug' | 'dosage' | 'instruction' | null>(null);
+
+  // Preference Hub State
+  const [showPreferenceModal, setShowPreferenceModal] = useState(false);
+  const [customDosages, setCustomDosages] = useState<string[]>([]);
+  const [customInstructions, setCustomInstructions] = useState<string[]>([]);
+  const [newPrefValue, setNewPrefValue] = useState('');
 
   const [vitals, setVitals] = useState<PatientVitals>({
     bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: ''
@@ -83,7 +91,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [showDraftBanner, setShowDraftBanner] = useState(false);
   
   const [settings, setSettings] = useState<PrescriptionSettings>({
-    topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', printBackground: true, paperSize: 'A4', elements: []
+    topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', printBackground: true, paperSize: 'A4', elements: [],
+    customDosages: [], customInstructions: []
   });
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null);
 
@@ -158,6 +167,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     try {
       const templatesData = await getAllTemplates();
       setTemplates(templatesData);
+      const cTemplatesData = await getAllComplaintTemplates();
+      setComplaintTemplates(cTemplatesData);
       const patientsData = await getUniquePatients();
       setAllPatients(patientsData);
       const drugsData = await getAllDrugs();
@@ -165,7 +176,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       const stats = await getUsageStats();
       setUsageStats(stats);
       const s = await getSettings();
-      if (s) setSettings(s);
+      if (s) {
+        setSettings(s);
+        setCustomDosages(s.customDosages || []);
+        setCustomInstructions(s.customInstructions || []);
+      }
       const p = await getDoctorProfile();
       if (p) setDoctorProfile(p);
     } catch (e) { console.error(e); }
@@ -281,7 +296,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
-      // Visual Feedback: Flash effect
       const flashEl = document.createElement('div');
       flashEl.className = 'fixed inset-0 z-[300] bg-white animate-flash-effect pointer-events-none';
       document.body.appendChild(flashEl);
@@ -295,7 +309,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         canvas.toBlob(async (blob) => {
           if (blob) {
             const file = new File([blob], "prescription_scan.jpg", { type: "image/jpeg" });
-            // Close camera immediately after getting blob to ensure resources are free for AI
             stopCamera(); 
             await processFile(file);
           }
@@ -411,13 +424,44 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
+  // Preference Hub Actions
+  const handleAddPreference = async (type: 'dosage' | 'instruction') => {
+    if (!newPrefValue.trim()) return;
+    const updatedSettings = { ...settings };
+    if (type === 'dosage') {
+      const newList = [...(updatedSettings.customDosages || []), newPrefValue.trim()];
+      updatedSettings.customDosages = Array.from(new Set(newList));
+      setCustomDosages(updatedSettings.customDosages);
+    } else {
+      const newList = [...(updatedSettings.customInstructions || []), newPrefValue.trim()];
+      updatedSettings.customInstructions = Array.from(new Set(newList));
+      setCustomInstructions(updatedSettings.customInstructions);
+    }
+    await saveSettings(updatedSettings);
+    setSettings(updatedSettings);
+    setNewPrefValue('');
+  };
+
+  const handleRemovePreference = async (type: 'dosage' | 'instruction', value: string) => {
+    const updatedSettings = { ...settings };
+    if (type === 'dosage') {
+      updatedSettings.customDosages = (updatedSettings.customDosages || []).filter(v => v !== value);
+      setCustomDosages(updatedSettings.customDosages);
+    } else {
+      updatedSettings.customInstructions = (updatedSettings.customInstructions || []).filter(v => v !== value);
+      setCustomInstructions(updatedSettings.customInstructions);
+    }
+    await saveSettings(updatedSettings);
+    setSettings(updatedSettings);
+  };
+
   const addItem = () => setItems([...items, { drug: '', dosage: '', instruction: '' }]);
 
   const updateItem = (index: number, field: keyof PrescriptionItem, value: string) => {
     const newItems = [...items];
     newItems[index] = { ...newItems[index], [field]: value };
     setItems(newItems);
-    setSearchQuery(value);
+    if (field === 'drug') setSearchQuery(value);
   };
 
   const selectSuggestedDrug = (drugName: string) => {
@@ -429,6 +473,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         if (stats.lastDosage) newItems[activeItemIndex].dosage = stats.lastDosage;
         if (stats.lastInstruction) newItems[activeItemIndex].instruction = stats.lastInstruction;
     }
+    setItems(newItems); setActiveItemIndex(null); setSuggestionType(null);
+  };
+
+  const selectSuggestedDosage = (dosage: string) => {
+    if (activeItemIndex === null) return;
+    const newItems = [...items];
+    newItems[activeItemIndex].dosage = dosage;
     setItems(newItems); setActiveItemIndex(null); setSuggestionType(null);
   };
 
@@ -447,6 +498,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       await saveTemplate({ id: crypto.randomUUID(), name: templateName, items });
       setShowSaveModal(false); setTemplateName(''); loadInitialData();
     } catch (e) { console.error(e); }
+  };
+
+  // Complaint Template Actions
+  const handleSaveComplaintTemplate = async () => {
+    if (!chiefComplaint.trim()) return;
+    try {
+      await saveComplaintTemplate(chiefComplaint.trim());
+      loadInitialData();
+      alert('شکایت به عنوان قالب ذخیره شد.');
+    } catch (e) { console.error(e); }
+  };
+
+  const selectComplaintTemplate = (text: string) => {
+    setChiefComplaint(prev => prev + (prev ? " " : "") + text);
+    setShowComplaintTemplateMenu(false);
+  };
+
+  const handleDeleteComplaintTemplate = async (id: string) => {
+    if (confirm('آیا از حذف این قالب اطمینان دارید؟')) {
+      await deleteComplaintTemplate(id);
+      loadInitialData();
+    }
   };
 
   const handleAuditSafety = async () => {
@@ -521,9 +594,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     return <Zap className="text-gray-400" size={14} />;
   };
 
-  const getQuickInstructions = (drugName: string) => {
+  const getSmartDosages = () => {
+    const historical = usageStats.map(u => u.lastDosage).filter(Boolean);
+    const top3 = Array.from(new Set(historical)).slice(0, 3);
+    return [...top3, ...customDosages];
+  };
+
+  const getSmartInstructions = (drugName: string) => {
     const stats = usageStats.find(u => u.drugName === drugName);
-    return stats?.commonInstructions || ['هر ۸ ساعت', 'روزی یک عدد', 'قبل از غذا'];
+    const learned = stats?.commonInstructions || [];
+    return [...learned, ...customInstructions].slice(0, 20);
   };
 
   const handlePrint = async (mode: 'plain' | 'custom') => {
@@ -659,7 +739,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      <div class="drug-num">${i + 1}.</div>
                      <div class="drug-details">
                         <div class="drug-name">${item.drug}</div>
-                        <div class="drug-sig: Sig: ${item.instruction}</div>
+                        <div class="drug-sig">Sig: ${item.instruction}</div>
                      </div>
                      <div class="drug-qty">${item.dosage}</div>
                   </li>`).join('')}
@@ -992,9 +1072,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                      <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center gap-2">
                             <label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label>
-                            <button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
-                                <ListChecks size={14} />
-                            </button>
+                            <div className="flex gap-1">
+                                <button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}>
+                                    <ListChecks size={14} />
+                                </button>
+                                <button onClick={() => setShowPreferenceModal(true)} className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+                                    <RotateCw size={14} />
+                                </button>
+                            </div>
                         </div>
                         {isRecordingScribe && (
                            <div className="flex gap-1 items-end h-4">
@@ -1033,9 +1118,23 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               )}
                            </div>
                            <div className="flex gap-3">
-                              <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100">
-                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">دوز / تعداد</label>
-                                 <input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onChange={e => updateItem(idx, 'dosage', e.target.value)} />
+                              <div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
+                                 <label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label>
+                                 <input 
+                                    className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" 
+                                    placeholder="N=30" 
+                                    value={item.dosage} 
+                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }}
+                                    onBlur={() => setTimeout(() => { if(suggestionType === 'dosage') setSuggestionType(null); }, 200)}
+                                    onChange={e => updateItem(idx, 'dosage', e.target.value)} 
+                                 />
+                                 {suggestionType === 'dosage' && activeItemIndex === idx && (
+                                    <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
+                                       {getSmartDosages().map(d => (
+                                          <button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="whitespace-nowrap bg-teal-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{d}</button>
+                                       ))}
+                                    </div>
+                                 )}
                               </div>
                               <div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative">
                                  <label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label>
@@ -1043,14 +1142,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                     className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" 
                                     placeholder="مثال: هر ۸ ساعت" 
                                     value={item.instruction} 
-                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }}
+                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }}
                                     onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)}
                                     onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                                  />
-                                 {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
+                                 {suggestionType === 'instruction' && activeItemIndex === idx && (
                                     <div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
-                                       {getQuickInstructions(item.drug).map(ins => (
-                                          <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg shadow-indigo-100">{ins}</button>
+                                       {getSmartInstructions(item.drug).map(ins => (
+                                          <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{ins}</button>
                                        ))}
                                     </div>
                                  )}
@@ -1096,6 +1195,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            </div>
 
            <div className="flex gap-2">
+              <button 
+                onClick={() => setShowPreferenceModal(true)}
+                className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"
+              >
+                <RotateCw size={20} /> ترجیحات
+              </button>
+
               <button 
                 onClick={() => setShowTemplatesModal(true)}
                 className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"
@@ -1156,13 +1262,22 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                         <label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest">
                           <Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span>
                         </label>
-                        <button 
-                           onClick={() => setShowComplaintModal(true)}
-                           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
-                        >
-                           <ListChecks size={14} />
-                           {chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}
-                        </button>
+                        <div className="flex gap-2">
+                           <button 
+                              onClick={() => setShowComplaintModal(true)}
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                           >
+                              <ListChecks size={14} />
+                              {chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}
+                           </button>
+                           <button 
+                              onClick={() => setShowPreferenceModal(true)}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"
+                           >
+                              <RotateCw size={14} />
+                              مدیریت ترجیحات
+                           </button>
+                        </div>
                      </div>
                      {isRecordingScribe && (
                         <div className="flex gap-1 items-end h-4">
@@ -1216,26 +1331,35 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                 </div>
                              )}
                           </td>
-                          <td className="py-2 px-2">
+                          <td className="py-2 px-2 relative">
                             <input 
                               className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                               value={item.dosage} 
+                              onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }}
+                              onBlur={() => setTimeout(() => { if(suggestionType === 'dosage') setSuggestionType(null); }, 200)}
                               onChange={e => updateItem(idx, 'dosage', e.target.value)} 
                               placeholder="N=30" 
                             />
+                            {suggestionType === 'dosage' && activeItemIndex === idx && (
+                                <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[120px]">
+                                   <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دوز</p>
+                                   {getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="text-center p-3 hover:bg-teal-50 rounded-xl text-sm font-black text-teal-700 transition-colors border border-transparent hover:border-teal-100">{d}</button>))}
+                                </div>
+                             )}
                           </td>
                           <td className="py-2 px-2 relative">
                              <input 
                                 className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                                 value={item.instruction} 
-                                onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSearchQuery(item.instruction); }} 
+                                onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} 
                                 onBlur={() => setTimeout(() => { if(suggestionType === 'instruction') setSuggestionType(null); }, 200)} 
                                 onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                                 placeholder="مثال: هر ۸ ساعت" 
                              />
-                             {suggestionType === 'instruction' && activeItemIndex === idx && item.drug && (
+                             {suggestionType === 'instruction' && activeItemIndex === idx && (
                                 <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]">
-                                   {getQuickInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors">{ins}</button>))}
+                                   <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دستور مصرف</p>
+                                   {getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors border border-transparent hover:border-indigo-100">{ins}</button>))}
                                 </div>
                              )}
                           </td>
@@ -1268,15 +1392,130 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       </div>
 
       {/* MODALS */}
+      {showPreferenceModal && (
+          <div className="fixed inset-0 z-[210] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+              <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col h-[80vh]">
+                  <div className="p-8 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><RotateCw size={24} /></div>
+                          <div>
+                              <h3 className="text-2xl font-black text-gray-800">مدیریت ترجیحات نسخه‌نویسی</h3>
+                              <p className="text-xs text-gray-500 font-bold mt-1">شخصی‌سازی دوزها و دستورات مصرف متداول</p>
+                          </div>
+                      </div>
+                      <button onClick={() => setShowPreferenceModal(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-10 custom-scrollbar">
+                      {/* Section: Custom Dosages */}
+                      <div className="space-y-6">
+                          <h4 className="font-black text-teal-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-teal-100 pb-2">
+                             <Hash size={18} /> مقادیر و دوزها (Qty)
+                          </h4>
+                          <div className="flex gap-2">
+                             <input 
+                                className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 font-bold text-sm" 
+                                placeholder="مثلاً N=20" 
+                                value={newPrefValue}
+                                onChange={e => setNewPrefValue(e.target.value)}
+                                onKeyPress={e => e.key === 'Enter' && handleAddPreference('dosage')}
+                             />
+                             <button onClick={() => handleAddPreference('dosage')} className="bg-teal-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button>
+                          </div>
+                          <div className="space-y-2">
+                             {customDosages.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>
+                             ) : (
+                                customDosages.map(v => (
+                                   <div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group">
+                                      <span className="font-black text-gray-700">{v}</span>
+                                      <button onClick={() => handleRemovePreference('dosage', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button>
+                                   </div>
+                                ))
+                             )}
+                          </div>
+                      </div>
+
+                      {/* Section: Custom Instructions */}
+                      <div className="space-y-6">
+                          <h4 className="font-black text-indigo-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-indigo-100 pb-2">
+                             <FileText size={18} /> دستورات مصرف (Sig)
+                          </h4>
+                          <div className="flex gap-2">
+                             <input 
+                                className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-sm" 
+                                placeholder="مثلاً قبل از خواب" 
+                                value={newPrefValue}
+                                onChange={e => setNewPrefValue(e.target.value)}
+                                onKeyPress={e => e.key === 'Enter' && handleAddPreference('instruction')}
+                             />
+                             <button onClick={() => handleAddPreference('instruction')} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"><Plus size={20}/></button>
+                          </div>
+                          <div className="space-y-2">
+                             {customInstructions.length === 0 ? (
+                                <p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>
+                             ) : (
+                                customInstructions.map(v => (
+                                   <div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group">
+                                      <span className="font-bold text-gray-700 text-xs">{v}</span>
+                                      <button onClick={() => handleRemovePreference('instruction', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button>
+                                   </div>
+                                ))
+                             )}
+                          </div>
+                      </div>
+                  </div>
+                  
+                  <div className="p-6 bg-gray-50 border-t border-gray-100 text-center">
+                      <button onClick={() => setShowPreferenceModal(false)} className="px-12 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all">تایید و بستن</button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {showComplaintModal && (
           <div className="fixed inset-0 z-[195] bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col">
+              <div className="bg-white w-full max-w-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col relative">
                   <div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                       <div className="flex items-center gap-3">
                           <div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div>
                           <h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3>
+                          
+                          {/* Template Dropdown Trigger */}
+                          <div className="relative">
+                            <button 
+                                onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)}
+                                className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                                title="قالب‌های شکایات"
+                            >
+                                <LayoutTemplate size={20} />
+                            </button>
+                            
+                            {showComplaintTemplateMenu && (
+                                <div className="absolute top-full right-0 mt-2 w-72 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down">
+                                    <div className="p-3 bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">قالب‌های ذخیره شده</div>
+                                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                        {complaintTemplates.length === 0 ? (
+                                            <div className="p-4 text-center text-xs text-gray-400">قالبی یافت نشد</div>
+                                        ) : (
+                                            complaintTemplates.map(t => (
+                                                <div key={t.id} className="flex items-center justify-between p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer" onClick={() => selectComplaintTemplate(t.text)}>
+                                                    <span className="text-xs font-bold text-gray-700 truncate flex-1">{t.text}</span>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }}
+                                                        className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                                                    >
+                                                        <Trash size={14} />
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                          </div>
                       </div>
-                      <button onClick={() => { stopCCRecording(); setShowComplaintModal(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
+                      <button onClick={() => { stopCCRecording(); setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button>
                   </div>
                   <div className="p-8 space-y-6">
                       <div className="relative">
@@ -1287,18 +1526,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                               value={chiefComplaint}
                               onChange={e => setChiefComplaint(e.target.value)}
                           />
-                          <button 
-                             onClick={isRecordingCC ? stopCCRecording : startCCRecording}
-                             className={`absolute bottom-4 left-4 p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}
-                             title="دیکته صوتی شکایات"
-                          >
-                             {isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}
-                          </button>
+                          <div className="absolute bottom-4 left-4 flex gap-2">
+                             <button 
+                                onClick={handleSaveComplaintTemplate}
+                                disabled={!chiefComplaint.trim()}
+                                className="p-4 bg-white text-indigo-600 border border-indigo-100 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 disabled:opacity-50"
+                                title="ذخیره به عنوان قالب جدید"
+                             >
+                                <BookmarkPlus size={24} />
+                             </button>
+                             <button 
+                                onClick={isRecordingCC ? stopCCRecording : startCCRecording}
+                                className={`p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`}
+                                title="دیکته صوتی شکایات"
+                             >
+                                {isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}
+                             </button>
+                          </div>
                       </div>
                       
                       <div className="flex gap-4">
                           <button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button>
-                          <button onClick={() => setShowComplaintModal(false)} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button>
+                          <button onClick={() => { setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button>
                       </div>
                   </div>
               </div>
@@ -1354,7 +1603,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       {showSafetyModal && safetyReport && (
          <div className="fixed inset-0 z-[180] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col max-h-[85vh]">
-               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-50' : 'bg-emerald-600'}`}>
+               <div className={`p-8 text-white flex items-center justify-between ${safetyReport.status === 'critical' ? 'bg-red-600' : safetyReport.status === 'warning' ? 'bg-amber-500' : 'bg-emerald-600'}`}>
                   <div className="flex items-center gap-4">
                      <div className="bg-white/20 p-3 rounded-2xl"><ShieldAlert size={32} /></div>
                      <div>
@@ -1433,6 +1682,23 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {showNewPatientModal && (
+            <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
+               <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
+                  <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10 lg:rounded-t-3xl"><h3 className="text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2"><div className="bg-teal-100 p-2 rounded-xl text-teal-600"><UserPlus size={24} /></div>ثبت بیمار جدید</h3><button onClick={() => setShowNewPatientModal(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"><X size={20} /></button></div>
+                  <div className="flex-1 overflow-y-auto p-5 lg:p-8 space-y-5">
+                     <div><label className="block text-sm font-bold text-gray-600 mb-2">نام و نام خانوادگی</label><div className="relative"><User className="absolute right-3 top-3.5 text-gray-400" size={18} /><input autoFocus className="w-full p-3.5 pr-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all border border-gray-100" placeholder="مثال: علی رضایی" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div></div>
+                     <div><label className="block text-sm font-bold text-gray-600 mb-2">شماره تماس</label><div className="relative"><input type="tel" className="w-full p-3.5 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left border border-gray-100 font-mono" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" /><Phone className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
+                     <div className="flex gap-4"><div className="flex-1"><label className="block text-sm font-bold text-gray-600 mb-2">سن</label><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} placeholder="" /></div><div className="flex-[1.5]"><label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label><div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div></div>
+                     <div><label className="block text-sm font-bold text-gray-600 mb-2">وزن</label><div className="relative"><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /><Scale className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
+                     <div className="pt-2"><label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-2"><Activity size={16} />سابقه بیماری</label><input className="w-full p-3.5 bg-orange-50/30 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} /></div>
+                     <div><label className="flex items-center gap-2 text-sm font-bold text-red-600 mb-2"><AlertCircle size={16} />حساسیت‌ها و آلرژی</label><input className="w-full p-3.5 bg-red-50/30 border border-red-100 rounded-xl outline-none focus:ring-2 focus:ring-red-200" placeholder="پنی‌سیلین، آسپرین..." value={newPatientAllergies} onChange={e => setNewPatientAllergies(e.target.value)} /></div>
+                  </div>
+                  <div className="p-4 lg:p-6 border-t border-gray-100 bg-white lg:rounded-b-3xl"><button onClick={handleRegisterPatient} disabled={!newPatientName} className="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-teal-200 flex items-center justify-center gap-3 text-lg"><Save size={22} />ذخیره پرونده اولیه</button></div>
+               </div>
+            </div>
       )}
 
       {showQuickEntryModal && (

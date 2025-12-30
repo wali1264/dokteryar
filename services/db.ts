@@ -4,11 +4,12 @@ import { PatientRecord, PrescriptionTemplate, PrescriptionSettings, DoctorProfil
 const DB_NAME = 'TabibHooshmandDB';
 const STORE_NAME = 'patients';
 const TEMPLATE_STORE = 'rx_templates';
+const COMPLAINT_TEMPLATE_STORE = 'complaint_templates';
 const SETTINGS_STORE = 'settings';
 const PROFILE_STORE = 'doctor_profile';
 const DRUG_STORE = 'drugs';
 const USAGE_STORE = 'drug_usage';
-const VERSION = 6; 
+const VERSION = 7; // Increment version for new store
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -18,22 +19,17 @@ export const initDB = (): Promise<IDBDatabase> => {
       const db = (event.target as IDBOpenDBRequest).result;
       const transaction = (event.target as IDBOpenDBRequest).transaction!;
 
-      let patientStore;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        patientStore = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      } else {
-        patientStore = transaction.objectStore(STORE_NAME);
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
       }
-
+      
+      const patientStore = transaction.objectStore(STORE_NAME);
       if (!patientStore.indexNames.contains('name')) {
         patientStore.createIndex('name', 'name', { unique: false });
       }
-
-      if (patientStore.indexNames.contains('displayId')) {
-        patientStore.deleteIndex('displayId');
+      if (!patientStore.indexNames.contains('displayId')) {
+        patientStore.createIndex('displayId', 'displayId', { unique: false });
       }
-      patientStore.createIndex('displayId', 'displayId', { unique: false });
-
       if (!patientStore.indexNames.contains('visitDate')) {
         patientStore.createIndex('visitDate', 'visitDate', { unique: false });
       }
@@ -41,6 +37,11 @@ export const initDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
         db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
       }
+      
+      if (!db.objectStoreNames.contains(COMPLAINT_TEMPLATE_STORE)) {
+        db.createObjectStore(COMPLAINT_TEMPLATE_STORE, { keyPath: 'id' });
+      }
+
       if (!db.objectStoreNames.contains(SETTINGS_STORE)) {
         db.createObjectStore(SETTINGS_STORE, { keyPath: 'id' });
       }
@@ -48,12 +49,10 @@ export const initDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(PROFILE_STORE, { keyPath: 'id' });
       }
       
-      let drugStore;
       if (!db.objectStoreNames.contains(DRUG_STORE)) {
-        drugStore = db.createObjectStore(DRUG_STORE, { keyPath: 'id' });
-      } else {
-        drugStore = transaction.objectStore(DRUG_STORE);
+        db.createObjectStore(DRUG_STORE, { keyPath: 'id' });
       }
+      const drugStore = transaction.objectStore(DRUG_STORE);
       if (!drugStore.indexNames.contains('name')) {
         drugStore.createIndex('name', 'name', { unique: false });
       }
@@ -81,7 +80,6 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
   });
 
   if (count === 0) {
-    // Curated scientific list: One common form per generic
     const strategicDrugs = [
       { g: 'Amoxicillin', f: 'Cap' }, { g: 'Metformin', f: 'Tab' }, { g: 'Atorvastatin', f: 'Tab' },
       { g: 'Amlodipine', f: 'Tab' }, { g: 'Losartan', f: 'Tab' }, { g: 'Omeprazole', f: 'Cap' },
@@ -182,11 +180,6 @@ export const deleteDrug = async (id: string): Promise<void> => {
   });
 };
 
-export interface UsageEntry extends DrugUsage {
-  lastDosage?: string;
-  lastInstruction?: string;
-}
-
 export const trackDrugUsage = async (drugName: string, dosage?: string, instruction?: string): Promise<void> => {
   if (!drugName) return;
   const db = await initDB();
@@ -218,15 +211,15 @@ export const trackDrugUsage = async (drugName: string, dosage?: string, instruct
   });
 };
 
-export const getUsageStats = async (): Promise<UsageEntry[]> => {
+export const getUsageStats = async (): Promise<any[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(USAGE_STORE, 'readonly');
     const store = tx.objectStore(USAGE_STORE);
     const request = store.getAll();
     request.onsuccess = () => {
-        const stats = request.result as UsageEntry[];
-        stats.sort((a, b) => b.count - a.count);
+        const stats = request.result;
+        stats.sort((a: any, b: any) => b.count - a.count);
         resolve(stats);
     };
     request.onerror = () => reject(request.error);
@@ -291,16 +284,6 @@ export const getAllRecords = async (): Promise<PatientRecord[]> => {
   });
 };
 
-export const getUniquePatients = async (): Promise<PatientRecord[]> => {
-  const records = await getAllRecords();
-  const seen = new Set();
-  return records.filter(r => {
-    if (seen.has(r.name)) return false;
-    seen.add(r.name);
-    return true;
-  });
-};
-
 export const getRecordsByName = async (name: string): Promise<PatientRecord[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -314,6 +297,16 @@ export const getRecordsByName = async (name: string): Promise<PatientRecord[]> =
       resolve(results);
     };
     request.onerror = () => reject(request.error);
+  });
+};
+
+export const getUniquePatients = async (): Promise<PatientRecord[]> => {
+  const records = await getAllRecords();
+  const seen = new Set();
+  return records.filter(r => {
+    if (seen.has(r.name)) return false;
+    seen.add(r.name);
+    return true;
   });
 };
 
@@ -344,6 +337,40 @@ export const deleteTemplate = async (id: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(TEMPLATE_STORE, 'readwrite');
     const store = tx.objectStore(TEMPLATE_STORE);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+// Complaint Template Functions
+export const saveComplaintTemplate = async (text: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(COMPLAINT_TEMPLATE_STORE, 'readwrite');
+    const store = tx.objectStore(COMPLAINT_TEMPLATE_STORE);
+    const request = store.put({ id: crypto.randomUUID(), text, createdAt: Date.now() });
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const getAllComplaintTemplates = async (): Promise<any[]> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(COMPLAINT_TEMPLATE_STORE, 'readonly');
+    const store = tx.objectStore(COMPLAINT_TEMPLATE_STORE);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const deleteComplaintTemplate = async (id: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(COMPLAINT_TEMPLATE_STORE, 'readwrite');
+    const store = tx.objectStore(COMPLAINT_TEMPLATE_STORE);
     const request = store.delete(id);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
@@ -398,7 +425,7 @@ export const exportDatabase = async (): Promise<string> => {
   const db = await initDB();
   return new Promise(async (resolve, reject) => {
     try {
-      const stores = [STORE_NAME, TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
+      const stores = [STORE_NAME, TEMPLATE_STORE, COMPLAINT_TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
       const exportData: any = {};
 
       for (const storeName of stores) {
@@ -422,7 +449,7 @@ export const exportDatabase = async (): Promise<string> => {
 export const importDatabase = async (jsonString: string): Promise<void> => {
   const db = await initDB();
   const data = JSON.parse(jsonString);
-  const stores = [STORE_NAME, TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
+  const stores = [STORE_NAME, TEMPLATE_STORE, COMPLAINT_TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction(stores, 'readwrite');

@@ -98,6 +98,8 @@ export interface PrescriptionSettings {
   backgroundImage?: string; // Base64
   printBackground: boolean; // Toggle to print the bg image or not
   elements: LayoutElement[]; // The coordinates for everything
+  customDosages?: string[]; // Personal saved dosages like N=20
+  customInstructions?: string[]; // Personal saved instructions like "Before sleep"
 }
 
 export interface DoctorProfile {
