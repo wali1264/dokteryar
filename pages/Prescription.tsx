@@ -1509,27 +1509,27 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                           <div className="relative">
                             <button 
                                 onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)}
-                                className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                                className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
                                 title="قالب‌های شکایات"
                             >
                                 <LayoutTemplate size={20} />
                             </button>
                             
                             {showComplaintTemplateMenu && (
-                                <div className="absolute top-full right-0 mt-2 w-72 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down">
-                                    <div className="p-3 bg-gray-50 border-b border-gray-100 text-[10px] font-black uppercase text-gray-400">قالب‌های ذخیره شده</div>
-                                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-80 bg-white shadow-[0_15px_50px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down">
+                                    <div className="p-3 bg-indigo-50 border-b border-gray-100 text-[10px] font-black uppercase text-indigo-400 text-center">لیست قالب‌های شکایات</div>
+                                    <div className="max-h-64 overflow-y-auto custom-scrollbar bg-white">
                                         {complaintTemplates.length === 0 ? (
-                                            <div className="p-4 text-center text-xs text-gray-400">قالبی یافت نشد</div>
+                                            <div className="p-6 text-center text-xs text-gray-400 font-bold">هنوز قالبی ذخیره نکرده‌اید</div>
                                         ) : (
                                             complaintTemplates.map(t => (
-                                                <div key={t.id} className="flex items-center justify-between p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer" onClick={() => selectComplaintTemplate(t.text)}>
-                                                    <span className="text-xs font-bold text-gray-700 truncate flex-1">{t.text}</span>
+                                                <div key={t.id} className="flex items-center justify-between p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer transition-colors" onClick={() => selectComplaintTemplate(t.text)}>
+                                                    <span className="text-xs font-black text-gray-700 truncate flex-1 leading-relaxed">{t.text}</span>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }}
-                                                        className="p-1 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
+                                                        className="p-2 text-gray-300 hover:text-red-500 transition-all ml-2"
                                                     >
-                                                        <Trash size={14} />
+                                                        <Trash size={16} />
                                                     </button>
                                                 </div>
                                             ))
