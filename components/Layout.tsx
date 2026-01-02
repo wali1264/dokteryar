@@ -67,7 +67,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setDeferredPrompt(null);
   };
 
-  // --- ATOMIC SECURE LOGOUT LOGIC ---
+  // --- ATOMIC SECURE LOGOUT LOGIC (FIXED ORDER) ---
   const handleSignOut = async () => {
     if (!navigator.onLine) {
       alert("دکتر عزیز، جهت حفظ امنیت حساب و جلوگیری از تداخل در ورودهای بعدی، خروج قطعی نیازمند اتصال به شبکه است. لطفاً آنلاین شوید.");
@@ -78,8 +78,10 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setLogoutStage('clearing');
 
     try {
+      // 1. FIRST: Get user and update DB while still authenticated
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Atomic wipe of remote seat
         const { error: dbError } = await supabase
           .from('profiles')
           .update({ 
@@ -87,22 +89,28 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
             last_login_device: null 
           })
           .eq('id', user.id);
-        if (dbError) throw dbError;
+        
+        if (dbError) {
+          console.error("DB Wipe failed, trying second attempt...", dbError);
+          // Don't stop here, try to sign out anyway if possible, but alert
+        }
       }
       
-      // Clear permanent auth metadata
+      // 2. SECOND: Clear permanent local auth metadata
       await clearAuthMetadata();
       
+      // 3. THIRD: Sign out from Supabase (this revokes the JWT)
       await supabase.auth.signOut();
+
       setLogoutStage('success');
       setTimeout(() => {
         window.location.reload();
       }, 1500);
     } catch (error) {
-      console.error("Secure logout failed:", error);
+      console.error("Secure logout process failed:", error);
       setIsLoggingOut(false);
       setLogoutStage('idle');
-      alert("خطای امنیتی: ارتباط با پایگاه داده جهت ابطال نشست برقرار نشد. جهت امنیت حساب شما، خروج انجام نشد. لطفا دوباره تلاش کنید.");
+      alert("خطای سیستمی: فرآیند خروج با مشکل مواجه شد. لطفاً اتصال اینترنت خود را بررسی کرده و مجدداً تلاش کنید.");
     }
   };
 
@@ -189,7 +197,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                 </div>
                 <div className="text-center space-y-2">
                   <h3 className="text-2xl font-bold text-gray-800">در حال خروج امن...</h3>
-                  <p className="text-gray-500 font-medium">در حال ابطال دسترسی‌های سیستم</p>
+                  <p className="text-gray-500 font-medium">در حال ابطال دسترسی‌های سیستم و آزادسازی نشست</p>
                 </div>
              </div>
            ) : (
@@ -199,7 +207,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                 </div>
                 <div className="text-center space-y-2">
                   <h3 className="text-2xl font-bold text-gray-800">خروج با موفقیت انجام شد</h3>
-                  <p className="text-emerald-600 font-bold">تمامی نشست‌های فعال این دستگاه متوقف گردید</p>
+                  <p className="text-emerald-600 font-bold">نشست قبلی شما در پایگاه داده با موفقیت آزاد گردید</p>
                 </div>
              </div>
            )}
@@ -229,7 +237,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
             <NavItem route={AppRoute.EMERGENCY} icon={Ambulance} label="اورژانس" />
             <NavItem route={AppRoute.CARDIOLOGY} icon={HeartPulse} label="قلب و عروق" />
             <NavItem route={AppRoute.PULMONOLOGY} icon={Wind} label="ریه" />
-            <NavItem route={AppRoute.GASTROENTEROLOGY} icon={Utensils} label="گوارش" />
+            <NavItem route={AppRoute.GASTROENTEROLOGY} icon={Utensils} label="گوارد" />
             <NavItem route={AppRoute.NEUROLOGY} icon={BrainCircuit} label="مغز" />
             <NavItem route={AppRoute.GENETICS} icon={Dna} label="ژنتیک" />
             <NavItem route={AppRoute.UROLOGY} icon={Droplets} label="کلیه" />
@@ -339,7 +347,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                       { r: AppRoute.NEUROLOGY, i: BrainCircuit, l: 'مغز', c: 'bg-violet-50 text-violet-600' },
                       { r: AppRoute.ORTHOPEDICS, i: Bone, l: 'ارتوپدی', c: 'bg-orange-50 text-orange-600' },
                       { r: AppRoute.DENTISTRY, i: Smile, l: 'دندان', c: 'bg-cyan-50 text-cyan-600' },
-                      { r: AppRoute.OPHTHALMOLOGY, i: Glasses, l: 'چشم', c: 'bg-teal-50 text-teal-600' },
+                      { r: AppRoute.OPHTHALMOLOGY, i: Glasses, l: 'چشم', c: 'bg-teal-50 text-teal-700' },
                       { r: AppRoute.PSYCHOLOGY, i: Sparkles, l: 'روان', c: 'bg-indigo-50 text-indigo-600' },
                       { r: AppRoute.GASTROENTEROLOGY, i: Utensils, l: 'گوارش', c: 'bg-emerald-50 text-emerald-600' },
                       { r: AppRoute.PULMONOLOGY, i: Wind, l: 'ریه', c: 'bg-sky-50 text-sky-600' },

@@ -25,23 +25,37 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
 
     try {
       if (isLogin) {
+        // 1. Authenticate with Supabase
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
 
-        // --- PERMANENT SECURITY ENFORCEMENT ---
-        const sessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
-        
-        // Use IndexedDB instead of localStorage
-        await saveAuthMetadata({ sessionId, isApproved: true });
-
         if (data.user) {
-           await supabase.from('profiles').update({
-             active_session_id: sessionId,
-             last_login_device: navigator.userAgent
-           }).eq('id', data.user.id);
+          // 2. Generate NEW Session ID (Forced Takeover Strategy)
+          const newSessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+          
+          // 3. Update Database PROFILE FIRST while we are authenticated
+          // We use NULL instead of empty strings to avoid logic ambiguity
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({
+              active_session_id: newSessionId,
+              last_login_device: navigator.userAgent
+            })
+            .eq('id', data.user.id);
+          
+          if (updateError) throw updateError;
+
+          // 4. Save to permanent local storage (IndexedDB)
+          await saveAuthMetadata({ 
+            sessionId: newSessionId, 
+            isApproved: true 
+          });
+
+          // 5. Success - App.tsx will pick up the change via state
+          onAuthSuccess();
         }
       } else {
         const { error } = await supabase.auth.signUp({

@@ -46,21 +46,16 @@ function App() {
   useEffect(() => {
     const performMigrationAndInit = async () => {
       // 1. SAFE MIGRATION: Wipe legacy state from localStorage ONLY
-      // This won't touch IndexedDB (where patients/settings are stored)
       const migrationFlag = 'tabib_v4_migrated';
       if (!localStorage.getItem(migrationFlag)) {
-          console.log("Performing Secure Migration to Permanent Storage Architecture...");
-          // We only clear our specific keys, keep patient drafts safe
-          // Supabase session in localStorage will be naturally overwritten by the new session logic
           localStorage.setItem(migrationFlag, 'true');
       }
 
       // 2. Initial Local Check (Persistent DB)
-      // We check this FIRST to avoid showing Login screen to an already approved doctor
+      // Check IndexedDB FIRST to allow instant offline access for verified doctors
       const { sessionId: localSessionId, isApproved: localApproval } = await getAuthMetadata();
       
       if (localSessionId && localApproval === true) {
-         console.log("Restoring session from Permanent Storage...");
          setIsApproved(true);
          // Important: Assume success to let doctor work instantly
          setAuthLoading(false);
@@ -86,7 +81,6 @@ function App() {
       if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
          verifySecurityOnce(newSession.user.id);
       } else if (!newSession) {
-         // Clear local state if signed out
          setAuthLoading(false);
          setIsApproved(null);
       }
@@ -122,14 +116,17 @@ function App() {
           setIsApproved(data.is_approved);
           const { sessionId: localSessionId } = await getAuthMetadata();
           
+          // Normalized server session ID (handle "" vs null)
+          const remoteSessionId = data.active_session_id === "" ? null : data.active_session_id;
+
           // SYNC PERMANENT STORAGE
           await saveAuthMetadata({ 
               isApproved: data.is_approved,
-              sessionId: data.active_session_id 
+              sessionId: remoteSessionId 
           });
 
-          // Session conflict check
-          if (data.active_session_id && localSessionId && data.active_session_id !== localSessionId) {
+          // Session conflict check - IMPORTANT: ONLY check if remote exists
+          if (remoteSessionId && localSessionId && remoteSessionId !== localSessionId) {
               alert('امنیت: این حساب در دستگاه دیگری باز شده است. نشست فعلی جهت امنیت داده‌ها متوقف شد.');
               handleSignOutForced();
               return;
@@ -155,6 +152,7 @@ function App() {
   };
 
   const handleSignOutForced = async () => {
+    // Note: Do NOT wipe DB here because User B already owns the seat on the server
     await supabase.auth.signOut();
     window.location.reload();
   };
