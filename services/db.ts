@@ -84,6 +84,17 @@ export const initDB = (): Promise<IDBDatabase> => {
 
 // --- BACKUP HELPERS ---
 
+export const isDatabaseEmpty = async (): Promise<boolean> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.count();
+    request.onsuccess = () => resolve(request.result === 0);
+    request.onerror = () => resolve(true);
+  });
+};
+
 export const updateLastBackupTime = () => {
   localStorage.setItem(LAST_BACKUP_KEY, Date.now().toString());
 };
@@ -93,8 +104,18 @@ export const getLastBackupTime = (): number => {
   return ts ? parseInt(ts) : 0;
 };
 
+export const getOnlineBackupMetadata = async (userId: string): Promise<{ updatedAt: string | null }> => {
+  const { data, error } = await supabase
+    .from('backups')
+    .select('updated_at')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !data) return { updatedAt: null };
+  return { updatedAt: data.updated_at };
+};
+
 export const uploadBackupOnline = async (userId: string, dataJson: string): Promise<void> => {
-  // UPSERT logic: replaces if exists for this user_id
   const { error } = await supabase
     .from('backups')
     .upsert({ 
@@ -177,7 +198,7 @@ export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isA
 export const clearAuthMetadata = async (): Promise<void> => {
   setAuthHardLock(true);
   localStorage.removeItem(SESSION_BIRTH_KEY);
-  localStorage.removeItem(LAST_BACKUP_KEY); // Also reset backup tracking on logout
+  localStorage.removeItem(LAST_BACKUP_KEY); 
   
   const db = await initDB();
   return new Promise((resolve, reject) => {

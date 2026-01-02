@@ -26,8 +26,8 @@ import Settings from './pages/Settings';
 import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { supabase } from './services/supabase';
-import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock, getSettings, exportDatabase, uploadBackupOnline, updateLastBackupTime, getLastBackupTime } from './services/db';
-import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Database } from 'lucide-react';
+import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock, getSettings, exportDatabase, uploadBackupOnline, updateLastBackupTime, getLastBackupTime, isDatabaseEmpty, getOnlineBackupMetadata, fetchOnlineBackup, importDatabase } from './services/db';
+import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Database, CloudDownload, RefreshCcw, X, History, Sparkles } from 'lucide-react';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
@@ -39,6 +39,11 @@ function App() {
   const [isApproved, setIsApproved] = useState<boolean | null>(null);
   const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
   const [conflictDetected, setConflictDetected] = useState(false);
+
+  // --- MIGRATION STATES ---
+  const [showRestorePrompt, setShowRestorePrompt] = useState(false);
+  const [onlineBackupDate, setOnlineBackupDate] = useState<string | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   const isVerifyingRef = useRef(false);
   const localSessionIdRef = useRef<string | null>(null);
@@ -67,11 +72,12 @@ function App() {
       
       if (currentSession) {
         const runSilent = (sessionId && localApproval === true);
-        verifySecurityOnce(currentSession.user.id, runSilent);
+        await verifySecurityOnce(currentSession.user.id, runSilent);
         setupRealtimeSecurity(currentSession.user.id);
-        
-        // --- HYBRID SELF-SERVICE BACKUP CHECK ---
         handleAutoBackup(currentSession.user.id);
+        
+        // --- SMART MIGRATION CHECK ---
+        checkDatabaseMigration(currentSession.user.id);
       } else if (!sessionId) {
         setAuthLoading(false);
         setIsApproved(null);
@@ -88,6 +94,7 @@ function App() {
          verifySecurityOnce(newSession.user.id, false);
          setupRealtimeSecurity(newSession.user.id);
          handleAutoBackup(newSession.user.id);
+         checkDatabaseMigration(newSession.user.id);
       } else if (!newSession) {
          setAuthLoading(false);
          setIsApproved(null);
@@ -100,6 +107,38 @@ function App() {
     };
   }, []);
 
+  const checkDatabaseMigration = async (userId: string) => {
+     try {
+        const isEmpty = await isDatabaseEmpty();
+        if (isEmpty && navigator.onLine) {
+           const { updatedAt } = await getOnlineBackupMetadata(userId);
+           if (updatedAt) {
+              setOnlineBackupDate(updatedAt);
+              setShowRestorePrompt(true);
+           }
+        }
+     } catch (e) {
+        console.warn("Migration check skipped.", e);
+     }
+  };
+
+  const handleConfirmRestore = async () => {
+     if (!session?.user?.id) return;
+     setRestoreLoading(true);
+     try {
+        const json = await fetchOnlineBackup(session.user.id);
+        if (json) {
+           await importDatabase(json);
+           setShowRestorePrompt(false);
+           window.location.reload(); // Hard refresh to ensure all stores are initialized with new data
+        }
+     } catch (e) {
+        alert("خطا در بازیابی اطلاعات ابری.");
+     } finally {
+        setRestoreLoading(false);
+     }
+  };
+
   const handleAutoBackup = async (userId: string) => {
     try {
       const settings = await getSettings();
@@ -110,10 +149,8 @@ function App() {
       const now = Date.now();
 
       if (now - lastBackup >= twentyFourHours) {
-        console.log("Self-Service Backup: Triggering 24h cycle...");
         const json = await exportDatabase();
 
-        // 1. Offline Backup (Trigger download)
         const blob = new Blob([json], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -123,16 +160,13 @@ function App() {
         a.click();
         document.body.removeChild(a);
 
-        // 2. Online Backup (Supabase) - Only if Online
         if (navigator.onLine) {
           try {
             await uploadBackupOnline(userId, json);
-            console.log("Self-Service Backup: Online sync completed.");
           } catch (e) {
-            console.warn("Self-Service Backup: Online sync failed (Net error), but offline saved.");
+            console.warn("Auto-Backup Online Failed.");
           }
         }
-
         updateLastBackupTime();
       }
     } catch (error) {
@@ -355,6 +389,59 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* MIGRATION PROMPT MODAL */}
+      {showRestorePrompt && (
+        <div className="fixed inset-0 z-[2000] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans text-right" dir="rtl">
+           <div className="bg-white max-w-lg w-full rounded-[2.5rem] shadow-2xl p-10 border border-blue-100 animate-slide-up relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-2 bg-blue-600"></div>
+              <div className="flex justify-between items-start mb-8">
+                 <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-3xl flex items-center justify-center shadow-inner">
+                    <CloudDownload size={48} className="animate-bounce" />
+                 </div>
+                 <button onClick={() => setShowRestorePrompt(false)} className="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                    <X size={24} />
+                 </button>
+              </div>
+              
+              <h3 className="text-2xl font-black text-gray-800 mb-4 flex items-center gap-2">
+                 <Sparkles className="text-blue-500" size={24} />
+                 انتقال سوابق به دستگاه جدید
+              </h3>
+              
+              <p className="text-gray-600 leading-relaxed mb-8 font-medium">
+                 دکتر عزیز، خوش آمدید. سیستم شناسایی کرد که حافظه این دستگاه خالی است، اما شما یک <span className="text-blue-600 font-black">نسخه پشتیبان آنلاین</span> در ابر دارید.
+              </p>
+              
+              <div className="bg-gray-50 rounded-2xl p-4 mb-10 flex items-center gap-4 border border-gray-100">
+                 <div className="bg-white p-2 rounded-xl shadow-sm text-gray-400"><History size={20} /></div>
+                 <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Last Online Backup</p>
+                    <p className="text-sm font-black text-gray-700">
+                       {onlineBackupDate ? new Date(onlineBackupDate).toLocaleString('fa-IR') : 'نامشخص'}
+                    </p>
+                 </div>
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                 <button 
+                    onClick={handleConfirmRestore}
+                    disabled={restoreLoading}
+                    className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 text-lg"
+                 >
+                    {restoreLoading ? <Loader2 className="animate-spin" /> : <RefreshCcw size={20} />}
+                    بازیابی و همگام‌سازی تمام داده‌ها
+                 </button>
+                 <button 
+                    onClick={() => setShowRestorePrompt(false)}
+                    className="w-full bg-white text-gray-400 font-bold py-3 rounded-xl hover:text-gray-600 transition-all text-sm"
+                 >
+                    فعلاً نه، شروع با میز کار خالی
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
 
       <Layout currentRoute={currentRoute} onNavigate={handleNavigate}>
         {renderContent()}
