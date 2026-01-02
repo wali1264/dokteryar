@@ -92,7 +92,7 @@ export const isAuthHardLocked = (): boolean => {
   return localStorage.getItem(SYNC_LOCK_KEY) === 'true';
 };
 
-// Birth TS: Helps prevent false conflict messages during first 5 seconds of login
+// Birth TS: Helps prevent false conflict messages during first 8 seconds of login
 export const setSessionBirth = () => {
   localStorage.setItem(SESSION_BIRTH_KEY, Date.now().toString());
 };
@@ -147,10 +147,12 @@ export const clearAuthMetadata = async (): Promise<void> => {
   localStorage.removeItem(SESSION_BIRTH_KEY);
   
   const db = await initDB();
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const tx = db.transaction(AUTH_STORE, 'readwrite');
     const store = tx.objectStore(AUTH_STORE);
-    store.clear();
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
     tx.oncomplete = () => resolve();
   });
 };

@@ -4,7 +4,7 @@ import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, He
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
 import { supabase } from '../services/supabase';
-import { clearAuthMetadata } from '../services/db';
+import { clearAuthMetadata, setAuthHardLock } from '../services/db';
 
 interface LayoutProps {
   currentRoute: AppRoute;
@@ -41,7 +41,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // PWA Install Prompt Capture
     const handleBeforeInstallPrompt = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -67,50 +66,42 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
     setDeferredPrompt(null);
   };
 
-  // --- ATOMIC SECURE LOGOUT LOGIC (FIXED ORDER) ---
+  // --- ATOMIC SECURE LOGOUT LOGIC (Sentinel Purge) ---
   const handleSignOut = async () => {
-    if (!navigator.onLine) {
-      alert("دکتر عزیز، جهت حفظ امنیت حساب و جلوگیری از تداخل در ورودهای بعدی، خروج قطعی نیازمند اتصال به شبکه است. لطفاً آنلاین شوید.");
-      return;
-    }
-
     setIsLoggingOut(true);
     setLogoutStage('clearing');
 
     try {
-      // 1. FIRST: Get user and update DB while still authenticated
+      // 1. HARD LOCK (Instant sync blockade)
+      setAuthHardLock(true);
+
+      // 2. Wipe DB while potentially online
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Atomic wipe of remote seat
-        const { error: dbError } = await supabase
+        await supabase
           .from('profiles')
           .update({ 
             active_session_id: null,
             last_login_device: null 
           })
           .eq('id', user.id);
-        
-        if (dbError) {
-          console.error("DB Wipe failed, trying second attempt...", dbError);
-          // Don't stop here, try to sign out anyway if possible, but alert
-        }
       }
       
-      // 2. SECOND: Clear permanent local auth metadata
+      // 3. Purge Local Disk (IndexedDB)
       await clearAuthMetadata();
       
-      // 3. THIRD: Sign out from Supabase (this revokes the JWT)
+      // 4. Revoke Session
       await supabase.auth.signOut();
 
       setLogoutStage('success');
       setTimeout(() => {
-        window.location.reload();
-      }, 1500);
+        window.location.href = '/';
+      }, 1000);
     } catch (error) {
-      console.error("Secure logout process failed:", error);
-      setIsLoggingOut(false);
-      setLogoutStage('idle');
-      alert("خطای سیستمی: فرآیند خروج با مشکل مواجه شد. لطفاً اتصال اینترنت خود را بررسی کرده و مجدداً تلاش کنید.");
+      console.error("Purge failed:", error);
+      // Even if error, force reload after lock
+      setAuthHardLock(true);
+      window.location.href = '/';
     }
   };
 
@@ -186,7 +177,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {isLoggingOut && (
-        <div className="fixed inset-0 z-[1000] bg-white flex flex-col items-center justify-center animate-fade-in">
+        <div className="fixed inset-0 z-[1001] bg-white flex flex-col items-center justify-center animate-fade-in">
            {logoutStage === 'clearing' ? (
              <div className="flex flex-col items-center gap-6 animate-slide-up">
                 <div className="relative">
@@ -196,18 +187,18 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                   </div>
                 </div>
                 <div className="text-center space-y-2">
-                  <h3 className="text-2xl font-bold text-gray-800">در حال خروج امن...</h3>
-                  <p className="text-gray-500 font-medium">در حال ابطال دسترسی‌های سیستم و آزادسازی نشست</p>
+                  <h3 className="text-2xl font-bold text-gray-800">ابطال دسترسی‌ها...</h3>
+                  <p className="text-gray-500 font-medium">پروتکل Sentinel در حال پاکسازی نهایی</p>
                 </div>
              </div>
            ) : (
              <div className="flex flex-col items-center gap-6 animate-bounce-in">
-                <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-100">
+                <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shadow-lg">
                   <CheckCircle2 size={56} />
                 </div>
                 <div className="text-center space-y-2">
-                  <h3 className="text-2xl font-bold text-gray-800">خروج با موفقیت انجام شد</h3>
-                  <p className="text-emerald-600 font-bold">نشست قبلی شما در پایگاه داده با موفقیت آزاد گردید</p>
+                  <h3 className="text-2xl font-bold text-gray-800">خروج با موفقیت</h3>
+                  <p className="text-emerald-600 font-bold">نشست شما با موفقیت از سیستم حذف گردید</p>
                 </div>
              </div>
            )}
@@ -225,7 +216,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         </div>
         <div className={`px-4 py-2 text-xs font-bold text-center flex items-center justify-center gap-2 transition-colors ${isOnline ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
            {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-           {isOnline ? 'شبکه متصل است (AI فعال)' : 'حالت آفلاین (دستی)'}
+           {isOnline ? 'شبکه متصل است (Sentinel فعال)' : 'حالت آفلاین (محلی)'}
         </div>
         <nav className="p-4 space-y-2 mt-2 overflow-y-auto flex-1 custom-scrollbar">
           <NavItem route={AppRoute.PRESCRIPTION} icon={FileSignature} label="میز کار دکتر" />
@@ -258,13 +249,14 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           <div className="flex items-center gap-3">
             <img src="https://picsum.photos/100/100" className="w-12 h-12 rounded-full border-2 border-blue-200" alt="Dr Profile" />
             <div>
-              <p className="font-bold text-gray-800">دکتر متخصص</p>
-              <p className="text-xs text-blue-600">مدیر سیستم</p>
+              <p className="font-bold text-gray-800 text-sm">دکتر متخصص</p>
+              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Active Member</p>
             </div>
           </div>
           <button 
             onClick={handleSignOut} 
-            className={`p-2 rounded-full transition-all shadow-sm ${!isOnline ? 'bg-gray-100 text-gray-300 cursor-not-allowed' : 'bg-white text-red-500 hover:bg-red-600'}`}
+            className="p-2.5 bg-white text-red-500 hover:bg-red-600 hover:text-white rounded-2xl transition-all shadow-sm active:scale-95"
+            title="خروج امن"
           >
             <LogOut size={20} />
           </button>
@@ -286,12 +278,9 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                    <Download size={18} />
                 </button>
              )}
-             <button onClick={handleSignOut} className={`p-2 rounded-full transition-colors ${!isOnline ? 'bg-gray-50 text-gray-300' : 'bg-red-50 text-red-500 hover:bg-red-100'}`} title="خروج امن">
+             <button onClick={handleSignOut} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-100 active:scale-90 transition-all" title="خروج امن">
                 <LogOut size={18} />
              </button>
-             <div className="w-8 h-8 rounded-full bg-gray-200 overflow-hidden border border-gray-300">
-                <img src="https://picsum.photos/100/100" className="w-full h-full object-cover" alt="Profile" />
-             </div>
           </div>
         </header>
         
@@ -313,31 +302,24 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
            <div className="lg:hidden fixed inset-0 z-[60] flex flex-col justify-end">
               <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300" onClick={() => setIsMoreMenuOpen(false)}></div>
               <div className="bg-white rounded-t-[2.5rem] p-6 shadow-2xl relative z-10 max-h-[85vh] overflow-y-auto animate-slide-up transition-transform duration-200">
-                 
-                 {/* ENHANCED INTERACTIVE HEADER AREA */}
                  <div className="sticky top-0 bg-white pt-2 pb-4 mb-2 z-20 flex flex-col items-center">
-                    {/* Clickable Handle: Now acts as a close button too */}
                     <button 
                        onClick={() => setIsMoreMenuOpen(false)}
                        className="w-12 h-1.5 bg-gray-200 rounded-full mb-6 hover:bg-gray-300 active:scale-90 transition-all"
-                       aria-label="بستن منو"
                     ></button>
-                    
                     <div className="w-full flex justify-between items-center px-2">
                        <h3 className="text-xl font-black text-gray-800 flex items-center gap-2">
                           <Grid className="text-blue-600" />
                           دپارتمان‌های تخصصی
                        </h3>
-                       {/* Explicit Close Button for better UX */}
                        <button 
                           onClick={() => setIsMoreMenuOpen(false)}
-                          className="p-2 bg-gray-100 text-gray-500 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors"
+                          className="p-2 bg-gray-100 text-gray-500 rounded-full"
                        >
                           <X size={20} />
                        </button>
                     </div>
                  </div>
-                 
                  <div className="grid grid-cols-3 gap-3 mb-8">
                     {[
                       { r: AppRoute.EMERGENCY, i: Ambulance, l: 'اورژانس', c: 'bg-red-50 text-red-600' },
@@ -368,7 +350,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                        </button>
                     ))}
                  </div>
-
                  <div className="border-t border-gray-100 pt-4 mb-4">
                     <button 
                       onClick={() => { onNavigate(AppRoute.SETTINGS); setIsMoreMenuOpen(false); }}
@@ -383,7 +364,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
         )}
       </main>
 
-      {/* ADMIN MODALS (Unchanged Logic) */}
+      {/* ADMIN MODALS */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminLogin(false)}>
            <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
@@ -418,17 +399,6 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
                     <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">کلیدهای فعال</p><p className="text-3xl font-bold text-emerald-400">{activeKeys} <span className="text-sm text-gray-500 font-normal">/ {keyStats.length}</span></p></div>
                     <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">پرکارترین کلید</p><p className="text-lg font-bold text-blue-400 truncate">{mostUsed ? mostUsed.maskedKey : '---'}</p><p className="text-xs text-gray-500">{mostUsed ? `${mostUsed.usageCount} request` : ''}</p></div>
                     <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700"><p className="text-gray-400 text-xs mb-1">کم‌کارترین کلید</p><p className="text-lg font-bold text-orange-400 truncate">{leastUsed ? leastUsed.maskedKey : '---'}</p><p className="text-xs text-gray-500">{leastUsed ? `${leastUsed.usageCount} request` : ''}</p></div>
-                 </div>
-                 <div className="bg-gray-800 p-6 rounded-2xl border border-gray-700 mb-8">
-                    <h4 className="text-white font-bold mb-4 flex items-center gap-2"><Activity size={16} className="text-emerald-500"/> توزیع بار (Load Balancing)</h4>
-                    <div className="flex h-4 rounded-full overflow-hidden bg-gray-900">
-                       {keyStats.map((k, i) => {
-                          const percent = totalRequests > 0 ? (k.usageCount / totalRequests) * 100 : 0;
-                          if (percent === 0) return null;
-                          const colors = ['bg-blue-500', 'bg-purple-500', 'bg-emerald-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'];
-                          return <div key={k.key} style={{ width: `${percent}%` }} className={`${colors[i % colors.length]} hover:opacity-80 transition-opacity`} title={`${k.maskedKey}: ${k.usageCount}`}></div>;
-                       })}
-                    </div>
                  </div>
                  <div className="bg-gray-800 rounded-2xl border border-gray-700 overflow-hidden">
                     <table className="w-full text-right text-gray-300">
