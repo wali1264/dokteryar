@@ -27,7 +27,7 @@ import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { keyManager } from './services/geminiService';
 import { supabase } from './services/supabase';
-import { getAuthMetadata, saveAuthMetadata } from './services/db';
+import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata } from './services/db';
 import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 function App() {
@@ -128,7 +128,7 @@ function App() {
           // Session conflict check - IMPORTANT: ONLY check if remote exists
           if (remoteSessionId && localSessionId && remoteSessionId !== localSessionId) {
               alert('امنیت: این حساب در دستگاه دیگری باز شده است. نشست فعلی جهت امنیت داده‌ها متوقف شد.');
-              handleSignOutForced();
+              await handleSignOutForced();
               return;
           }
           
@@ -152,8 +152,18 @@ function App() {
   };
 
   const handleSignOutForced = async () => {
-    // Note: Do NOT wipe DB here because User B already owns the seat on the server
+    // 1. Immediately cut state access
+    setIsApproved(null);
+    setSession(null);
+
+    // 2. CRITICAL FIX: Clear IndexedDB metadata
+    // Without this, the offline-first logic in useEffect would automatically re-log in the user after reload
+    await clearAuthMetadata();
+
+    // 3. Sign out from Supabase (Remote)
     await supabase.auth.signOut();
+
+    // 4. Reload to flush all memory states
     window.location.reload();
   };
 
