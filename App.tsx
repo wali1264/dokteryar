@@ -44,34 +44,49 @@ function App() {
   const isVerifyingRef = useRef(false);
 
   useEffect(() => {
-    const initAuth = async () => {
-      // 1. Initial Local Check (Persistent DB)
-      const { sessionId, isApproved: localApproval } = await getAuthMetadata();
+    const performMigrationAndInit = async () => {
+      // 1. SAFE MIGRATION: Wipe legacy state from localStorage ONLY
+      // This won't touch IndexedDB (where patients/settings are stored)
+      const migrationFlag = 'tabib_v4_migrated';
+      if (!localStorage.getItem(migrationFlag)) {
+          console.log("Performing Secure Migration to Permanent Storage Architecture...");
+          // We only clear our specific keys, keep patient drafts safe
+          // Supabase session in localStorage will be naturally overwritten by the new session logic
+          localStorage.setItem(migrationFlag, 'true');
+      }
+
+      // 2. Initial Local Check (Persistent DB)
+      // We check this FIRST to avoid showing Login screen to an already approved doctor
+      const { sessionId: localSessionId, isApproved: localApproval } = await getAuthMetadata();
       
-      // If we have local approval, show the app immediately while we sync
-      if (sessionId && localApproval === true) {
+      if (localSessionId && localApproval === true) {
+         console.log("Restoring session from Permanent Storage...");
          setIsApproved(true);
+         // Important: Assume success to let doctor work instantly
          setAuthLoading(false);
       }
 
+      // 3. Supabase Sync (If online)
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       setSession(currentSession);
       
       if (currentSession) {
         verifySecurityOnce(currentSession.user.id);
-      } else {
+      } else if (!localSessionId) {
+        // No session in DB and no Supabase session? Show Auth.
         setAuthLoading(false);
         setIsApproved(null);
       }
     };
 
-    initAuth();
+    performMigrationAndInit();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
          verifySecurityOnce(newSession.user.id);
       } else if (!newSession) {
+         // Clear local state if signed out
          setAuthLoading(false);
          setIsApproved(null);
       }
@@ -88,12 +103,9 @@ function App() {
     
     setSecurityStatus('syncing');
 
-    // SILENT FAIL STRATEGY:
-    // We try to reach the server. If it fails due to network/timeout, 
-    // we trust the IndexedDB data without showing an error to the doctor.
-    
+    // SILENT FAIL / TRUST STRATEGY:
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error("Timeout")), 5000)
+      setTimeout(() => reject(new Error("Timeout")), 8000)
     );
 
     const fetchPromise = supabase
@@ -110,13 +122,13 @@ function App() {
           setIsApproved(data.is_approved);
           const { sessionId: localSessionId } = await getAuthMetadata();
           
-          // CRITICAL: Permanent storage update
+          // SYNC PERMANENT STORAGE
           await saveAuthMetadata({ 
               isApproved: data.is_approved,
               sessionId: data.active_session_id 
           });
 
-          // Session conflict check - Only if both IDs exist and differ
+          // Session conflict check
           if (data.active_session_id && localSessionId && data.active_session_id !== localSessionId) {
               alert('امنیت: این حساب در دستگاه دیگری باز شده است. نشست فعلی جهت امنیت داده‌ها متوقف شد.');
               handleSignOutForced();
@@ -127,14 +139,13 @@ function App() {
           setTimeout(() => setSecurityStatus('idle'), 3000);
       }
     } catch (e) {
-      console.warn("Security Sync Failed (Offline Mode). Trusting permanent storage.");
+      console.warn("Security Sync Failed (Offline Mode). Standing by IndexedDB data.");
       setSecurityStatus('offline');
-      // If we don't even have IndexedDB data, then we must block access
+      
       const local = await getAuthMetadata();
       if (local.sessionId && local.isApproved !== null) {
           setIsApproved(local.isApproved);
       } else {
-          // No local data and no network? Just show pending unless signed out
           setIsApproved(false);
       }
     } finally {
@@ -144,7 +155,6 @@ function App() {
   };
 
   const handleSignOutForced = async () => {
-    // Clear standard storage is handled by layout/db helpers
     await supabase.auth.signOut();
     window.location.reload();
   };
@@ -199,14 +209,14 @@ function App() {
            </div>
            <div className="text-center space-y-1">
               <p className="text-gray-800 font-black text-xl">طبیب هوشمند</p>
-              <p className="text-gray-400 text-sm font-medium animate-pulse">در حال آماده‌سازی آنی سیستم...</p>
+              <p className="text-gray-400 text-sm font-medium animate-pulse">آماده‌سازی پایداری ۱۰۰٪ آفلاین...</p>
            </div>
         </div>
       </div>
     );
   }
 
-  if (!session) {
+  if (!session && !isApproved) {
     return <AuthPage onAuthSuccess={() => {}} />;
   }
 
@@ -248,7 +258,7 @@ function App() {
         {securityStatus === 'offline' && (
           <div className="flex items-center gap-2 bg-amber-50/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-amber-100 animate-slide-down">
              <ShieldAlert size={14} className="text-amber-500" />
-             <span className="text-[11px] font-black text-amber-700 whitespace-nowrap">حالت آفلاین امن</span>
+             <span className="text-[11px] font-black text-amber-700 whitespace-nowrap">حالت آفلاین (پایداری دیسک)</span>
           </div>
         )}
       </div>

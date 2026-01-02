@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'tabib-ai-cache-v3';
+const CACHE_NAME = 'tabib-ai-cache-v4';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -8,7 +8,7 @@ const urlsToCache = [
   '/icon-512.png'
 ];
 
-// Install SW
+// Install SW - Pre-cache critical Shell
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -18,13 +18,14 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate SW and clean old caches
+// Activate SW - Clean OLD caches and take control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -34,61 +35,62 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch Strategy
+// Fetch Strategy: AGGRESSIVE CACHE-FIRST for Local Assets
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  // Skip cross-origin (like Supabase or Google AI) to avoid CORS issues in cache
-  if (url.origin !== self.location.origin) {
-    // External CDNs that we want to cache (like Tailwind or Fonts)
-    if (url.hostname.includes('tailwindcss.com') || url.hostname.includes('gstatic.com') || url.hostname.includes('googleapis.com')) {
-      // Use standard caching for these
-    } else {
-      return;
-    }
-  }
-
-  // Strategy for HTML (Navigation) -> Network First
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((networkResponse) => {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, networkResponse.clone());
+  // Logic for Local Assets (Same Origin)
+  if (url.origin === self.location.origin) {
+    // Strategy for HTML (Navigation) -> Cache First then Network
+    if (event.request.mode === 'navigate') {
+      event.respondWith(
+        caches.match(event.request).then((cachedResponse) => {
+          const fetchPromise = fetch(event.request).then((networkResponse) => {
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
             return networkResponse;
           });
-        })
-        .catch(() => {
-          // If offline, try to return index.html for ANY navigation request (SPA support)
-          return caches.match('/') || caches.match('/index.html');
-        })
-    );
-    return;
-  }
+          return cachedResponse || fetchPromise;
+        }).catch(() => caches.match('/') || caches.match('/index.html'))
+      );
+      return;
+    }
 
-  // Strategy for Assets (JS, CSS, Images) -> Cache First, then Network & Update Cache
-  // This handles the "index-BwYzBOJd.js" issue
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((networkResponse) => {
-        // Only cache valid responses
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
-        }
-
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
+    // Strategy for Assets (JS, CSS, Images) -> STALE-WHILE-REVALIDATE
+    // Load from cache INSTANTLY, update in background.
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.match(event.request).then((response) => {
+          const fetchPromise = fetch(event.request).then((networkResponse) => {
+            if (networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          });
+          return response || fetchPromise;
         });
-
-        return networkResponse;
-      }).catch(() => {
-        // Fail silently for non-critical assets
-      });
-    })
-  );
+      })
+    );
+  } else {
+    // EXTERNAL RESOURCES (Google Fonts, Tailwind CDN, etc.)
+    // Only cache known reliable CDNs to avoid CORS errors
+    if (
+      url.hostname.includes('tailwindcss.com') || 
+      url.hostname.includes('gstatic.com') || 
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('aistudiocdn.com')
+    ) {
+      event.respondWith(
+        caches.match(event.request).then((cachedResponse) => {
+          return cachedResponse || fetch(event.request).then((networkResponse) => {
+            return caches.open(CACHE_NAME).then((cache) => {
+              if (networkResponse.status === 200) {
+                cache.put(event.request, networkResponse.clone());
+              }
+              return networkResponse;
+            });
+          });
+        })
+      );
+    }
+  }
 });
