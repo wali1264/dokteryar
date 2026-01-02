@@ -4,6 +4,7 @@ import { Activity, Beaker, Stethoscope, Menu, X, User, ScanEye, Eye, Archive, He
 import { AppRoute } from '../types';
 import { keyManager, KeyStats } from '../services/geminiService';
 import { supabase } from '../services/supabase';
+import { clearAuthMetadata } from '../services/db';
 
 interface LayoutProps {
   currentRoute: AppRoute;
@@ -88,12 +89,15 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
           .eq('id', user.id);
         if (dbError) throw dbError;
       }
-      localStorage.removeItem('tabib_session_id');
+      
+      // Clear permanent auth metadata
+      await clearAuthMetadata();
+      
       await supabase.auth.signOut();
       setLogoutStage('success');
       setTimeout(() => {
         window.location.reload();
-      }, 2000);
+      }, 1500);
     } catch (error) {
       console.error("Secure logout failed:", error);
       setIsLoggingOut(false);
@@ -374,7 +378,7 @@ const Layout: React.FC<LayoutProps> = ({ currentRoute, onNavigate, children }) =
       {/* ADMIN MODALS (Unchanged Logic) */}
       {showAdminLogin && (
         <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowAdminLogin(false)}>
-           <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
+           <div className="bg-gray-900 border border-gray-700 text-white rounded-2xl p-8 w-full max-sm shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
               <div className="flex justify-center mb-6 text-emerald-500"><Shield size={48} /></div>
               <h3 className="text-xl font-bold text-center mb-2">ورود به اتاق فرمان</h3>
               <p className="text-gray-400 text-sm text-center mb-6">لطفا رمز عبور مدیریتی را وارد کنید</p>

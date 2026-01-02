@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
+import { saveAuthMetadata } from '../services/db';
 import { Activity, Lock, Mail, User, ArrowLeft, Loader2, Stethoscope, ShieldCheck, CheckCircle } from 'lucide-react';
 
 interface AuthPageProps {
@@ -30,28 +31,25 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
         });
         if (error) throw error;
 
-        // --- SECURITY ENFORCEMENT ---
-        // 1. Generate a unique session ID for this specific device/login
+        // --- PERMANENT SECURITY ENFORCEMENT ---
         const sessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
         
-        // 2. Store it locally
-        localStorage.setItem('tabib_session_id', sessionId);
+        // Use IndexedDB instead of localStorage
+        await saveAuthMetadata({ sessionId, isApproved: true });
 
-        // 3. Update the database immediately to invalidate other sessions
         if (data.user) {
            await supabase.from('profiles').update({
              active_session_id: sessionId,
              last_login_device: navigator.userAgent
            }).eq('id', data.user.id);
         }
-        // App.tsx listener will handle the redirect
       } else {
         const { error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
-              full_name: fullName, // Critical for the trigger function
+              full_name: fullName,
             },
           },
         });

@@ -9,7 +9,8 @@ const SETTINGS_STORE = 'settings';
 const PROFILE_STORE = 'doctor_profile';
 const DRUG_STORE = 'drugs';
 const USAGE_STORE = 'drug_usage';
-const VERSION = 7; // Increment version for new store
+const AUTH_STORE = 'auth_metadata'; // New permanent store for auth
+const VERSION = 8; // Incremented version for auth store
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -60,6 +61,10 @@ export const initDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(USAGE_STORE)) {
         db.createObjectStore(USAGE_STORE, { keyPath: 'drugName' });
       }
+
+      if (!db.objectStoreNames.contains(AUTH_STORE)) {
+        db.createObjectStore(AUTH_STORE, { keyPath: 'key' });
+      }
     };
 
     request.onsuccess = async () => {
@@ -68,6 +73,47 @@ export const initDB = (): Promise<IDBDatabase> => {
       resolve(db);
     };
     request.onerror = () => reject(request.error);
+  });
+};
+
+// --- AUTH PERSISTENCE HELPERS ---
+export const saveAuthMetadata = async (metadata: { sessionId?: string, isApproved?: boolean }): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(AUTH_STORE, 'readwrite');
+    const store = tx.objectStore(AUTH_STORE);
+    if (metadata.sessionId !== undefined) store.put({ key: 'sessionId', value: metadata.sessionId });
+    if (metadata.isApproved !== undefined) store.put({ key: 'isApproved', value: metadata.isApproved });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isApproved: boolean | null }> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(AUTH_STORE, 'readonly');
+    const store = tx.objectStore(AUTH_STORE);
+    const req1 = store.get('sessionId');
+    const req2 = store.get('isApproved');
+    
+    let sessionId: string | null = null;
+    let isApproved: boolean | null = null;
+
+    req1.onsuccess = () => { sessionId = req1.result?.value || null; };
+    req2.onsuccess = () => { isApproved = req2.result !== undefined ? req2.result.value : null; };
+
+    tx.oncomplete = () => resolve({ sessionId, isApproved });
+  });
+};
+
+export const clearAuthMetadata = async (): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(AUTH_STORE, 'readwrite');
+    const store = tx.objectStore(AUTH_STORE);
+    store.clear();
+    tx.oncomplete = () => resolve();
   });
 };
 
