@@ -27,7 +27,7 @@ import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { supabase } from './services/supabase';
 import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock } from './services/db';
-import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Monitor } from 'lucide-react';
+import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone } from 'lucide-react';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
@@ -52,13 +52,17 @@ function App() {
         return;
       }
 
-      // 2. Load Local Identity
+      // 2. Load Local Identity FIRST (For Offline Speed)
       const { sessionId, isApproved: localApproval } = await getAuthMetadata();
       localSessionIdRef.current = sessionId;
       
       if (sessionId && localApproval === true) {
          setIsApproved(true);
-         // Don't set loading false yet, wait for Supabase session
+         // If offline, we can stop loading here and show the app
+         if (!navigator.onLine) {
+            setAuthLoading(false);
+            setSecurityStatus('idle'); // Keep it silent in offline
+         }
       }
 
       // 3. Supabase Initial Session
@@ -66,13 +70,15 @@ function App() {
       setSession(currentSession);
       
       if (currentSession) {
-        await verifySecurityOnce(currentSession.user.id);
+        // Run verification in background if already have local approval
+        const runSilent = (sessionId && localApproval === true);
+        verifySecurityOnce(currentSession.user.id, runSilent);
         setupRealtimeSecurity(currentSession.user.id);
       } else if (!sessionId) {
         setAuthLoading(false);
         setIsApproved(null);
       } else {
-        // We have local session but no supabase session (Offline probably)
+        // Fallback for cases with local session but no supabase session
         setAuthLoading(false);
       }
     };
@@ -83,7 +89,7 @@ function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
-         verifySecurityOnce(newSession.user.id);
+         verifySecurityOnce(newSession.user.id, false);
          setupRealtimeSecurity(newSession.user.id);
       } else if (!newSession) {
          setAuthLoading(false);
@@ -113,11 +119,9 @@ function App() {
           const remoteId = payload.new.active_session_id;
           const localId = localSessionIdRef.current;
           
-          // CRITICAL: Trigger only if IDs mismatch AND session is not in birth grace period
           if (remoteId && localId && remoteId !== localId) {
              const age = getSessionAge();
-             if (age > 8000) { // 8s grace period for sync
-                console.warn("Sentinel: Active takeover detected!");
+             if (age > 8000) { 
                 setConflictDetected(true);
              }
           }
@@ -130,13 +134,23 @@ function App() {
     };
   };
 
-  const verifySecurityOnce = async (userId: string) => {
+  const verifySecurityOnce = async (userId: string, silent: boolean = false) => {
     if (isVerifyingRef.current) return;
+    
+    // Only show "syncing" UI if NOT silent and online
+    if (!silent && navigator.onLine) {
+       setSecurityStatus('syncing');
+    }
+
     isVerifyingRef.current = true;
-    setSecurityStatus('syncing');
 
     try {
-      const { data, error } = await supabase
+      // If offline, don't even try the network to avoid hung states
+      if (!navigator.onLine) {
+          throw new Error("Offline");
+      }
+
+      const { data } = await supabase
         .from('profiles')
         .select('is_approved, active_session_id')
         .eq('id', userId)
@@ -147,25 +161,37 @@ function App() {
           const remoteId = data.active_session_id || null;
           const localId = localSessionIdRef.current;
 
-          // SYNC PERMANENT STORAGE
           await saveAuthMetadata({ 
               isApproved: data.is_approved,
               sessionId: remoteId 
           });
           localSessionIdRef.current = remoteId;
 
-          // Conflict Check (Grace period aware)
           const age = getSessionAge();
           if (remoteId && localId && remoteId !== localId && age > 8000) {
               setConflictDetected(true);
           }
           
-          setSecurityStatus('verified');
-          setTimeout(() => setSecurityStatus('idle'), 3000);
+          // Show "Verified" only if we were showing "Syncing"
+          if (securityStatus === 'syncing' || !silent) {
+            setSecurityStatus('verified');
+            setTimeout(() => setSecurityStatus('idle'), 3000);
+          } else {
+            setSecurityStatus('idle');
+          }
       }
     } catch (e) {
-      console.warn("Security Sync Offline.");
-      setSecurityStatus('offline');
+      if (navigator.onLine) {
+        console.warn("Security Sync Failed (Network Error).");
+      }
+      
+      // If was syncing, show offline briefly then hide
+      if (securityStatus === 'syncing') {
+         setSecurityStatus('offline');
+         setTimeout(() => setSecurityStatus('idle'), 3000);
+      } else {
+         setSecurityStatus('idle');
+      }
     } finally {
       setAuthLoading(false);
       isVerifyingRef.current = false;
@@ -177,19 +203,13 @@ function App() {
     setConflictDetected(false);
     setIsApproved(null);
     setSession(null);
-
-    // 1. Synchronous hard-lock (Prevents G4 auto-login loop)
     setAuthHardLock(true);
-
-    // 2. Atomic Purge
     try {
        await clearAuthMetadata();
        await supabase.auth.signOut();
     } catch (e) {
        console.error("Signout error", e);
     }
-
-    // 3. Final memory flush
     window.location.href = '/';
   };
 
@@ -241,7 +261,7 @@ function App() {
                  <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
               </div>
            </div>
-           <p className="text-gray-400 text-sm font-black animate-pulse">در حال برقراری اتصال امن...</p>
+           <p className="text-gray-400 text-sm font-black animate-pulse">در حال آماده‌سازی میز کار...</p>
         </div>
       </div>
     );
@@ -251,7 +271,6 @@ function App() {
     return <AuthPage onAuthSuccess={() => {}} />;
   }
 
-  // SECURITY BLOCKADE: Non-bypassable UI for device conflict
   if (conflictDetected) {
     return (
       <div className="fixed inset-0 z-[1000] bg-gray-900/95 backdrop-blur-xl flex items-center justify-center p-4 font-sans text-right" dir="rtl">
@@ -274,7 +293,6 @@ function App() {
                <LogOut size={24} className="group-hover:translate-x-1 transition-transform" />
                خروج و تایید امنیت
             </button>
-            <p className="mt-6 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Protocol Sentinel v2.0 Activated</p>
          </div>
       </div>
     );
@@ -301,19 +319,19 @@ function App() {
         {securityStatus === 'syncing' && (
           <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-blue-100 animate-slide-down">
              <Loader2 size={14} className="text-blue-500 animate-spin" />
-             <span className="text-[11px] font-black text-blue-700">همگام‌سازی امنیتی...</span>
+             <span className="text-[11px] font-black text-blue-700">به‌روزرسانی امنیت...</span>
           </div>
         )}
         {securityStatus === 'verified' && (
           <div className="flex items-center gap-2 bg-emerald-50/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-emerald-100 animate-slide-down">
              <ShieldCheck size={14} className="text-emerald-500" />
-             <span className="text-[11px] font-black text-emerald-700">پروتکل فعال شد</span>
+             <span className="text-[11px] font-black text-emerald-700">امنیت تایید شد</span>
           </div>
         )}
         {securityStatus === 'offline' && (
           <div className="flex items-center gap-2 bg-amber-50/90 backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-amber-100 animate-slide-down">
              <ShieldAlert size={14} className="text-amber-500" />
-             <span className="text-[11px] font-black text-amber-700">پایداری آفلاین</span>
+             <span className="text-[11px] font-black text-amber-700">حالت آفلاین (Disk Safe)</span>
           </div>
         )}
       </div>
