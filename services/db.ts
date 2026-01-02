@@ -9,8 +9,12 @@ const SETTINGS_STORE = 'settings';
 const PROFILE_STORE = 'doctor_profile';
 const DRUG_STORE = 'drugs';
 const USAGE_STORE = 'drug_usage';
-const AUTH_STORE = 'auth_metadata'; // New permanent store for auth
-const VERSION = 8; // Incremented version for auth store
+const AUTH_STORE = 'auth_metadata'; 
+const VERSION = 8; 
+
+// Synchronous Security Lock Keys
+const SYNC_LOCK_KEY = 'tabib_auth_hard_lock';
+const SESSION_BIRTH_KEY = 'tabib_session_birth_ts';
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -77,8 +81,33 @@ export const initDB = (): Promise<IDBDatabase> => {
 };
 
 // --- AUTH PERSISTENCE HELPERS ---
+
+// Hard Lock: Sync operation to prevent immediate re-entry on reload
+export const setAuthHardLock = (locked: boolean) => {
+  if (locked) localStorage.setItem(SYNC_LOCK_KEY, 'true');
+  else localStorage.removeItem(SYNC_LOCK_KEY);
+};
+
+export const isAuthHardLocked = (): boolean => {
+  return localStorage.getItem(SYNC_LOCK_KEY) === 'true';
+};
+
+// Birth TS: Helps prevent false conflict messages during first 5 seconds of login
+export const setSessionBirth = () => {
+  localStorage.setItem(SESSION_BIRTH_KEY, Date.now().toString());
+};
+
+export const getSessionAge = (): number => {
+  const birth = localStorage.getItem(SESSION_BIRTH_KEY);
+  if (!birth) return 999999;
+  return Date.now() - parseInt(birth);
+};
+
 export const saveAuthMetadata = async (metadata: { sessionId?: string, isApproved?: boolean }): Promise<void> => {
   const db = await initDB();
+  // If we are saving valid data, ensure lock is removed
+  if (metadata.sessionId) setAuthHardLock(false);
+  
   return new Promise((resolve, reject) => {
     const tx = db.transaction(AUTH_STORE, 'readwrite');
     const store = tx.objectStore(AUTH_STORE);
@@ -90,6 +119,11 @@ export const saveAuthMetadata = async (metadata: { sessionId?: string, isApprove
 };
 
 export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isApproved: boolean | null }> => {
+  // FIRST: Check the synchronous hard lock. If locked, deny access instantly.
+  if (isAuthHardLocked()) {
+    return { sessionId: null, isApproved: null };
+  }
+
   const db = await initDB();
   return new Promise((resolve) => {
     const tx = db.transaction(AUTH_STORE, 'readonly');
@@ -108,6 +142,10 @@ export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isA
 };
 
 export const clearAuthMetadata = async (): Promise<void> => {
+  // 1. Set synchronous lock FIRST
+  setAuthHardLock(true);
+  localStorage.removeItem(SESSION_BIRTH_KEY);
+  
   const db = await initDB();
   return new Promise((resolve) => {
     const tx = db.transaction(AUTH_STORE, 'readwrite');
@@ -163,7 +201,7 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
     strategicDrugs.forEach(item => {
         const fullName = `${item.f} ${item.g}`;
         writeStore.put({ 
-          id: crypto.randomUUID(), 
+          id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2), 
           name: fullName, 
           category: item.f,
           isCustom: false, 
@@ -395,7 +433,7 @@ export const saveComplaintTemplate = async (text: string): Promise<void> => {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(COMPLAINT_TEMPLATE_STORE, 'readwrite');
     const store = tx.objectStore(COMPLAINT_TEMPLATE_STORE);
-    const request = store.put({ id: crypto.randomUUID(), text, createdAt: Date.now() });
+    const request = store.put({ id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).substring(2), text, createdAt: Date.now() });
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });

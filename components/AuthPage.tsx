@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
-import { saveAuthMetadata } from '../services/db';
+import { saveAuthMetadata, setSessionBirth, setAuthHardLock } from '../services/db';
 import { Activity, Lock, Mail, User, ArrowLeft, Loader2, Stethoscope, ShieldCheck, CheckCircle } from 'lucide-react';
 
 interface AuthPageProps {
@@ -34,10 +34,16 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
 
         if (data.user) {
           // 2. Generate NEW Session ID (Forced Takeover Strategy)
-          const newSessionId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+          // Robust ID for older browsers
+          const newSessionId = (crypto && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : Math.random().toString(36).substring(2) + Date.now().toString(36);
           
-          // 3. Update Database PROFILE FIRST while we are authenticated
-          // We use NULL instead of empty strings to avoid logic ambiguity
+          // 3. Mark the birth of this session locally
+          setSessionBirth();
+          setAuthHardLock(false);
+
+          // 4. Update Database PROFILE while authenticated
           const { error: updateError } = await supabase
             .from('profiles')
             .update({
@@ -48,13 +54,13 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthSuccess }) => {
           
           if (updateError) throw updateError;
 
-          // 4. Save to permanent local storage (IndexedDB)
+          // 5. Save to permanent local storage (IndexedDB)
           await saveAuthMetadata({ 
             sessionId: newSessionId, 
             isApproved: true 
           });
 
-          // 5. Success - App.tsx will pick up the change via state
+          // 6. Success
           onAuthSuccess();
         }
       } else {

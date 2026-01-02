@@ -27,7 +27,7 @@ import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { keyManager } from './services/geminiService';
 import { supabase } from './services/supabase';
-import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata } from './services/db';
+import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock } from './services/db';
 import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 function App() {
@@ -45,19 +45,18 @@ function App() {
 
   useEffect(() => {
     const performMigrationAndInit = async () => {
-      // 1. SAFE MIGRATION: Wipe legacy state from localStorage ONLY
-      const migrationFlag = 'tabib_v4_migrated';
-      if (!localStorage.getItem(migrationFlag)) {
-          localStorage.setItem(migrationFlag, 'true');
+      // 1. HARD LOCK CHECK: Instant synchronous check for older browsers
+      if (isAuthHardLocked()) {
+        setAuthLoading(false);
+        setIsApproved(null);
+        return;
       }
 
       // 2. Initial Local Check (Persistent DB)
-      // Check IndexedDB FIRST to allow instant offline access for verified doctors
       const { sessionId: localSessionId, isApproved: localApproval } = await getAuthMetadata();
       
       if (localSessionId && localApproval === true) {
          setIsApproved(true);
-         // Important: Assume success to let doctor work instantly
          setAuthLoading(false);
       }
 
@@ -68,7 +67,6 @@ function App() {
       if (currentSession) {
         verifySecurityOnce(currentSession.user.id);
       } else if (!localSessionId) {
-        // No session in DB and no Supabase session? Show Auth.
         setAuthLoading(false);
         setIsApproved(null);
       }
@@ -97,7 +95,6 @@ function App() {
     
     setSecurityStatus('syncing');
 
-    // SILENT FAIL / TRUST STRATEGY:
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error("Timeout")), 8000)
     );
@@ -116,7 +113,6 @@ function App() {
           setIsApproved(data.is_approved);
           const { sessionId: localSessionId } = await getAuthMetadata();
           
-          // Normalized server session ID (handle "" vs null)
           const remoteSessionId = data.active_session_id === "" ? null : data.active_session_id;
 
           // SYNC PERMANENT STORAGE
@@ -125,9 +121,12 @@ function App() {
               sessionId: remoteSessionId 
           });
 
-          // Session conflict check - IMPORTANT: ONLY check if remote exists
-          if (remoteSessionId && localSessionId && remoteSessionId !== localSessionId) {
-              alert('امنیت: این حساب در دستگاه دیگری باز شده است. نشست فعلی جهت امنیت داده‌ها متوقف شد.');
+          // Session conflict check - GRACE PERIOD ADDED
+          // If the session was JUST born (less than 5s ago), don't trigger conflict.
+          const sessionAge = getSessionAge();
+          
+          if (remoteSessionId && localSessionId && remoteSessionId !== localSessionId && sessionAge > 5000) {
+              alert('امنیت: این حساب در دستگاه دیگری باز شده است. نشست فعلی جهت امنیت متوقف شد.');
               await handleSignOutForced();
               return;
           }
@@ -136,9 +135,8 @@ function App() {
           setTimeout(() => setSecurityStatus('idle'), 3000);
       }
     } catch (e) {
-      console.warn("Security Sync Failed (Offline Mode). Standing by IndexedDB data.");
+      console.warn("Security Sync Failed (Offline Mode).");
       setSecurityStatus('offline');
-      
       const local = await getAuthMetadata();
       if (local.sessionId && local.isApproved !== null) {
           setIsApproved(local.isApproved);
@@ -152,18 +150,20 @@ function App() {
   };
 
   const handleSignOutForced = async () => {
-    // 1. Immediately cut state access
+    // 1. Immediately cut UI state
     setIsApproved(null);
     setSession(null);
 
-    // 2. CRITICAL FIX: Clear IndexedDB metadata
-    // Without this, the offline-first logic in useEffect would automatically re-log in the user after reload
+    // 2. CRITICAL: SET SYNC HARD LOCK immediately (Synchronous)
+    setAuthHardLock(true);
+
+    // 3. Clear ASYNC Metadata
     await clearAuthMetadata();
 
-    // 3. Sign out from Supabase (Remote)
+    // 4. Remote Signout
     await supabase.auth.signOut();
 
-    // 4. Reload to flush all memory states
+    // 5. Hard reload to flush all memory
     window.location.reload();
   };
 
@@ -217,7 +217,7 @@ function App() {
            </div>
            <div className="text-center space-y-1">
               <p className="text-gray-800 font-black text-xl">طبیب هوشمند</p>
-              <p className="text-gray-400 text-sm font-medium animate-pulse">آماده‌سازی پایداری ۱۰۰٪ آفلاین...</p>
+              <p className="text-gray-400 text-sm font-medium animate-pulse">آماده‌سازی لایه‌های امنیتی...</p>
            </div>
         </div>
       </div>
