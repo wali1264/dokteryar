@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { digitizePrescription, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
+import { digitizePrescription, processDigitalPadAI, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats, saveComplaintTemplate, getAllComplaintTemplates, deleteComplaintTemplate } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage, PrescriptionRecord } from '../types';
 import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks, BookmarkPlus, PenTool, Eraser, RotateCcw, ZoomIn, ZoomOut, Check, Maximize, GripVertical, Settings2 } from 'lucide-react';
@@ -125,9 +125,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [showCamera, setShowCamera] = useState(false);
-
-  // --- SCAN HUB STATE ---
-  const [showScanHub, setShowScanHub] = useState(false);
 
   // --- DIGITAL PAD ENHANCED STATE ---
   const [showDigitalPad, setShowDigitalPad] = useState(false);
@@ -299,7 +296,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   };
 
   const startCamera = async () => {
-    setShowScanHub(false);
     setShowCamera(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } });
@@ -351,7 +347,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   // --- DIGITAL PAD LOGIC ---
   const startDigitalPad = () => {
-    setShowScanHub(false);
     stopCamera();
     setShowDigitalPad(true);
     setPadHistory([]);
@@ -492,7 +487,43 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       if (blob) {
         const file = new File([blob], "digital_handwritten_rx.jpg", { type: "image/jpeg" });
         setShowDigitalPad(false);
-        await processFile(file);
+        setLoading(true);
+        try {
+          const res = await processDigitalPadAI(file);
+          
+          // Auto-Switch to Guest Mode with extracted data
+          const guestRecord: PatientRecord = {
+            id: `guest_${Date.now()}`,
+            name: res.patientName || 'بیمار مهمان',
+            age: res.patientAge || '',
+            gender: res.patientGender || 'male',
+            chiefComplaint: res.chiefComplaint || '',
+            history: '',
+            visitDate: Date.now(),
+            status: 'waiting',
+            vitals: {
+                bloodPressure: res.vitals?.bloodPressure || '', 
+                heartRate: res.vitals?.heartRate || '', 
+                temperature: res.vitals?.temperature || '', 
+                spO2: res.vitals?.spO2 || '', 
+                weight: res.patientWeight || '', 
+                height: '', 
+                respiratoryRate: '', 
+                bloodSugar: res.vitals?.bloodSugar || ''
+            }
+          };
+
+          handleSelectPatient(guestRecord);
+          if (res.items) setItems(res.items);
+          if (res.diagnosis) setDiagnosis(res.diagnosis);
+          if (res.chiefComplaint) setChiefComplaint(res.chiefComplaint);
+          if (res.vitals) setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
+
+        } catch (e) {
+          alert("خطا در تحلیل دست‌خط دیجیتال");
+        } finally {
+          setLoading(false);
+        }
       }
     }, 'image/jpeg', 0.95);
   };
@@ -873,67 +904,54 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const handleAutoPrint = () => { if (items.length === 0) return; const mode = settings.backgroundImage ? 'custom' : 'plain'; handlePrint(mode); };
   const printButtonLabel = settings.backgroundImage ? 'چاپ روی سربرگ مطب' : 'چاپ نسخه دیجیتال (Majestic)';
 
-  if (viewMode === 'landing') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[80vh] animate-fade-in gap-8">
-         <div className="bg-white p-12 rounded-[2rem] shadow-xl border border-blue-50 w-full max-w-3xl text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-teal-400"></div>
-            <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600"><Stethoscope size={48} /></div>
-            <h1 className="text-4xl font-bold text-gray-800 mb-2">میز کار نسخه نویسی</h1>
-            <p className="text-gray-500 mb-10 font-medium">نام بیمار را جستجو کنید یا از کپسول عملیاتی برای ثبت آنی استفاده کنید</p>
-            <div className="relative max-w-2xl mx-auto mb-8">
-               <div className="relative group">
-                  <div className="absolute inset-y-2 right-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-teal-600 transition-colors"><Search size={24} /></div>
-                  <input type="text" autoFocus placeholder="جستجوی نام بیمار..." className="w-full p-6 pr-14 pl-36 text-xl bg-gray-50 border border-gray-200 rounded-3xl focus:ring-8 focus:ring-teal-50 focus:border-teal-500 outline-none transition-all shadow-inner font-bold text-gray-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-                  <div className="absolute top-2 left-2 bottom-2 bg-white rounded-2xl flex items-center shadow-sm border border-gray-100 p-1 gap-1">
-                     <button onClick={() => setShowQuickEntryModal(true)} title="نسخه سریع (بدون بایگانی)" className="h-full px-4 flex items-center justify-center bg-white hover:bg-teal-50 text-teal-600 rounded-xl transition-all active:scale-95 group/quick"><User size={26} className="group-hover/quick:scale-110 transition-transform" /></button>
-                     <div className="w-[1px] h-2/3 bg-gray-100 rounded-full"></div>
-                     <button onClick={() => setShowNewPatientModal(true)} title="ثبت نام و تشکیل پرونده" className="h-full px-4 flex items-center justify-center bg-teal-500 hover:bg-teal-600 text-white rounded-xl shadow-md shadow-teal-100 transition-all active:scale-95 group/plus"><UserPlus size={26} className="group-hover/plus:rotate-12 transition-transform" /></button>
-                  </div>
+  const renderLanding = () => (
+    <div className="flex flex-col items-center justify-center min-h-[80vh] animate-fade-in gap-8">
+       <div className="bg-white p-12 rounded-[2rem] shadow-xl border border-blue-50 w-full max-w-3xl text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-teal-400"></div>
+          <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600"><Stethoscope size={48} /></div>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">میز کار نسخه نویسی</h1>
+          <p className="text-gray-500 mb-8 font-medium">نام بیمار را جستجو کنید یا از کپچر عملیاتی برای ثبت آنی استفاده کنید</p>
+          
+          <div className="flex justify-center gap-6 mb-10 animate-slide-up">
+             <button onClick={() => setShowQuickEntryModal(true)} title="نسخه سریع (بدون بایگانی)" className="flex flex-col items-center gap-2 group">
+                <div className="w-16 h-16 bg-white border-2 border-teal-50 rounded-[1.5rem] flex items-center justify-center text-teal-600 shadow-sm group-hover:shadow-xl group-hover:bg-teal-50 group-hover:border-teal-100 transition-all active:scale-95">
+                   <User size={30} />
+                </div>
+                <span className="text-[10px] font-black text-teal-600 uppercase tracking-tighter">نسخه سریع</span>
+             </button>
+             
+             <button onClick={() => setShowNewPatientModal(true)} title="ثبت نام و تشکیل پرونده" className="flex flex-col items-center gap-2 group">
+                <div className="w-16 h-16 bg-teal-500 rounded-[1.5rem] flex items-center justify-center text-white shadow-xl shadow-teal-100 group-hover:bg-teal-600 group-hover:scale-105 transition-all active:scale-95">
+                   <UserPlus size={30} />
+                </div>
+                <span className="text-[10px] font-black text-teal-700 uppercase tracking-tighter">تشکیل پرونده</span>
+             </button>
+             
+             <button onClick={startDigitalPad} title="نگارش دیجیتال (Digital Pad)" className="flex flex-col items-center gap-2 group">
+                <div className="w-16 h-16 bg-white border-2 border-indigo-50 rounded-[1.5rem] flex items-center justify-center text-indigo-600 shadow-sm group-hover:shadow-xl group-hover:bg-indigo-50 group-hover:border-indigo-100 transition-all active:scale-95">
+                   <PenTool size={30} />
+                </div>
+                <span className="text-[10px] font-black text-indigo-600 uppercase tracking-tighter">نگارش دیجیتال</span>
+             </button>
+          </div>
+
+          <div className="relative max-w-2xl mx-auto mb-4">
+             <div className="relative group">
+                <div className="absolute inset-y-2 right-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-teal-600 transition-colors"><Search size={24} /></div>
+                <input type="text" autoFocus placeholder="نام بیمار را جستجو کنید..." className="w-full p-6 pr-14 text-xl bg-gray-50 border border-gray-200 rounded-3xl focus:ring-8 focus:ring-teal-50 focus:border-teal-500 outline-none transition-all shadow-inner font-bold text-gray-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+             </div>
+             {searchTerm && filteredPatients.length > 0 && (
+               <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-20 max-h-72 overflow-y-auto animate-slide-up">
+                  {filteredPatients.map(p => (<button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full text-right p-5 hover:bg-teal-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-all group"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 group-hover:bg-teal-500 group-hover:text-white transition-all"><User size={20}/></div><span className="font-bold text-gray-700 text-lg">{p.name}</span></div><span className="text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-full group-hover:bg-white group-hover:shadow-sm">{p.age} ساله</span></button>))}
                </div>
-               {searchTerm && filteredPatients.length > 0 && (
-                 <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-20 max-h-72 overflow-y-auto animate-slide-up">
-                    {filteredPatients.map(p => (<button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full text-right p-5 hover:bg-teal-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-all group"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-teal-50 rounded-full flex items-center justify-center text-teal-600 group-hover:bg-teal-500 group-hover:text-white transition-all"><User size={20}/></div><span className="font-bold text-gray-700 text-lg">{p.name}</span></div><span className="text-sm font-black text-teal-600 bg-teal-50 px-3 py-1 rounded-full group-hover:bg-white group-hover:shadow-sm">{p.age} ساله</span></button>))}
-                 </div>
-               )}
-            </div>
-         </div>
-         {showNewPatientModal && (
-            <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
-               <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
-                  <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10 lg:rounded-t-3xl"><h3 className="text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2"><div className="bg-teal-100 p-2 rounded-xl text-teal-600"><UserPlus size={24} /></div>ثبت بیمار جدید</h3><button onClick={() => setShowNewPatientModal(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"><X size={20} /></button></div>
-                  <div className="flex-1 overflow-y-auto p-5 lg:p-8 space-y-5">
-                     <div><label className="block text-sm font-bold text-gray-600 mb-2">نام و نام خانوادگی</label><div className="relative"><User className="absolute right-3 top-3.5 text-gray-400" size={18} /><input autoFocus className="w-full p-3.5 pr-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all border border-gray-100" placeholder="مثال: علی رضایی" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div></div>
-                     <div><label className="block text-sm font-bold text-gray-600 mb-2">شماره تماس</label><div className="relative"><input type="tel" className="w-full p-3.5 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left border border-gray-100 font-mono" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" /><Phone className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
-                     <div className="flex gap-4"><div className="flex-1"><label className="block text-sm font-bold text-gray-600 mb-2">سن</label><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} placeholder="" /></div><div className="flex-[1.5]"><label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label><div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div></div>
-                     <div><label className="block text-sm font-bold text-gray-600 mb-2">وزن</label><div className="relative"><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /><Scale className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
-                     <div className="pt-2"><label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-2"><Activity size={16} />سابقه بیماری</label><input className="w-full p-3.5 bg-orange-50/30 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} /></div>
-                     <div><label className="flex items-center gap-2 text-sm font-bold text-red-600 mb-2"><AlertCircle size={16} />حساسیت‌ها و آلرژی</label><input className="w-full p-3.5 bg-red-50/30 border border-red-100 rounded-xl outline-none focus:ring-2 focus:ring-red-200" placeholder="پنی‌سیلین، آسپرین..." value={newPatientAllergies} onChange={e => setNewPatientAllergies(e.target.value)} /></div>
-                  </div>
-                  <div className="p-4 lg:p-6 border-t border-gray-100 bg-white lg:rounded-b-3xl"><button onClick={handleRegisterPatient} disabled={!newPatientName} className="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-teal-200 flex items-center justify-center gap-3 text-lg"><Save size={22} />ذخیره پرونده اولیه</button></div>
-               </div>
-            </div>
-         )}
-         {showQuickEntryModal && (
-            <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
-               <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
-                  <div className="flex justify-between items-center mb-8 relative z-10"><div><h3 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Zap className="text-teal-600" /> نسخه سریع</h3><p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p></div><button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button></div>
-                  <div className="space-y-5 relative z-10">
-                     <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label><input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div>
-                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">سن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} /></div><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">وزن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /></div></div>
-                     <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">جنسیت</label><div className="flex bg-gray-100/50 p-1.5 rounded-2xl"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'male' ? 'bg-white shadow-md text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'female' ? 'bg-white shadow-md text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div>
-                     <button onClick={handleQuickEntry} className="w-full bg-teal-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-teal-200 mt-4 flex items-center justify-center gap-3 text-lg hover:bg-teal-700 transition-all active:scale-95"><FileSignature size={24} /> شروع نسخه‌نویسی</button>
-                  </div>
-               </div>
-            </div>
-         )}
-      </div>
-    );
-  }
+             )}
+          </div>
+       </div>
+    </div>
+  );
 
   return (
-    <div className="space-y-8 animate-fade-in pb-24 lg:pb-20 relative">
+    <div className="space-y-8 animate-fade-in pb-24 lg:pb-20 relative min-h-[80vh]">
       <style>{`
         @keyframes scan-line { 0% { transform: translateY(-100%); } 100% { transform: translateY(400%); } }
         .animate-scan-line { animation: scan-line 3s linear infinite; }
@@ -983,7 +1001,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent shadow-[0_0_15px_rgba(59,130,246,1)] z-20 animate-scan-line"></div>
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
                  <div className="relative"><div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)] animate-pulse">{(isProcessingScribe || isProcessingCC) ? <Mic size={48} className="text-white" /> : <Brain size={48} className="text-white" />}</div><div className="absolute -inset-4 border border-blue-400/30 rounded-full animate-ping"></div></div>
-                 <div className="text-center space-y-3"><h3 className="text-2xl font-black text-blue-900 tracking-tight">{isProcessingCC ? 'در حال تبدیل گفته‌های شما به متن شکایات...' : isProcessingScribe ? 'در حال واکاوی هوشمند گفته‌های پزشک...' : 'در حال واکاوی نسخه توسط هسته هوش مصنوعی...'}</h3><p className="text-blue-600/60 font-bold animate-bounce text-sm">لطفاً شکیبا باشید. در حال پردازش داده‌های پزشکی</p></div>
+                 <div className="text-center space-y-3"><h3 className="text-2xl font-black text-blue-900 tracking-tight">{isProcessingCC ? 'در حال تبدیل گفته‌های شما به متن شکایات...' : isProcessingScribe ? 'در حال واکاوی هوشمند گفته‌های پزشک...' : 'در حال واکاوی اطلاعات توسط هسته هوش مصنوعی...'}</h3><p className="text-blue-600/60 font-bold animate-bounce text-sm">لطفاً شکیبا باشید. در حال پردازش داده‌های پزشکی</p></div>
               </div>
            </div>
         </div>
@@ -998,84 +1016,98 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {/* MOBILE UI */}
-      <div className="lg:hidden flex flex-col gap-4">
-         <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
-            <div className="flex items-center gap-2">
-               <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}>{isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}</button>
-               {isExpressMode && <div className="bg-amber-100 text-amber-600 p-2 rounded-xl animate-pulse"><ZapOff size={20} /></div>}
-               <button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
-               <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
-               <button onClick={handleAutoPrint} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
-               <button onClick={() => setShowScanHub(true)} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
-            </div>
-         </div>
-         <div className="bg-gray-100 p-1 rounded-xl flex">
-            <button onClick={() => setMobileTab('rx')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'rx' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>نسخه و تشخیص</button>
-            <button onClick={() => setMobileTab('vitals')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'vitals' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>علائم حیاتی</button>
-            <button onClick={() => setMobileTab('templates')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'templates' ? 'bg-white shadow text-gray-700' : 'text-gray-500'}`}>قالب‌ها</button>
-         </div>
-         <div className="min-h-[50vh]">
-            {mobileTab === 'vitals' && (
-               <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                  <MobileVitalInput label="فشار خون" icon={Activity} color="text-red-500" value={vitals.bloodPressure} prevValue={previousVitals?.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} />
-                  <MobileVitalInput label="ضربان قلب" icon={Heart} color="text-rose-500" value={vitals.heartRate} prevValue={previousVitals?.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} />
-                  <MobileVitalInput label="دمای بدن" icon={Thermometer} color="text-orange-500" value={vitals.temperature} prevValue={previousVitals?.temperature} unit="°C" field="temperature" onChange={handleVitalChange} />
-                  <MobileVitalInput label="اکسیژن" icon={Wind} color="text-blue-500" value={vitals.spO2} prevValue={previousVitals?.spO2} unit="%" field="spO2" onChange={handleVitalChange} />
-                  <MobileVitalInput label="قند خون" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} prevValue={previousVitals?.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} />
-                  <MobileVitalInput label="وزن" icon={Scale} color="text-indigo-500" value={vitals.weight} prevValue={previousVitals?.weight} unit="" field="weight" onChange={handleVitalChange} />
-                  <MobileVitalInput label="تنفس" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} prevValue={previousVitals?.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} />
-                  <MobileVitalInput label="قد (cm)" icon={Hash} color="text-gray-500" value={vitals.height} prevValue={previousVitals?.height} unit="cm" field="height" onChange={handleVitalChange} />
-               </div>
-            )}
-            {mobileTab === 'rx' && (
-               <div className="space-y-4 animate-fade-in">
-                  <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}><div className="flex justify-between items-center mb-2"><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label><div className="flex gap-1"><button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}><ListChecks size={14} /></button><button onClick={() => setShowPreferenceModal(true)} className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><RotateCw size={14} /></button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}</div>)}</div><textarea className={`w-full p-3 bg-gray-50 rounded-xl outline-none text-gray-700 h-20 resize-none focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all ${isRecordingScribe ? 'bg-purple-50/50 italic' : ''}`} placeholder={isRecordingScribe ? "در حال شنیدن تشخیص..." : "تشخیص نهایی را بنویسید..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div>
-                  <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}><button onClick={() => removeItem(idx)} className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl"><Trash size={18} /></button><div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0"><div className="flex items-center gap-3">{getFormIcon(d.name)}<span className="font-bold text-gray-700">{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="whitespace-nowrap bg-teal-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{d}</button>))}</div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="مثال: هر ۸ ساعت" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{ins}</button>))}</div>)}</div></div></div>))}</div>
-                  <button onClick={addItem} className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl text-indigo-500 font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors"><Plus size={20} />افزودن قلم داروی جدید</button>
-               </div>
-            )}
-            {mobileTab === 'templates' && (
-               <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
-            )}
-         </div>
-         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
-      </div>
+      {/* Main View Control */}
+      {viewMode === 'landing' ? renderLanding() : (
+        <>
+          {/* MOBILE EDITOR UI */}
+          <div className="lg:hidden flex flex-col gap-4">
+             <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
+                <div className="flex items-center gap-2">
+                   <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}>{isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}</button>
+                   {isExpressMode && <div className="bg-amber-100 text-amber-600 p-2 rounded-xl animate-pulse"><ZapOff size={20} /></div>}
+                   <button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
+                   <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
+                   <button onClick={handleAutoPrint} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
+                   <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
+                </div>
+             </div>
+             <div className="bg-gray-100 p-1 rounded-xl flex">
+                <button onClick={() => setMobileTab('rx')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'rx' ? 'bg-white shadow text-indigo-600' : 'text-gray-500'}`}>نسخه و تشخیص</button>
+                <button onClick={() => setMobileTab('vitals')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'vitals' ? 'bg-white shadow text-blue-600' : 'text-gray-500'}`}>علائم حیاتی</button>
+                <button onClick={() => setMobileTab('templates')} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${mobileTab === 'templates' ? 'bg-white shadow text-gray-700' : 'text-gray-500'}`}>قالب‌ها</button>
+             </div>
+             <div className="min-h-[50vh]">
+                {mobileTab === 'vitals' && (
+                   <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                      <MobileVitalInput label="فشار خون" icon={Activity} color="text-red-500" value={vitals.bloodPressure} prevValue={previousVitals?.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} />
+                      <MobileVitalInput label="ضربان قلب" icon={Heart} color="text-rose-500" value={vitals.heartRate} prevValue={previousVitals?.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} />
+                      <MobileVitalInput label="دمای بدن" icon={Thermometer} color="text-orange-500" value={vitals.temperature} prevValue={previousVitals?.temperature} unit="°C" field="temperature" onChange={handleVitalChange} />
+                      <MobileVitalInput label="اکسیژن" icon={Wind} color="text-blue-500" value={vitals.spO2} prevValue={previousVitals?.spO2} unit="%" field="spO2" onChange={handleVitalChange} />
+                      <MobileVitalInput label="قند خون" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} prevValue={previousVitals?.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} />
+                      <MobileVitalInput label="وزن" icon={Scale} color="text-indigo-500" value={vitals.weight} prevValue={previousVitals?.weight} unit="" field="weight" onChange={handleVitalChange} />
+                      <MobileVitalInput label="تنفس" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} prevValue={previousVitals?.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} />
+                      <MobileVitalInput label="قد (cm)" icon={Hash} color="text-gray-500" value={vitals.height} prevValue={previousVitals?.height} unit="cm" field="height" onChange={handleVitalChange} />
+                   </div>
+                )}
+                {mobileTab === 'rx' && (
+                   <div className="space-y-4 animate-fade-in">
+                      <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}><div className="flex justify-between items-center mb-2"><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label><div className="flex gap-1"><button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}><ListChecks size={14} /></button><button onClick={() => setShowPreferenceModal(true)} className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><RotateCw size={14} /></button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}</div>)}</div><textarea className={`w-full p-3 bg-gray-50 rounded-xl outline-none text-gray-700 h-20 resize-none focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all ${isRecordingScribe ? 'bg-purple-50/50 italic' : ''}`} placeholder={isRecordingScribe ? "در حال شنیدن تشخیص..." : "تشخیص نهایی را بنویسید..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div>
+                      <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}><button onClick={() => removeItem(idx)} className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl"><Trash size={18} /></button><div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 flex items-center justify-between border-b border-gray-50 last:border-0"><div className="flex items-center gap-3">{getFormIcon(d.name)}<span className="font-bold text-gray-700">{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="whitespace-nowrap bg-teal-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{d}</button>))}</div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="مثال: هر ۸ ساعت" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{ins}</button>))}</div>)}</div></div></div>))}</div>
+                    <button onClick={addItem} className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl text-indigo-500 font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors"><Plus size={20} />افزودن قلم داروی جدید</button>
+                 </div>
+              )}
+              {mobileTab === 'templates' && (
+                 <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
+              )}
+           </div>
+           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
+        </div>
 
-      {/* DESKTOP UI */}
-      <div className="hidden lg:block min-h-screen">
-         <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
-           <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name} • {selectedPatient?.age} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'})</p></div></div>
-           <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={() => setShowScanHub(true)} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-600 text-white animate-safety-pulse hover:bg-indigo-700') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
-         </div>
-         <div className="flex gap-6 items-start">
-            <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="" field="weight" onChange={handleVitalChange} /></div>
-            <div className="flex-1 flex flex-col gap-6"><div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}><div className="flex items-center justify-between mb-2 px-4"><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><div className="flex gap-2"><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button><button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />مدیریت ترجیحات</button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}</div><input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div><div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (<tr key={idx} className="group hover:bg-indigo-50/20 transition-all rounded-2xl overflow-hidden"><td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} placeholder="مثال: Tab Amoxicillin 500" />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-[2rem] border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors"><div className="flex items-center gap-4">{getFormIcon(d.name)}<span className="text-lg">{d.name}</span></div><Zap size={18} className="text-amber-400" /></button>))}</div>)}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="N=30" />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[120px]"><p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دوز</p>{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="text-center p-3 hover:bg-teal-50 rounded-xl text-sm font-black text-teal-700 transition-colors border border-transparent hover:border-teal-100">{d}</button>))}</div>)}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="مثال: هر ۸ ساعت" />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]"><p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دستور مصرف</p>{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors border border-transparent hover:border-indigo-100">{ins}</button>))}</div>)}</td><td className="py-2 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button></td></tr>))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={handleAutoPrint} disabled={items.length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Printer size={26} />{printButtonLabel}</button></div></div></div>
-         </div>
-      </div>
+        {/* DESKTOP EDITOR UI */}
+        <div className="hidden lg:block min-h-screen">
+           <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
+             <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name} • {selectedPatient?.age} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : 'خانم'})</p></div></div>
+             <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={startCamera} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
+           </div>
+           <div className="flex gap-6 items-start">
+              <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="" field="weight" onChange={handleVitalChange} /></div>
+              <div className="flex-1 flex flex-col gap-6"><div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}><div className="flex items-center justify-between mb-2 px-4"><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><div className="flex gap-2"><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button><button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />مدیریت ترجیحات</button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}</div><input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div><div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (<tr key={idx} className="group hover:bg-indigo-50/20 transition-all rounded-2xl overflow-hidden"><td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} placeholder="مثال: Tab Amoxicillin 500" />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-[2rem] border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-5 hover:bg-indigo-50 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors"><div className="flex items-center gap-4">{getFormIcon(d.name)}<span className="text-lg">{d.name}</span></div><Zap size={18} className="text-amber-400" /></button>))}</div>)}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} placeholder="N=30" />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[120px]"><p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دوز</p>{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="text-center p-3 hover:bg-teal-50 rounded-xl text-sm font-black text-teal-700 transition-colors border border-transparent hover:border-teal-100">{d}</button>))}</div>)}</td><td className="py-2 px-2 relative"><input className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} placeholder="مثال: هر ۸ ساعت" />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]"><p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دستور مصرف</p>{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors border border-transparent hover:border-indigo-100">{ins}</button>))}</div>)}</td><td className="py-2 text-center"><button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button></td></tr>))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={handleAutoPrint} disabled={items.length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Printer size={26} />{printButtonLabel}</button></div></div></div>
+           </div>
+        </div>
+        </>
+      )}
 
-      {/* MODALS */}
-      {showScanHub && (
-          <div className="fixed inset-0 z-[300] bg-black/40 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-white/90 w-full max-w-sm rounded-[3rem] shadow-2xl p-8 lg:p-10 animate-fade-in border border-white/50 text-center relative overflow-hidden">
-                  <div className="absolute top-0 right-0 p-4 opacity-5"><Camera size={120} /></div>
-                  <div className="flex justify-between items-center mb-8 relative z-10">
-                     <h3 className="text-2xl font-black text-gray-800">انتخاب روش ورود</h3>
-                     <button onClick={() => setShowScanHub(false)} className="p-2 text-gray-400 hover:text-red-500"><X /></button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 relative z-10">
-                     <button onClick={startCamera} className="bg-white border border-blue-100 p-6 rounded-[2rem] flex flex-col items-center gap-3 hover:bg-blue-600 hover:text-white transition-all shadow-xl shadow-blue-50 group active:scale-95">
-                        <div className="bg-blue-50 p-3 rounded-2xl text-blue-600 group-hover:bg-white/20 group-hover:text-white"><Camera size={32} /></div>
-                        <span className="text-xs font-black">اسکن دوربین</span>
-                     </button>
-                     <button onClick={startDigitalPad} className="bg-white border border-indigo-100 p-6 rounded-[2rem] flex flex-col items-center gap-3 hover:bg-indigo-600 hover:text-white transition-all shadow-xl shadow-indigo-50 group active:scale-95">
-                        <div className="bg-indigo-50 p-3 rounded-2xl text-indigo-600 group-hover:bg-white/20 group-hover:text-white"><PenTool size={32} /></div>
-                        <span className="text-xs font-black">نگارش دیجیتال</span>
-                     </button>
-                  </div>
-                  <p className="text-[10px] text-gray-400 font-bold mt-8 uppercase tracking-widest">Tabib Intelligent Input Hub</p>
-              </div>
+      {/* SHARED OVERLAYS / MODALS */}
+      {showNewPatientModal && (
+          <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
+             <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
+                <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10 lg:rounded-t-3xl"><h3 className="text-xl lg:text-2xl font-bold text-gray-800 flex items-center gap-2"><div className="bg-teal-100 p-2 rounded-xl text-teal-600"><UserPlus size={24} /></div>ثبت بیمار جدید</h3><button onClick={() => setShowNewPatientModal(false)} className="p-2 bg-gray-50 rounded-full text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors"><X size={20} /></button></div>
+                <div className="flex-1 overflow-y-auto p-5 lg:p-8 space-y-5">
+                   <div><label className="block text-sm font-bold text-gray-600 mb-2">نام و نام خانوادگی</label><div className="relative"><User className="absolute right-3 top-3.5 text-gray-400" size={18} /><input autoFocus className="w-full p-3.5 pr-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all border border-gray-100" placeholder="مثال: علی رضایی" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div></div>
+                   <div><label className="block text-sm font-bold text-gray-600 mb-2">شماره تماس</label><div className="relative"><input type="tel" className="w-full p-3.5 pl-10 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 transition-all text-left border border-gray-100 font-mono" placeholder="0912..." value={newPatientPhone} onChange={e => setNewPatientPhone(e.target.value)} dir="ltr" /><Phone className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
+                   <div className="flex gap-4"><div className="flex-1"><label className="block text-sm font-bold text-gray-600 mb-2">سن</label><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} placeholder="" /></div><div className="flex-[1.5]"><label className="block text-sm font-bold text-gray-600 mb-2">جنسیت</label><div className="flex bg-gray-50 p-1 rounded-xl border border-gray-100"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'male' ? 'bg-white shadow text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${newPatientGender === 'female' ? 'bg-white shadow text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div></div>
+                   <div><label className="block text-sm font-bold text-gray-600 mb-2">وزن</label><div className="relative"><input type="text" className="w-full p-3.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-teal-500 text-center border border-gray-100 font-bold" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /><Scale className="absolute left-3 top-3.5 text-gray-400" size={18} /></div></div>
+                   <div className="pt-2"><label className="flex items-center gap-2 text-sm font-bold text-orange-600 mb-2"><Activity size={16} />سابقه بیماری</label><input className="w-full p-3.5 bg-orange-50/30 border border-orange-100 rounded-xl outline-none focus:ring-2 focus:ring-orange-200" placeholder="دیابت، فشار خون و..." value={newPatientHistory} onChange={e => setNewPatientHistory(e.target.value)} /></div>
+                   <div><label className="flex items-center gap-2 text-sm font-bold text-red-600 mb-2"><AlertCircle size={16} />حساسیت‌ها و آلرژی</label><input className="w-full p-3.5 bg-red-50/30 border border-red-100 rounded-xl outline-none focus:ring-2 focus:ring-red-200" placeholder="پنی‌سیلین، آسپرین..." value={newPatientAllergies} onChange={e => setNewPatientAllergies(e.target.value)} /></div>
+                </div>
+                <div className="p-4 lg:p-6 border-t border-gray-100 bg-white lg:rounded-b-3xl"><button onClick={handleRegisterPatient} disabled={!newPatientName} className="w-full bg-gradient-to-r from-teal-600 to-teal-500 text-white py-4 rounded-2xl font-bold shadow-lg shadow-teal-200 flex items-center justify-center gap-3 text-lg"><Save size={22} />ذخیره پرونده اولیه</button></div>
+             </div>
+          </div>
+      )}
+
+      {showQuickEntryModal && (
+          <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
+             <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
+                <div className="flex justify-between items-center mb-8 relative z-10"><div><h3 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Zap className="text-teal-600" /> نسخه سریع</h3><p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p></div><button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button></div>
+                <div className="space-y-5 relative z-10">
+                   <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label><input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div>
+                   <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">سن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} /></div><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">وزن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /></div></div>
+                   <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">جنسیت</label><div className="flex bg-gray-100/50 p-1.5 rounded-2xl"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'male' ? 'bg-white shadow-md text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'female' ? 'bg-white shadow-md text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div>
+                   <button onClick={handleQuickEntry} className="w-full bg-teal-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-teal-200 mt-4 flex items-center justify-center gap-3 text-lg hover:bg-teal-700 transition-all active:scale-95"><FileSignature size={24} /> شروع نسخه‌نویسی</button>
+                </div>
+             </div>
           </div>
       )}
 
@@ -1116,33 +1148,22 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         </div>
       )}
 
-      {/* ENHANCED DIGITAL PAD OVERLAY - SATELLITE BAR & ADAPTIVE UI */}
       {showDigitalPad && (
         <div className="fixed inset-0 z-[420] bg-gray-950 flex flex-col overflow-hidden animate-fade-in"
              onMouseMove={handleToolbarMove} onTouchMove={handleToolbarMove}
              onMouseUp={handleToolbarEnd} onTouchEnd={handleToolbarEnd}>
            
-           {/* SATELLITE TOOLBAR (Floating Lever) */}
            <div 
               style={{ left: padToolbarPos.x, top: padToolbarPos.y }}
               className="fixed satellite-bar p-1.5 lg:p-2 z-[450] flex items-center gap-1.5 lg:gap-3 touch-none"
            >
-              {/* Drag Handle */}
-              <div 
-                 onMouseDown={handleToolbarStart} onTouchStart={handleToolbarStart}
-                 className="p-1 lg:p-2 text-gray-300 cursor-move hover:text-indigo-400"
-              >
+              <div onMouseDown={handleToolbarStart} onTouchStart={handleToolbarStart} className="p-1 lg:p-2 text-gray-300 cursor-move hover:text-indigo-400">
                  <GripVertical size={20} />
               </div>
-
-              {/* Exit */}
               <button onClick={() => setShowDigitalPad(false)} className="p-2 lg:p-3 text-gray-400 hover:text-red-500 bg-gray-50 rounded-2xl transition-all">
                 <X size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
               </button>
-
               <div className="w-[1px] h-6 bg-gray-200"></div>
-
-              {/* Undo & Clear */}
               <div className="flex gap-1">
                  <button onClick={undoPad} disabled={padHistory.length <= 1} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 disabled:opacity-20 transition-all">
                     <RotateCcw size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
@@ -1151,28 +1172,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     <Trash size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
                  </button>
               </div>
-
               <div className="w-[1px] h-6 bg-gray-200"></div>
-
-              {/* Pen & Eraser with Temporal Settings Trigger */}
               <div className="flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner">
-                 <button 
-                    onClick={() => { setPadTool('pen'); triggerSettingsDisplay(); }}
-                    className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'pen' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}
-                 >
+                 <button onClick={() => { setPadTool('pen'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'pen' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>
                     <PenTool size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
                  </button>
-                 <button 
-                    onClick={() => { setPadTool('eraser'); triggerSettingsDisplay(); }}
-                    className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'eraser' ? 'bg-white text-red-500 shadow-sm' : 'text-gray-400'}`}
-                 >
+                 <button onClick={() => { setPadTool('eraser'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'eraser' ? 'bg-white text-red-500 shadow-sm' : 'text-gray-400'}`}>
                     <Eraser size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
                  </button>
               </div>
-
               <div className="w-[1px] h-6 bg-gray-200"></div>
-
-              {/* Rotation & Zoom */}
               <div className="flex gap-1">
                  <button onClick={() => setPadRotation(r => (r + 90) % 360)} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
                     <RotateCw size={18} />
@@ -1184,26 +1193,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     <ZoomIn size={18} />
                  </button>
               </div>
-
               <div className="w-[1px] h-6 bg-gray-200"></div>
-
-              {/* AI Button - Small Circle */}
               <button onClick={analyzePad} className="ai-small-btn group">
                  <Zap size={22} className="group-hover:animate-pulse" />
               </button>
-
-              {/* TEMPORAL SETTINGS - APPEARS ABOVE/BELOW LEVER */}
               {showPadSettings && (
                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 animate-slide-up z-[460]">
                     <div className="temporal-settings p-4 flex items-center gap-6 border border-gray-100 shadow-2xl">
                        <div className="flex items-center gap-3">
                           <Maximize size={16} className="text-gray-400" />
-                          <input 
-                            type="range" min="1" max="50" step="1" 
-                            className="w-32 lg:w-48 accent-indigo-600" 
-                            value={padThickness} 
-                            onChange={e => { setPadThickness(parseInt(e.target.value)); triggerSettingsDisplay(); }} 
-                          />
+                          <input type="range" min="1" max="50" step="1" className="w-32 lg:w-48 accent-indigo-600" value={padThickness} onChange={e => { setPadThickness(parseInt(e.target.value)); triggerSettingsDisplay(); }} />
                           <span className="text-xs font-black text-indigo-600 w-6">{padThickness}</span>
                        </div>
                        {padTool === 'pen' && (
@@ -1217,29 +1216,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               )}
            </div>
 
-           {/* CANVAS ENVIRONMENT */}
            <div className="flex-1 relative bg-[#0f172a] overflow-auto flex items-center justify-center p-6 lg:p-20 custom-scrollbar z-10">
-              <div 
-                style={{ 
-                   transform: `rotate(${padRotation}deg) scale(${padZoom})`, 
-                   transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                   boxShadow: '0 40px 120px rgba(0,0,0,0.5)',
-                   width: 'fit-content'
-                }}
-                className="bg-white rounded-lg overflow-hidden relative cursor-crosshair"
-              >
+              <div style={{ transform: `rotate(${padRotation}deg) scale(${padZoom})`, transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)', boxShadow: '0 40px 120px rgba(0,0,0,0.5)', width: 'fit-content' }} className="bg-white rounded-lg overflow-hidden relative cursor-crosshair">
                  <canvas ref={padBgCanvasRef} className="absolute inset-0 z-0 pointer-events-none" />
-                 <canvas 
-                    ref={padInkCanvasRef}
-                    onMouseDown={handlePadStart}
-                    onMouseMove={handlePadMove}
-                    onMouseUp={handlePadEnd}
-                    onMouseLeave={handlePadEnd}
-                    onTouchStart={handlePadStart}
-                    onTouchMove={handlePadMove}
-                    onTouchEnd={handlePadEnd}
-                    className="relative z-10 digital-pad-canvas"
-                 />
+                 <canvas ref={padInkCanvasRef} onMouseDown={handlePadStart} onMouseMove={handlePadMove} onMouseUp={handlePadEnd} onMouseLeave={handlePadEnd} onTouchStart={handlePadStart} onTouchMove={handlePadMove} onTouchEnd={handlePadEnd} className="relative z-10 digital-pad-canvas" />
               </div>
            </div>
         </div>

@@ -606,6 +606,63 @@ JSON Structure:
     return safeParseJSON(response.text || "{}");
 };
 
+/**
+ * processDigitalPadAI
+ * NEW INDEPENDENT AI FUNCTION for the Digital Pad feature.
+ * Extracts patient identity, CC, and prescription items.
+ */
+export const processDigitalPadAI = async (image: File): Promise<{ 
+  items: PrescriptionItem[], 
+  diagnosis?: string, 
+  vitals?: PatientVitals,
+  patientName?: string,
+  patientAge?: string,
+  patientWeight?: string,
+  patientGender?: 'male' | 'female',
+  chiefComplaint?: string
+}> => {
+    const imgPart = await fileToGenerativePart(image);
+    const prompt = `You are an expert AI Medical Scribe and OCR Pharmacist. 
+Task: Transcribe this handwritten medical note and extract EVERYTHING in a structured format.
+
+CRITICAL EXTRACTION PROTOCOL:
+1. PATIENT IDENTITY: Look for name, age, gender (M/F or آقا/خانم), and weight.
+2. CHIEF COMPLAINT: Look for the reason for the visit (CC) or patient's complaints.
+3. PRESCRIPTION: Transcribe drugs exactly as written (Literal transcription).
+   - DRUG NAMES: Exact literal transcription including strength.
+   - INSTRUCTIONS: Literal transcription.
+   - DOSAGE/QTY: Extract count (e.g., N=20).
+4. DIAGNOSIS: Extract any medical impression or diagnosis written.
+
+OUTPUT FORMAT: Return RAW JSON ONLY. No markdown.
+
+JSON Structure:
+{
+  "patientName": "string or null",
+  "patientAge": "string or null",
+  "patientWeight": "string or null",
+  "patientGender": "male" | "female" | null,
+  "chiefComplaint": "string (Full transcribed complaints)",
+  "diagnosis": "string (Transcribed diagnosis)",
+  "items": [
+    { "drug": "Exact Drug Name", "dosage": "Qty", "instruction": "Exact Instruction" }
+  ],
+  "vitals": {
+    "bloodPressure": "string",
+    "heartRate": "string",
+    "temperature": "string",
+    "spO2": "string",
+    "bloodSugar": "string"
+  }
+}`;
+    const response = await callProxy({ 
+      model: "gemini-2.5-flash", 
+      contents: [{ parts: [imgPart, { text: prompt }] }], 
+      config: { thinkingConfig: { thinkingBudget: 0 } } 
+    });
+    return safeParseJSON(response.text || "{}");
+};
+
 export const transcribeMedicalAudio = async (audio: Blob): Promise<string> => {
     const base64Audio = await blobToBase64(audio);
     const response = await callProxy({
