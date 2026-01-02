@@ -26,8 +26,8 @@ import Settings from './pages/Settings';
 import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { supabase } from './services/supabase';
-import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock } from './services/db';
-import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone } from 'lucide-react';
+import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock, getSettings, exportDatabase, uploadBackupOnline, updateLastBackupTime, getLastBackupTime } from './services/db';
+import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Database } from 'lucide-react';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
@@ -45,52 +45,49 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      // 1. Instant Hard-Lock Check (Sync)
       if (isAuthHardLocked()) {
         setAuthLoading(false);
         setIsApproved(null);
         return;
       }
 
-      // 2. Load Local Identity FIRST (For Offline Speed)
       const { sessionId, isApproved: localApproval } = await getAuthMetadata();
       localSessionIdRef.current = sessionId;
       
       if (sessionId && localApproval === true) {
          setIsApproved(true);
-         // If offline, we can stop loading here and show the app
          if (!navigator.onLine) {
             setAuthLoading(false);
-            setSecurityStatus('idle'); // Keep it silent in offline
+            setSecurityStatus('idle'); 
          }
       }
 
-      // 3. Supabase Initial Session
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       setSession(currentSession);
       
       if (currentSession) {
-        // Run verification in background if already have local approval
         const runSilent = (sessionId && localApproval === true);
         verifySecurityOnce(currentSession.user.id, runSilent);
         setupRealtimeSecurity(currentSession.user.id);
+        
+        // --- HYBRID SELF-SERVICE BACKUP CHECK ---
+        handleAutoBackup(currentSession.user.id);
       } else if (!sessionId) {
         setAuthLoading(false);
         setIsApproved(null);
       } else {
-        // Fallback for cases with local session but no supabase session
         setAuthLoading(false);
       }
     };
 
     initAuth();
 
-    // Listen for Auth Events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
          verifySecurityOnce(newSession.user.id, false);
          setupRealtimeSecurity(newSession.user.id);
+         handleAutoBackup(newSession.user.id);
       } else if (!newSession) {
          setAuthLoading(false);
          setIsApproved(null);
@@ -103,7 +100,46 @@ function App() {
     };
   }, []);
 
-  // REAL-TIME SENTINEL: Listens for device takeover active-broadcast
+  const handleAutoBackup = async (userId: string) => {
+    try {
+      const settings = await getSettings();
+      if (!settings?.autoBackupEnabled) return;
+
+      const lastBackup = getLastBackupTime();
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      const now = Date.now();
+
+      if (now - lastBackup >= twentyFourHours) {
+        console.log("Self-Service Backup: Triggering 24h cycle...");
+        const json = await exportDatabase();
+
+        // 1. Offline Backup (Trigger download)
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `auto_offline_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // 2. Online Backup (Supabase) - Only if Online
+        if (navigator.onLine) {
+          try {
+            await uploadBackupOnline(userId, json);
+            console.log("Self-Service Backup: Online sync completed.");
+          } catch (e) {
+            console.warn("Self-Service Backup: Online sync failed (Net error), but offline saved.");
+          }
+        }
+
+        updateLastBackupTime();
+      }
+    } catch (error) {
+      console.error("Auto Backup Engine Error:", error);
+    }
+  };
+
   const setupRealtimeSecurity = (userId: string) => {
     const channel = supabase
       .channel(`profile_changes_${userId}`)
@@ -136,43 +172,32 @@ function App() {
 
   const verifySecurityOnce = async (userId: string, silent: boolean = false) => {
     if (isVerifyingRef.current) return;
-    
-    // Only show "syncing" UI if NOT silent and online
     if (!silent && navigator.onLine) {
        setSecurityStatus('syncing');
     }
-
     isVerifyingRef.current = true;
-
     try {
-      // If offline, don't even try the network to avoid hung states
       if (!navigator.onLine) {
           throw new Error("Offline");
       }
-
       const { data } = await supabase
         .from('profiles')
         .select('is_approved, active_session_id')
         .eq('id', userId)
         .single();
-
       if (data) {
           setIsApproved(data.is_approved);
           const remoteId = data.active_session_id || null;
           const localId = localSessionIdRef.current;
-
           await saveAuthMetadata({ 
               isApproved: data.is_approved,
               sessionId: remoteId 
           });
           localSessionIdRef.current = remoteId;
-
           const age = getSessionAge();
           if (remoteId && localId && remoteId !== localId && age > 8000) {
               setConflictDetected(true);
           }
-          
-          // Show "Verified" only if we were showing "Syncing"
           if (securityStatus === 'syncing' || !silent) {
             setSecurityStatus('verified');
             setTimeout(() => setSecurityStatus('idle'), 3000);
@@ -181,11 +206,6 @@ function App() {
           }
       }
     } catch (e) {
-      if (navigator.onLine) {
-        console.warn("Security Sync Failed (Network Error).");
-      }
-      
-      // If was syncing, show offline briefly then hide
       if (securityStatus === 'syncing') {
          setSecurityStatus('offline');
          setTimeout(() => setSecurityStatus('idle'), 3000);

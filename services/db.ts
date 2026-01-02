@@ -1,5 +1,6 @@
 
 import { PatientRecord, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, Drug, DrugUsage } from '../types';
+import { supabase } from './supabase';
 
 const DB_NAME = 'TabibHooshmandDB';
 const STORE_NAME = 'patients';
@@ -15,6 +16,7 @@ const VERSION = 8;
 // Synchronous Security Lock Keys
 const SYNC_LOCK_KEY = 'tabib_auth_hard_lock';
 const SESSION_BIRTH_KEY = 'tabib_session_birth_ts';
+const LAST_BACKUP_KEY = 'tabib_last_backup_ts';
 
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
@@ -80,9 +82,43 @@ export const initDB = (): Promise<IDBDatabase> => {
   });
 };
 
+// --- BACKUP HELPERS ---
+
+export const updateLastBackupTime = () => {
+  localStorage.setItem(LAST_BACKUP_KEY, Date.now().toString());
+};
+
+export const getLastBackupTime = (): number => {
+  const ts = localStorage.getItem(LAST_BACKUP_KEY);
+  return ts ? parseInt(ts) : 0;
+};
+
+export const uploadBackupOnline = async (userId: string, dataJson: string): Promise<void> => {
+  // UPSERT logic: replaces if exists for this user_id
+  const { error } = await supabase
+    .from('backups')
+    .upsert({ 
+      user_id: userId, 
+      backup_data: JSON.parse(dataJson),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id' });
+
+  if (error) throw error;
+};
+
+export const fetchOnlineBackup = async (userId: string): Promise<string | null> => {
+  const { data, error } = await supabase
+    .from('backups')
+    .select('backup_data')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) return null;
+  return JSON.stringify(data.backup_data);
+};
+
 // --- AUTH PERSISTENCE HELPERS ---
 
-// Hard Lock: Sync operation to prevent immediate re-entry on reload
 export const setAuthHardLock = (locked: boolean) => {
   if (locked) localStorage.setItem(SYNC_LOCK_KEY, 'true');
   else localStorage.removeItem(SYNC_LOCK_KEY);
@@ -92,7 +128,6 @@ export const isAuthHardLocked = (): boolean => {
   return localStorage.getItem(SYNC_LOCK_KEY) === 'true';
 };
 
-// Birth TS: Helps prevent false conflict messages during first 8 seconds of login
 export const setSessionBirth = () => {
   localStorage.setItem(SESSION_BIRTH_KEY, Date.now().toString());
 };
@@ -105,7 +140,6 @@ export const getSessionAge = (): number => {
 
 export const saveAuthMetadata = async (metadata: { sessionId?: string, isApproved?: boolean }): Promise<void> => {
   const db = await initDB();
-  // If we are saving valid data, ensure lock is removed
   if (metadata.sessionId) setAuthHardLock(false);
   
   return new Promise((resolve, reject) => {
@@ -119,7 +153,6 @@ export const saveAuthMetadata = async (metadata: { sessionId?: string, isApprove
 };
 
 export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isApproved: boolean | null }> => {
-  // FIRST: Check the synchronous hard lock. If locked, deny access instantly.
   if (isAuthHardLocked()) {
     return { sessionId: null, isApproved: null };
   }
@@ -142,9 +175,9 @@ export const getAuthMetadata = async (): Promise<{ sessionId: string | null, isA
 };
 
 export const clearAuthMetadata = async (): Promise<void> => {
-  // 1. Set synchronous lock FIRST
   setAuthHardLock(true);
   localStorage.removeItem(SESSION_BIRTH_KEY);
+  localStorage.removeItem(LAST_BACKUP_KEY); // Also reset backup tracking on logout
   
   const db = await initDB();
   return new Promise((resolve, reject) => {

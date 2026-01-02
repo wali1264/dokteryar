@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { DoctorProfile, PrescriptionSettings, LayoutElement, Drug, DrugUsage } from '../types';
-import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase, getAllDrugs, saveDrug, deleteDrug, getUsageStats } from '../services/db';
-import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database, Pill, Plus, Search, TrendingUp, Edit2, X, Beaker, Droplet, Zap, Syringe, SprayCan } from 'lucide-react';
+import { saveDoctorProfile, getDoctorProfile, saveSettings, getSettings, exportDatabase, importDatabase, getAllDrugs, saveDrug, deleteDrug, getUsageStats, uploadBackupOnline, fetchOnlineBackup, updateLastBackupTime, getLastBackupTime } from '../services/db';
+import { supabase } from '../services/supabase';
+import { User, Save, Upload, Download, CheckCircle, AlertCircle, Loader2, RotateCw, Type, Grid, Settings as SettingsIcon, Layers, Image as ImageIcon, Trash2, Database, Pill, Plus, Search, TrendingUp, Edit2, X, Beaker, Droplet, Zap, Syringe, SprayCan, Globe, Monitor, ShieldCheck, RefreshCw, Clock } from 'lucide-react';
 
 type Tab = 'profile' | 'paper' | 'drugs' | 'backup';
+type BackupSubTab = 'offline' | 'online';
 
 const A4_DIMS = { w: 794, h: 1123 };
 const A5_DIMS = { w: 559, h: 794 };
@@ -28,6 +30,7 @@ const DEFAULT_ELEMENTS: LayoutElement[] = [
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
+  const [backupTab, setBackupTab] = useState<BackupSubTab>('offline');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -36,7 +39,7 @@ const Settings: React.FC = () => {
   });
 
   const [paperSettings, setPaperSettings] = useState<PrescriptionSettings>({
-    topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', backgroundImage: '', paperSize: 'A4', printBackground: true, elements: DEFAULT_ELEMENTS
+    topPadding: 50, fontSize: 14, fontFamily: 'Vazirmatn', backgroundImage: '', paperSize: 'A4', printBackground: true, elements: DEFAULT_ELEMENTS, autoBackupEnabled: false
   });
 
   const [drugs, setDrugs] = useState<Drug[]>([]);
@@ -64,7 +67,8 @@ const Settings: React.FC = () => {
          setPaperSettings(prev => ({
            ...prev, 
            ...s, 
-           elements: s.elements && s.elements.length > 0 ? s.elements : DEFAULT_ELEMENTS 
+           elements: s.elements && s.elements.length > 0 ? s.elements : DEFAULT_ELEMENTS,
+           autoBackupEnabled: s.autoBackupEnabled ?? false
          }));
       }
       const d = await getAllDrugs();
@@ -102,6 +106,17 @@ const Settings: React.FC = () => {
       showMessage('error', 'خطا در ذخیره تنظیمات.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleAutoBackup = async (val: boolean) => {
+    const updated = { ...paperSettings, autoBackupEnabled: val };
+    setPaperSettings(updated);
+    try {
+       await saveSettings(updated);
+       showMessage('success', val ? 'پشتیبان‌گیری خودکار ۲۴ ساعته فعال شد.' : 'پشتیبان‌گیری خودکار غیرفعال شد.');
+    } catch (e) {
+       showMessage('error', 'خطا در بروزرسانی تنظیمات.');
     }
   };
 
@@ -224,11 +239,62 @@ const Settings: React.FC = () => {
       const a = document.body.appendChild(document.createElement('a'));
       a.href = url; a.download = `tabib_backup_${new Date().toISOString().split('T')[0]}.json`; a.click();
       document.body.removeChild(a);
+      updateLastBackupTime();
       showMessage('success', 'نسخه پشتیبان دانلود شد.');
     } catch (e) {
       showMessage('error', 'خطا در تهیه نسخه پشتیبان.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleOnlineBackup = async () => {
+    if (!navigator.onLine) {
+       showMessage('error', 'برای پشتیبان‌گیری آنلاین به اینترنت نیاز دارید.');
+       return;
+    }
+    setLoading(true);
+    try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error("User not found");
+       
+       const json = await exportDatabase();
+       await uploadBackupOnline(user.id, json);
+       updateLastBackupTime();
+       showMessage('success', 'پشتیبان‌گیری آنلاین با موفقیت انجام شد (نسخه قبلی جایگزین گردید).');
+    } catch (e) {
+       console.error(e);
+       showMessage('error', 'خطا در ارتباط با سرور.');
+    } finally {
+       setLoading(false);
+    }
+  };
+
+  const handleOnlineRestore = async () => {
+    if (!navigator.onLine) {
+       showMessage('error', 'برای بازگردانی آنلاین به اینترنت نیاز دارید.');
+       return;
+    }
+    if (!confirm('آیا از بازگردانی داده‌ها از ابر مطمئن هستید؟ داده‌های فعلی شما بازنویسی خواهند شد.')) return;
+    
+    setLoading(true);
+    try {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) throw new Error("User not found");
+       
+       const json = await fetchOnlineBackup(user.id);
+       if (!json) {
+          showMessage('error', 'نسخه پشتیبانی در ابر یافت نشد.');
+          return;
+       }
+       await importDatabase(json);
+       showMessage('success', 'بازیابی با موفقیت انجام شد.');
+       setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+       console.error(e);
+       showMessage('error', 'خطا در بازیابی داده‌ها.');
+    } finally {
+       setLoading(false);
     }
   };
 
@@ -249,11 +315,9 @@ const Settings: React.FC = () => {
     }
   };
 
-  // Performance Optimization: Search and Slice Rendering
   const getFilteredDrugs = () => {
       const q = drugSearch.toLowerCase();
       const filtered = drugs.filter(d => d.name.toLowerCase().includes(q));
-      // Only show first 100 results to maintain instant performance
       return filtered.slice(0, 100);
   };
 
@@ -269,12 +333,12 @@ const Settings: React.FC = () => {
     >
       <div>
         <div className="flex items-center gap-3 mb-6">
-          <div className="bg-gray-800 p-3 rounded-2xl text-white">
+          <div className="bg-gray-800 p-3 rounded-2xl text-white shadow-lg">
              <SettingsIcon size={32} />
           </div>
           <div>
-            <h2 className="text-2xl lg:text-3xl font-bold text-gray-800">تنظیمات و مدیریت</h2>
-            <p className="text-gray-500">Settings & Control Room</p>
+            <h2 className="text-2xl lg:text-3xl font-black text-gray-800 tracking-tight">تنظیمات و مدیریت</h2>
+            <p className="text-gray-500 font-medium">پیکربندی تخصصی و کنترل داده‌های مطب</p>
           </div>
         </div>
 
@@ -294,13 +358,13 @@ const Settings: React.FC = () => {
         </div>
 
         {message && (
-          <div className={`p-4 rounded-xl flex items-center gap-2 mt-4 animate-slide-up ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`p-4 rounded-xl flex items-center gap-2 mt-4 animate-slide-up shadow-sm border ${message.type === 'success' ? 'bg-green-50 text-green-800 border-green-100' : 'bg-red-50 text-red-800 border-red-100'}`}>
              {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-             {message.text}
+             <span className="font-bold text-sm">{message.text}</span>
           </div>
         )}
 
-        <div className="bg-white p-4 lg:p-8 rounded-3xl shadow-sm border border-gray-100 min-h-[500px] mt-6">
+        <div className="bg-white p-4 lg:p-10 rounded-3xl shadow-sm border border-gray-100 min-h-[500px] mt-6">
           
           {activeTab === 'profile' && (
             <div className="max-w-2xl mx-auto space-y-6">
@@ -483,11 +547,96 @@ const Settings: React.FC = () => {
           )}
 
           {activeTab === 'backup' && (
-            <div className="max-w-2xl mx-auto space-y-8 text-center">
-               <h3 className="text-xl font-bold text-gray-800 mb-6 border-b pb-4">پشتیبان‌گیری</h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="bg-green-50 p-8 rounded-3xl border border-green-100 flex flex-col items-center"><div className="w-16 h-16 bg-green-200 text-green-700 rounded-full flex items-center justify-center mb-4"><Download size={32} /></div><h4 className="font-bold text-green-900 text-lg mb-2">خروجی گرفتن</h4><button onClick={handleExport} disabled={loading} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Download size={20} />} دانلود فایل پشتیبان</button></div>
-                  <div className="bg-orange-50 p-8 rounded-3xl border border-orange-100 flex flex-col items-center"><div className="w-16 h-16 bg-orange-200 text-orange-700 rounded-full flex items-center justify-center mb-4"><Upload size={32} /></div><h4 className="font-bold text-orange-900 text-lg mb-2">بازگردانی</h4><div className="relative w-full"><button className="w-full bg-orange-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2">{loading ? <Loader2 className="animate-spin" /> : <Upload size={20} />} آپلود فایل پشتیبان</button><input type="file" accept=".json" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImport} disabled={loading} /></div></div>
+            <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+               <div className="flex flex-col md:flex-row justify-between items-end border-b pb-6 gap-6">
+                  <div className="flex-1">
+                     <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+                        <Database className="text-blue-600" size={28} /> مدیریت جامع پشتیبان‌گیری
+                     </h3>
+                     <p className="text-gray-500 mt-2 font-medium">پروتکل حفاظتی داده‌های مطب (هیبریدی: آفلاین + ابری)</p>
+                  </div>
+                  
+                  {/* AUTO-BACKUP TOGGLE */}
+                  <div className="bg-blue-50 p-4 rounded-3xl border border-blue-100 flex items-center gap-4">
+                     <div className="flex flex-col">
+                        <span className="text-sm font-black text-blue-900">پشتیبان‌گیری خودکار (Self-Service)</span>
+                        <span className="text-[10px] text-blue-600 font-bold">هر ۲۴ ساعت • نسخه دوبل (آفلاین/آنلاین)</span>
+                     </div>
+                     <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" className="sr-only peer" checked={paperSettings.autoBackupEnabled} onChange={e => handleToggleAutoBackup(e.target.checked)} />
+                        <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                     </label>
+                  </div>
+               </div>
+
+               {/* SUB-TABS (Offline Support / Online Support) */}
+               <div className="flex bg-gray-100 p-1.5 rounded-2xl w-fit">
+                  <button onClick={() => setBackupTab('offline')} className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all flex items-center gap-2 ${backupTab === 'offline' ? 'bg-white text-gray-800 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+                     <Monitor size={18} /> پشتیبان‌گیری آفلاین
+                  </button>
+                  <button onClick={() => setBackupTab('online')} className={`px-6 py-2.5 rounded-xl font-black text-sm transition-all flex items-center gap-2 ${backupTab === 'online' ? 'bg-white text-blue-600 shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+                     <Globe size={18} /> پشتیبان‌گیری آنلاین
+                  </button>
+               </div>
+
+               {backupTab === 'offline' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
+                     <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100 flex flex-col items-center text-center transition-all hover:-translate-y-1">
+                        <div className="w-20 h-20 bg-green-50 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-inner"><Download size={40} /></div>
+                        <h4 className="font-black text-xl text-gray-800 mb-3">خروجی آفلاین (Download)</h4>
+                        <p className="text-sm text-gray-500 mb-8 leading-relaxed">ذخیره مستقیم تمامی پرونده‌ها، داروها و تنظیمات بر روی حافظه کامپیوتر یا گوشی شما در قالب فایل JSON.</p>
+                        <button onClick={handleExport} disabled={loading} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-100 flex items-center justify-center gap-2 transition-all hover:bg-green-700 active:scale-95">
+                           {loading ? <Loader2 className="animate-spin" /> : <Download size={24} />} تهیه نسخه پشتیبان آفلاین
+                        </button>
+                     </div>
+                     <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100 flex flex-col items-center text-center transition-all hover:-translate-y-1">
+                        <div className="w-20 h-20 bg-orange-50 text-orange-600 rounded-full flex items-center justify-center mb-6 shadow-inner"><Upload size={40} /></div>
+                        <h4 className="font-black text-xl text-gray-800 mb-3">بازگردانی آفلاین (Restore)</h4>
+                        <p className="text-sm text-gray-500 mb-8 leading-relaxed">فراخوانی داده‌ها از فایل پشتیبان ذخیره شده در سیستم. این عمل داده‌های فعلی را با داده‌های فایل جایگزین می‌کند.</p>
+                        <div className="relative w-full">
+                           <button className="w-full bg-orange-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-orange-100 flex items-center justify-center gap-2 transition-all hover:bg-orange-700 active:scale-95">
+                              {loading ? <Loader2 className="animate-spin" /> : <Upload size={24} />} انتخاب فایل و بازیابی
+                           </button>
+                           <input type="file" accept=".json" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleImport} disabled={loading} />
+                        </div>
+                     </div>
+                  </div>
+               ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-fade-in">
+                     <div className="bg-white p-8 rounded-[2.5rem] border border-blue-100 shadow-xl shadow-blue-50 flex flex-col items-center text-center transition-all hover:-translate-y-1 relative overflow-hidden">
+                        <div className="absolute top-4 right-4 bg-blue-600 text-white p-1 rounded-full"><Globe size={14} /></div>
+                        <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6 shadow-inner"><RefreshCw size={40} /></div>
+                        <h4 className="font-black text-xl text-gray-800 mb-3">پشتیبان‌گیری آنلاین (Supabase)</h4>
+                        <p className="text-sm text-gray-500 mb-8 leading-relaxed">ذخیره داده‌ها در فضای ابری اختصاصی شما. با هر بار اجرا، نسخه قدیمی حذف و نسخه جدید جایگزین می‌شود.</p>
+                        <button onClick={handleOnlineBackup} disabled={loading} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-100 flex items-center justify-center gap-2 transition-all hover:bg-blue-700 active:scale-95">
+                           {loading ? <Loader2 className="animate-spin" /> : <RefreshCw size={24} />} ارسال به فضای ابری
+                        </button>
+                        <div className="mt-4 text-[10px] text-blue-400 font-bold flex items-center gap-1 uppercase tracking-widest"><ShieldCheck size={12} /> پروتکل جایگزینی هوشمند (Upsert) فعال است</div>
+                     </div>
+                     <div className="bg-white p-8 rounded-[2.5rem] border border-indigo-100 shadow-xl shadow-indigo-50 flex flex-col items-center text-center transition-all hover:-translate-y-1 relative overflow-hidden">
+                        <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-inner"><Database size={40} /></div>
+                        <h4 className="font-black text-xl text-gray-800 mb-3">بازگردانی آنلاین (Cloud Sync)</h4>
+                        <p className="text-sm text-gray-500 mb-8 leading-relaxed">فراخوانی مستقیم داده‌های ذخیره شده در حساب کاربری شما از ابر. مناسب برای انتقال داده به دستگاه جدید.</p>
+                        <button onClick={handleOnlineRestore} disabled={loading} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 transition-all hover:bg-indigo-700 active:scale-95">
+                           {loading ? <Loader2 className="animate-spin" /> : <Globe size={24} />} همگام‌سازی از ابر
+                        </button>
+                     </div>
+                  </div>
+               )}
+
+               <div className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-gray-400 border border-gray-200 shadow-sm"><Clock size={24} /></div>
+                     <div>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Last Successful Operation</p>
+                        <p className="text-sm font-bold text-gray-700">
+                           {getLastBackupTime() > 0 ? new Date(getLastBackupTime()).toLocaleString('fa-IR') : 'هنوز عملیاتی انجام نشده است'}
+                        </p>
+                     </div>
+                  </div>
+                  <div className="bg-indigo-50 px-5 py-2 rounded-2xl border border-indigo-100 text-indigo-600 text-[11px] font-black uppercase flex items-center gap-2">
+                     Hybrid Sync Engine v2.5
+                  </div>
                </div>
             </div>
           )}

@@ -100,6 +100,7 @@ export interface PrescriptionSettings {
   elements: LayoutElement[]; // The coordinates for everything
   customDosages?: string[]; // Personal saved dosages like N=20
   customInstructions?: string[]; // Personal saved instructions like "Before sleep"
+  autoBackupEnabled?: boolean; // New: Toggle for automatic hybrid backup
 }
 
 export interface DoctorProfile {
