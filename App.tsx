@@ -48,43 +48,46 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      // ۱. بررسی قفل سخت‌افزاری (امنیتی)
+      // ۱. بررسی قفل سخت‌افزاری امنیتی
       if (isAuthHardLocked()) {
         setAuthLoading(false);
         setIsApproved(null);
         return;
       }
 
-      // ۲. بازیابی اطلاعات از حافظه محلی پایدار (IndexedDB) - این بخش برای حالت آفلاین حیاتی است
-      const { sessionId, isApproved: localApproval } = await getAuthMetadata();
-      localSessionIdRef.current = sessionId;
+      // ۲. اولویت با حافظه محلی پایدار (IndexedDB) برای باز شدن آنی در حالت آفلاین
+      const localData = await getAuthMetadata();
+      localSessionIdRef.current = localData.sessionId;
       
-      if (sessionId && localApproval === true) {
+      if (localData.sessionId && localData.isApproved === true) {
+         // کاربر قبلاً لاگین بوده، بلافاصله دسترسی می‌دهیم
          setIsApproved(true);
-         setSession({ user: { id: 'local_user' } }); // فراهم کردن یک نشست موقت برای ورود به دشبورد
-         setAuthLoading(false); // بلافاصله لودینگ را می‌بندیم تا برنامه در حالت آفلاین باز شود
+         setSession({ user: { id: 'local_user' } });
+         setAuthLoading(false); // لودینگ را می‌بندیم تا برنامه در حالت آفلاین بالا بیاید
          
          if (!navigator.onLine) {
             setSecurityStatus('offline');
          }
       }
 
-      // ۳. تلاش برای همگام‌سازی با سرور در پس‌زمینه (Non-blocking)
+      // ۳. تلاش برای همگام‌سازی با سرور (Non-blocking)
       try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+        
         if (currentSession) {
           setSession(currentSession);
           await verifySecurityOnce(currentSession.user.id, true);
           setupRealtimeSecurity(currentSession.user.id);
           handleAutoBackup(currentSession.user.id);
           checkDatabaseMigration(currentSession.user.id);
-        } else if (!sessionId) {
-          // اگر نه دیتای محلی داریم نه نشست سروری، به صفحه لاگین می‌رویم
+        } else if (!localData.sessionId) {
+          // اگر نه دیتای محلی داریم و نه سشن سروری، به صفحه لاگین می‌رویم
           setAuthLoading(false);
           setIsApproved(null);
         }
       } catch (e) {
-        console.warn("Server sync failed, continuing in offline mode.");
+        console.warn("Could not sync with Supabase, continuing in standalone offline mode.");
+        // در صورت قطع بودن اینترنت، اگر لاگین قبلی داشتیم، مرحله ۳ متوقف می‌شود ولی مرحله ۲ برنامه را باز نگه می‌دارد
         setAuthLoading(false);
       }
     };
