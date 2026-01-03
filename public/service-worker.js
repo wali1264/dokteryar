@@ -1,31 +1,48 @@
 
-const CACHE_NAME = 'tabib-ai-cache-v4';
-const urlsToCache = [
+const CACHE_NAME = 'tabib-ai-cache-v5';
+
+// اسامی تمام کتابخانه‌های خارجی که برای اجرای برنامه حیاتی هستند
+const externalUrls = [
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap',
+  'https://aistudiocdn.com/react-dom@^19.2.1/',
+  'https://aistudiocdn.com/react-markdown@^10.1.0',
+  'https://aistudiocdn.com/react@^19.2.1/',
+  'https://aistudiocdn.com/react@^19.2.1',
+  'https://aistudiocdn.com/lucide-react@^0.556.0',
+  'https://aistudiocdn.com/@google/genai@^1.31.0',
+  'https://aistudiocdn.com/@supabase/supabase-js@^2.39.0'
+];
+
+const localUrls = [
   '/',
   '/index.html',
+  '/index.tsx',
   '/manifest.json',
   '/icon-192.png',
   '/icon-512.png'
 ];
 
-// Install SW - Pre-cache critical Shell
+const urlsToCache = [...localUrls, ...externalUrls];
+
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log('[SW] Pre-caching all dependencies for offline mode');
+      // استفاده از addAll برای اطمینان از ذخیره شدن تمام منابع قبل از فعال‌سازی
       return cache.addAll(urlsToCache);
     })
   );
 });
 
-// Activate SW - Clean OLD caches and take control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', cacheName);
+            console.log('[SW] Removing old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -35,62 +52,30 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch Strategy: AGGRESSIVE CACHE-FIRST for Local Assets
+// استراتژی کش هوشمند: ابتدا کش، سپس شبکه (Cache-First with Network Fallback)
+// این استراتژی برای اجرای سریع برنامه در حالت آفلاین حیاتی است
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Logic for Local Assets (Same Origin)
-  if (url.origin === self.location.origin) {
-    // Strategy for HTML (Navigation) -> Cache First then Network
-    if (event.request.mode === 'navigate') {
-      event.respondWith(
-        caches.match(event.request).then((cachedResponse) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
-            return networkResponse;
-          });
-          return cachedResponse || fetchPromise;
-        }).catch(() => caches.match('/') || caches.match('/index.html'))
-      );
-      return;
-    }
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      if (response) {
+        return response; // اگر در کش بود، بلافاصله برگردان
+      }
 
-    // Strategy for Assets (JS, CSS, Images) -> STALE-WHILE-REVALIDATE
-    // Load from cache INSTANTLY, update in background.
-    event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((response) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            if (networkResponse.status === 200) {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
+      return fetch(event.request).then((networkResponse) => {
+        // اگر منبع جدیدی بود، آن را برای استفاده‌های بعدی در کش ذخیره کن
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
           });
-          return response || fetchPromise;
-        });
-      })
-    );
-  } else {
-    // EXTERNAL RESOURCES (Google Fonts, Tailwind CDN, etc.)
-    // Only cache known reliable CDNs to avoid CORS errors
-    if (
-      url.hostname.includes('tailwindcss.com') || 
-      url.hostname.includes('gstatic.com') || 
-      url.hostname.includes('googleapis.com') ||
-      url.hostname.includes('aistudiocdn.com')
-    ) {
-      event.respondWith(
-        caches.match(event.request).then((cachedResponse) => {
-          return cachedResponse || fetch(event.request).then((networkResponse) => {
-            return caches.open(CACHE_NAME).then((cache) => {
-              if (networkResponse.status === 200) {
-                cache.put(event.request, networkResponse.clone());
-              }
-              return networkResponse;
-            });
-          });
-        })
-      );
-    }
-  }
+        }
+        return networkResponse;
+      }).catch(() => {
+        // اگر آفلاین بودیم و در کش هم نبود، برای درخواست‌های ناوبری صفحه اصلی را برگردان
+        if (event.request.mode === 'navigate') {
+          return caches.match('/');
+        }
+      });
+    })
+  );
 });
