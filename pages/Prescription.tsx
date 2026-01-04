@@ -594,7 +594,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
           setItems(res.items || items);
           
-          setShowDigitalPad(false); // Only close if successful
+          // CRITICAL: Ensure the Pad is closed AND the view is set to 'editor' for review
+          setShowDigitalPad(false); 
+          setViewMode('editor');
         } catch (e) {
           alert("خطا در تحلیل دست‌خط دیجیتال. لطفاً مجدداً تلاش کنید.");
           // IMPORTANT: showDigitalPad remains TRUE, preserving the ink
@@ -755,10 +757,26 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       if (currentPatient?.id) localStorage.removeItem(`tabib_draft_${currentPatient.id}`); 
       setIsNewPatientPadMode(false); 
       setActiveSessions(prev => prev.filter(s => s.id !== currentPatient?.id && s.id !== currentTempSessionId.current));
-      alert("نسخه با موفقیت در پرونده ثبت شد.");
+      // alert("نسخه با موفقیت در پرونده ثبت شد.");
     } catch (e) { 
       console.error(e); 
       alert("خطا در ذخیره اطلاعات.");
+    }
+  };
+
+  const handleFinalizeAndPrint = async () => {
+    setLoading(true);
+    try {
+      await saveToPatientRecord();
+      if (isExpressMode) {
+        handleAutoPrint();
+      } else {
+        alert("نسخه با موفقیت در پرونده ثبت شد.");
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1182,6 +1200,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   const handleAutoPrint = () => { if (items.filter(it => it.drug).length === 0) return; const mode = settings.backgroundImage ? 'custom' : 'plain'; handlePrint(mode); };
   const printButtonLabel = settings.backgroundImage ? 'چاپ روی سربرگ مطب' : 'چاپ نسخه دیجیتال (Majestic)';
+  const finalizeButtonLabel = isExpressMode ? 'ثبت و چاپ نسخه' : 'ثبت و اتمام ویزیت';
 
   const renderLanding = () => (
     <div className="flex flex-col items-center justify-center min-h-[80vh] animate-fade-in gap-8">
@@ -1440,7 +1459,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                    <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}>{isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}</button>
                    {isExpressMode && <div className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 animate-pulse flex items-center gap-1">Guest</div>}
                    <button onClick={handleAuditSafety} disabled={safetyLoading || items.filter(it => it.drug).length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
-                   <button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
+                   <button onClick={() => handleFinalizeAndPrint()} disabled={items.filter(it => it.drug).length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
                    <button onClick={handleAutoPrint} disabled={items.filter(it => it.drug).length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
                    <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
                 </div>
@@ -1482,7 +1501,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                  <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
               )}
            </div>
-           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.filter(it => it.drug).length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
+           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => handleFinalizeAndPrint()} disabled={items.filter(it => it.drug).length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleFinalizeAndPrint} disabled={items.filter(it => it.drug).length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{finalizeButtonLabel}</button></div>
         </div>
 
         <div className="hidden lg:block min-h-screen">
@@ -1561,7 +1580,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     <button type="button" onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button>
                   </td>
                 </tr>
-              ))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.filter(it => it.drug).length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Save size={26} /> ثبت نسخه و اتمام</button></div></div></div>
+              ))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.filter(it => it.drug).length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={() => handleFinalizeAndPrint()} disabled={items.filter(it => it.drug).length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Save size={26} /> {finalizeButtonLabel}</button></div></div></div>
            </div>
         </div>
         </>
@@ -1719,7 +1738,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
                 <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
                 
-                <button onPointerDown={(e) => { e.stopPropagation(); handleAutoPrint(); }} className="p-2 lg:p-3 text-gray-500 hover:text-blue-600 bg-blue-50 rounded-2xl transition-all" title="چاپ مستقیم نسخه">
+                <button onPointerDown={(e) => { e.stopPropagation(); handleFinalizeAndPrint(); }} className="p-2 lg:p-3 text-gray-500 hover:text-blue-600 bg-blue-50 rounded-2xl transition-all" title="چاپ مستقیم نسخه">
                     <Printer size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
                 </button>
               </div>
@@ -1847,7 +1866,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                       <span className="text-[12px] font-black text-indigo-800 uppercase tracking-widest flex items-center gap-2"><Pill size={16}/> لیست اقلام دارویی</span>
                                       <div className="flex gap-2">
                                          <button onClick={addItem} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:rotate-90 transition-all active:scale-90"><Plus size={18}/></button>
-                                         <button onClick={handleAutoPrint} className="p-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition-all active:scale-90"><Printer size={18}/></button>
+                                         <button onClick={handleFinalizeAndPrint} className="p-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition-all active:scale-90"><Printer size={18}/></button>
                                       </div>
                                    </div>
                                    
