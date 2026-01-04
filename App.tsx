@@ -33,12 +33,14 @@ function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
   const [currentRecord, setCurrentRecord] = useState<PatientRecord | null>(null);
   
+  // --- AUTH & SECURITY STATES ---
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true); 
   const [isApproved, setIsApproved] = useState<boolean | null>(null);
   const [securityStatus, setSecurityStatus] = useState<'idle' | 'syncing' | 'verified' | 'offline'>('idle');
   const [conflictDetected, setConflictDetected] = useState(false);
 
+  // --- MIGRATION STATES ---
   const [showRestorePrompt, setShowRestorePrompt] = useState(false);
   const [onlineBackupDate, setOnlineBackupDate] = useState<string | null>(null);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -48,46 +50,38 @@ function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      // ۱. بررسی قفل سخت‌افزاری امنیتی
       if (isAuthHardLocked()) {
         setAuthLoading(false);
         setIsApproved(null);
         return;
       }
 
-      // ۲. اولویت با حافظه محلی پایدار (IndexedDB) برای باز شدن آنی در حالت آفلاین
-      const localData = await getAuthMetadata();
-      localSessionIdRef.current = localData.sessionId;
+      const { sessionId, isApproved: localApproval } = await getAuthMetadata();
+      localSessionIdRef.current = sessionId;
       
-      if (localData.sessionId && localData.isApproved === true) {
-         // کاربر قبلاً لاگین بوده، بلافاصله دسترسی می‌دهیم
+      if (sessionId && localApproval === true) {
          setIsApproved(true);
-         setSession({ user: { id: 'local_user' } });
-         setAuthLoading(false); // لودینگ را می‌بندیم تا برنامه در حالت آفلاین بالا بیاید
-         
          if (!navigator.onLine) {
-            setSecurityStatus('offline');
+            setAuthLoading(false);
+            setSecurityStatus('idle'); 
          }
       }
 
-      // ۳. تلاش برای همگام‌سازی با سرور (Non-blocking)
-      try {
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      setSession(currentSession);
+      
+      if (currentSession) {
+        const runSilent = (sessionId && localApproval === true);
+        await verifySecurityOnce(currentSession.user.id, runSilent);
+        setupRealtimeSecurity(currentSession.user.id);
+        handleAutoBackup(currentSession.user.id);
         
-        if (currentSession) {
-          setSession(currentSession);
-          await verifySecurityOnce(currentSession.user.id, true);
-          setupRealtimeSecurity(currentSession.user.id);
-          handleAutoBackup(currentSession.user.id);
-          checkDatabaseMigration(currentSession.user.id);
-        } else if (!localData.sessionId) {
-          // اگر نه دیتای محلی داریم و نه سشن سروری، به صفحه لاگین می‌رویم
-          setAuthLoading(false);
-          setIsApproved(null);
-        }
-      } catch (e) {
-        console.warn("Could not sync with Supabase, continuing in standalone offline mode.");
-        // در صورت قطع بودن اینترنت، اگر لاگین قبلی داشتیم، مرحله ۳ متوقف می‌شود ولی مرحله ۲ برنامه را باز نگه می‌دارد
+        // --- SMART MIGRATION CHECK ---
+        checkDatabaseMigration(currentSession.user.id);
+      } else if (!sessionId) {
+        setAuthLoading(false);
+        setIsApproved(null);
+      } else {
         setAuthLoading(false);
       }
     };
@@ -95,13 +89,13 @@ function App() {
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
-      if (newSession) {
-         setSession(newSession);
+      setSession(newSession);
+      if (newSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
          verifySecurityOnce(newSession.user.id, false);
          setupRealtimeSecurity(newSession.user.id);
          handleAutoBackup(newSession.user.id);
          checkDatabaseMigration(newSession.user.id);
-      } else if (!newSession && !localSessionIdRef.current) {
+      } else if (!newSession) {
          setAuthLoading(false);
          setIsApproved(null);
          setConflictDetected(false);
@@ -136,7 +130,7 @@ function App() {
         if (json) {
            await importDatabase(json);
            setShowRestorePrompt(false);
-           window.location.reload();
+           window.location.reload(); // Hard refresh to ensure all stores are initialized with new data
         }
      } catch (e) {
         alert("خطا در بازیابی اطلاعات ابری.");
@@ -156,14 +150,24 @@ function App() {
 
       if (now - lastBackup >= twentyFourHours) {
         const json = await exportDatabase();
+
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `auto_offline_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
         if (navigator.onLine) {
           try {
             await uploadBackupOnline(userId, json);
-            updateLastBackupTime();
           } catch (e) {
             console.warn("Auto-Backup Online Failed.");
           }
         }
+        updateLastBackupTime();
       }
     } catch (error) {
       console.error("Auto Backup Engine Error:", error);
@@ -171,7 +175,6 @@ function App() {
   };
 
   const setupRealtimeSecurity = (userId: string) => {
-    if (!navigator.onLine) return;
     const channel = supabase
       .channel(`profile_changes_${userId}`)
       .on(
@@ -202,10 +205,15 @@ function App() {
   };
 
   const verifySecurityOnce = async (userId: string, silent: boolean = false) => {
-    if (isVerifyingRef.current || !navigator.onLine) return;
-    if (!silent) setSecurityStatus('syncing');
+    if (isVerifyingRef.current) return;
+    if (!silent && navigator.onLine) {
+       setSecurityStatus('syncing');
+    }
     isVerifyingRef.current = true;
     try {
+      if (!navigator.onLine) {
+          throw new Error("Offline");
+      }
       const { data } = await supabase
         .from('profiles')
         .select('is_approved, active_session_id')
@@ -224,12 +232,20 @@ function App() {
           if (remoteId && localId && remoteId !== localId && age > 8000) {
               setConflictDetected(true);
           }
-          setSecurityStatus('verified');
-          setTimeout(() => setSecurityStatus('idle'), 3000);
+          if (securityStatus === 'syncing' || !silent) {
+            setSecurityStatus('verified');
+            setTimeout(() => setSecurityStatus('idle'), 3000);
+          } else {
+            setSecurityStatus('idle');
+          }
       }
     } catch (e) {
-      setSecurityStatus('offline');
-      setTimeout(() => setSecurityStatus('idle'), 3000);
+      if (securityStatus === 'syncing') {
+         setSecurityStatus('offline');
+         setTimeout(() => setSecurityStatus('idle'), 3000);
+      } else {
+         setSecurityStatus('idle');
+      }
     } finally {
       setAuthLoading(false);
       isVerifyingRef.current = false;
@@ -374,6 +390,7 @@ function App() {
         )}
       </div>
 
+      {/* MIGRATION PROMPT MODAL */}
       {showRestorePrompt && (
         <div className="fixed inset-0 z-[2000] bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 font-sans text-right" dir="rtl">
            <div className="bg-white max-w-lg w-full rounded-[2.5rem] shadow-2xl p-10 border border-blue-100 animate-slide-up relative overflow-hidden">

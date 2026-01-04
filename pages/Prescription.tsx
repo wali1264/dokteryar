@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { digitizePrescription, processDigitalPadAI, checkPrescriptionSafety, processScribeAudio, transcribeMedicalAudio } from '../services/geminiService';
 import { saveTemplate, getAllTemplates, deleteTemplate, getSettings, saveSettings, saveRecord, getDoctorProfile, getUniquePatients, getAllDrugs, trackDrugUsage, getUsageStats, saveComplaintTemplate, getAllComplaintTemplates, deleteComplaintTemplate, getNextDisplayId, getRecordsByName } from '../services/db';
 import { PrescriptionItem, PrescriptionTemplate, PrescriptionSettings, DoctorProfile, PatientVitals, PatientRecord, Drug, DrugUsage, PrescriptionRecord, LayoutElement } from '../types';
-import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks, BookmarkPlus, PenTool, Eraser, RotateCcw, ZoomIn, ZoomOut, Check, Maximize, GripVertical, Settings2, Type, MonitorOff } from 'lucide-react';
+import { FileSignature, ScanLine, Printer, Save, Trash, Plus, CheckCircle, Search, LayoutTemplate, Activity, UserPlus, Stethoscope, ArrowLeft, X, Phone, Scale, AlertCircle, WifiOff, Camera, Image as ImageIcon, Heart, Thermometer, Wind, Droplet, Hash, FileText, ChevronRight, Loader2, Sparkles, User, RotateCw, History, RefreshCw, Zap, TrendingUp, Pill, Beaker, SprayCan, Brain, ZapOff, ShieldAlert, ShieldCheck, Info, Mic, MicOff, List, Monitor, ListChecks, BookmarkPlus, PenTool, Eraser, RotateCcw, ZoomIn, ZoomOut, Check, Maximize, GripVertical, Settings2, Type, MonitorOff, UserRoundSearch, Layers, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface PrescriptionProps {
   initialRecord: PatientRecord | null;
@@ -12,7 +12,10 @@ interface PrescriptionProps {
 const A4_DIMS = { w: 794, h: 1123 };
 const A5_DIMS = { w: 559, h: 794 };
 
-// --- MOBILE SUB-COMPONENT ---
+const toTitleCase = (str: string) => {
+  return str.replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+};
+
 const MobileVitalInput = ({ label, icon: Icon, value, prevValue, unit, field, color, onChange }: any) => (
   <div className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-200 transition-all relative">
      <div className="flex items-center justify-between">
@@ -37,7 +40,6 @@ const MobileVitalInput = ({ label, icon: Icon, value, prevValue, unit, field, co
   </div>
 );
 
-// --- DESKTOP PROFESSIONAL VITAL INPUT ---
 const DesktopVitalSidebarItem = ({ label, icon: Icon, value, unit, field, color, onChange }: any) => (
   <div className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50 transition-all flex flex-col items-center gap-0">
     <div className="flex items-center justify-between w-full mb-0.5 px-1">
@@ -68,7 +70,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   
   const [diagnosis, setDiagnosis] = useState('');
   const [chiefComplaint, setChiefComplaint] = useState('');
-  const [items, setItems] = useState<PrescriptionItem[]>([]);
+  const [items, setItems] = useState<PrescriptionItem[]>([
+    { drug: '', dosage: '', instruction: '' },
+    { drug: '', dosage: '', instruction: '' },
+    { drug: '', dosage: '', instruction: '' },
+    { drug: '', dosage: '', instruction: '' }
+  ]);
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   const [complaintTemplates, setComplaintTemplates] = useState<any[]>([]);
   const [showComplaintTemplateMenu, setShowComplaintTemplateMenu] = useState(false);
@@ -79,7 +86,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
   const [suggestionType, setSuggestionType] = useState<'drug' | 'dosage' | 'instruction' | null>(null);
 
-  // Preference Hub State
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
   const [customDosages, setCustomDosages] = useState<string[]>([]);
   const [customInstructions, setCustomInstructions] = useState<string[]>([]);
@@ -108,18 +114,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [templateSearch, setTemplateSearch] = useState('');
   const [showMobileRestrictModal, setShowMobileRestrictModal] = useState(false);
 
-  // AI Safety State
   const [safetyLoading, setSafetyLoading] = useState(false);
   const [safetyReport, setSafetyReport] = useState<any | null>(null);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
 
-  // --- AI SCRIBE STATE ---
   const [isRecordingScribe, setIsRecordingScribe] = useState(false);
   const [isProcessingScribe, setIsProcessingScribe] = useState(false);
   const scribeMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const scribeChunksRef = useRef<Blob[]>([]);
 
-  // --- AUDIO DICTATION STATE FOR CC ---
   const [isRecordingCC, setIsRecordingCC] = useState(false);
   const [isProcessingCC, setIsProcessingCC] = useState(false);
   const ccMediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -130,7 +133,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [showCamera, setShowCamera] = useState(false);
 
-  // --- DIGITAL PAD ENHANCED STATE ---
   const [showDigitalPad, setShowDigitalPad] = useState(false);
   const padBgCanvasRef = useRef<HTMLCanvasElement>(null);
   const padInkCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -145,21 +147,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [padThickness, setPadThickness] = useState(3);
   const [activeTypingFieldId, setActiveTypingFieldId] = useState<string | null>(null);
   
-  // Floating Lever & Temporal State
   const [padToolbarPos, setPadToolbarPos] = useState({ x: 20, y: 20 });
   const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
   const toolbarDragOffset = useRef({ x: 0, y: 0 });
   const [showPadSettings, setShowPadSettings] = useState(false);
   const padSettingsTimerRef = useRef<any>(null);
 
-  // Pad Search States
   const [showPadSearch, setShowPadSearch] = useState(false);
   const [padSearchTerm, setPadSearchTerm] = useState('');
 
-  // New Patient Pad Mode
-  const [isNewPatientPadMode, setIsNewPatientPadMode] = useState(false);
+  const [isNewPatientPadMode, setIsNewPatientPadMode] = useState(true); 
+  const [duplicateWarning, setDuplicateWarning] = useState(false);
 
-  // New Patient / Quick Form States
   const [newPatientName, setNewPatientName] = useState('');
   const [newPatientAge, setNewPatientAge] = useState('');
   const [newPatientGender, setNewPatientGender] = useState<'male' | 'female'>('male');
@@ -167,6 +166,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [newPatientWeight, setNewPatientWeight] = useState('');
   const [newPatientHistory, setNewPatientHistory] = useState('');
   const [newPatientAllergies, setNewPatientAllergies] = useState('');
+
+  const [activeSessions, setActiveSessions] = useState<any[]>([]);
+  const [showSessionQueue, setShowSessionQueue] = useState(false);
+  const currentTempSessionId = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     const handleStatusChange = () => setIsOnline(navigator.onLine);
@@ -195,11 +198,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     localStorage.setItem(`tabib_draft_${selectedPatient.id}`, JSON.stringify(draft));
   }, [items, diagnosis, chiefComplaint, vitals, selectedPatient, viewMode, isExpressMode]);
 
-  // Sync Slider value with current tool's thickness memory
   useEffect(() => {
     if (padTool === 'pen') setPadThickness(padPenThickness);
     else if (padTool === 'eraser') setPadThickness(padEraserThickness);
   }, [padTool, padPenThickness, padEraserThickness]);
+
+  // Real-time Duplicate Name Check
+  useEffect(() => {
+    if (isNewPatientPadMode && selectedPatient?.name) {
+       const exists = allPatients.some(p => p.name.trim() === selectedPatient.name.trim());
+       setDuplicateWarning(exists);
+    } else {
+       setDuplicateWarning(false);
+    }
+  }, [selectedPatient?.name, allPatients, isNewPatientPadMode]);
 
   const loadInitialData = async () => {
     try {
@@ -233,8 +245,20 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   );
 
   const handleSelectPatient = (patient: PatientRecord) => {
+    // Check if this patient is already in the queue
+    const sessionInQueue = activeSessions.find(s => s.id === patient.id || (s.patient && s.patient.id === patient.id));
+    
+    if (sessionInQueue) {
+        loadSessionFromQueue(sessionInQueue);
+        return;
+    }
+
+    if (selectedPatient?.name || items.some(it => it.drug) || diagnosis || chiefComplaint) {
+        saveCurrentToQueue();
+    }
+
     setSelectedPatient(patient);
-    setIsExpressMode(patient.id.startsWith('guest_'));
+    setIsExpressMode(patient?.id?.startsWith('guest_') || false);
     setViewMode('editor');
     setVitals({
       bloodPressure: patient.vitals?.bloodPressure || '', 
@@ -248,11 +272,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     });
     setPreviousVitals(patient.vitals || null);
 
-    setItems([]);
+    setItems([
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' }
+    ]);
     setDiagnosis('');
     setChiefComplaint('');
 
-    if (!patient.id.startsWith('guest_')) {
+    if (patient?.id && !patient.id.startsWith('guest_')) {
       const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
       if (savedDraft) {
         try {
@@ -264,10 +293,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         } catch (e) { console.error("Draft parse error", e); }
       }
     }
-    // Auto-close search if selecting from pad
     setShowPadSearch(false);
     setPadSearchTerm('');
     setIsNewPatientPadMode(false);
+    currentTempSessionId.current = patient.id;
   };
 
   const handleVitalChange = (field: string, value: string) => {
@@ -286,7 +315,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   };
 
   const discardDraft = () => {
-    if (selectedPatient) localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
+    if (selectedPatient?.id) localStorage.removeItem(`tabib_draft_${selectedPatient.id}`);
     setShowDraftBanner(false);
     setActiveDraft(null);
   };
@@ -380,7 +409,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } catch (e) { alert('خطا در اسکن نسخه'); } finally { setLoading(false); }
   };
 
-  // --- DIGITAL PAD LOGIC ---
   const startDigitalPad = () => {
     if (window.innerWidth < 1024) {
        setShowMobileRestrictModal(true);
@@ -393,7 +421,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setPadZoom(1);
     setPadTool('idle'); 
     setPadThickness(padPenThickness); 
-    setPadToolbarPos({ x: (window.innerWidth / 2) - 200, y: (window.innerHeight / 2) - 40 });
+    
+    const paperWidth = settings.paperSize === 'A4' ? A4_DIMS.w : A5_DIMS.w;
+    const initialX = (window.innerWidth / 2) - (paperWidth / 2) - 140; 
+    setPadToolbarPos({ x: Math.max(initialX, 20), y: (window.innerHeight / 2) - 250 });
+    
     setTimeout(initPadCanvas, 100);
   };
 
@@ -530,12 +562,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     finalCanvas.toBlob(async (blob) => {
       if (blob) {
         const file = new File([blob], "digital_handwritten_rx.jpg", { type: "image/jpeg" });
-        setShowDigitalPad(false);
         setLoading(true);
         try {
           const res = await processDigitalPadAI(file);
           const guestRecord: PatientRecord = {
-            id: `guest_${Date.now()}`,
+            id: (res.patientName && res.patientName !== 'بیمار مهمان') ? `guest_${Date.now()}` : currentTempSessionId.current,
             name: res.patientName || 'بیمار مهمان',
             age: res.patientAge || '',
             gender: res.patientGender || 'male',
@@ -554,13 +585,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 bloodSugar: res.vitals?.bloodSugar || ''
             }
           };
-          handleSelectPatient(guestRecord);
-          if (res.items) setItems(res.items);
-          if (res.diagnosis) setDiagnosis(res.diagnosis);
-          if (res.chiefComplaint) setChiefComplaint(res.chiefComplaint);
-          if (res.vitals) setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
+          
+          // Successful analysis logic
+          setSelectedPatient(guestRecord);
+          setIsExpressMode(true);
+          setDiagnosis(res.diagnosis || '');
+          setChiefComplaint(res.chiefComplaint || '');
+          setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
+          setItems(res.items || items);
+          
+          setShowDigitalPad(false); // Only close if successful
         } catch (e) {
-          alert("خطا در تحلیل دست‌خط دیجیتال");
+          alert("خطا در تحلیل دست‌خط دیجیتال. لطفاً مجدداً تلاش کنید.");
+          // IMPORTANT: showDigitalPad remains TRUE, preserving the ink
         } finally {
           setLoading(false);
         }
@@ -593,6 +630,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   };
 
   const resetPadForNewPatient = () => {
+    if (selectedPatient?.name || items.some(it => it.drug) || diagnosis || chiefComplaint) {
+        saveCurrentToQueue();
+    }
+
+    currentTempSessionId.current = crypto.randomUUID();
     setSelectedPatient(null);
     setIsExpressMode(false);
     setVitals({
@@ -600,41 +642,95 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     });
     setDiagnosis('');
     setChiefComplaint('');
-    setItems([]);
+    setItems([
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' },
+        { drug: '', dosage: '', instruction: '' }
+    ]);
+    setIsNewPatientPadMode(true);
+    setDuplicateWarning(false);
+  };
+
+  const saveCurrentToQueue = () => {
+    const name = selectedPatient?.name || "بیمار بی‌نام";
+    const sId = selectedPatient?.id || currentTempSessionId.current;
+    
+    if (name === 'بیمار بی‌نام' && !diagnosis && !chiefComplaint && !items.some(i => i.drug)) return;
+
+    const session = {
+        id: sId,
+        patient: selectedPatient ? { ...selectedPatient } : { id: sId, name: name, age: '', gender: 'male', vitals: { ...vitals } },
+        vitals: { ...vitals },
+        diagnosis,
+        chiefComplaint,
+        items: JSON.parse(JSON.stringify(items)), 
+        timestamp: Date.now()
+    };
+    
+    setActiveSessions(prev => {
+        const filtered = prev.filter(s => s.id !== session.id);
+        return [session, ...filtered].slice(0, 20); 
+    });
+  };
+
+  const loadSessionFromQueue = (session: any) => {
+    if (selectedPatient?.name || items.some(it => it.drug) || diagnosis || chiefComplaint) {
+        saveCurrentToQueue();
+    }
+    
+    const isGuest = session.patient?.id?.startsWith('guest_') || (session.id && session.id.length > 20);
+    
+    setSelectedPatient(isGuest ? { ...session.patient, name: (session.patient?.name === 'بیمار بی‌نام' || !session.patient?.name) ? '' : session.patient.name } : session.patient);
+    setVitals({ ...session.vitals });
+    setDiagnosis(session.diagnosis || '');
+    setChiefComplaint(session.chiefComplaint || '');
+    setItems([...(session.items || [])]);
+    setIsExpressMode(isGuest);
+    setShowSessionQueue(false);
+    currentTempSessionId.current = session.id;
+    setIsNewPatientPadMode(isGuest && (!session.patient || !session.patient.name || session.patient.name === 'بیمار بی‌نام'));
+    setViewMode('editor'); 
+  };
+
+  const removeSessionFromQueue = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if(confirm('آیا از حذف این ویزیت ناتمام از لیست انتظار اطمینان دارید؟')) {
+       setActiveSessions(prev => prev.filter(s => s.id !== id));
+    }
   };
 
   const saveToPatientRecord = async () => {
     let currentPatient = selectedPatient;
     
-    // --- NEW PATIENT MODE COLLISION CHECK ---
-    if (isNewPatientPadMode) {
+    if (isNewPatientPadMode || !selectedPatient?.id || selectedPatient.id.length > 30) {
         if (!selectedPatient?.name) {
             alert("لطفاً نام بیمار را وارد کنید.");
             return;
         }
+        
         const existing = await getRecordsByName(selectedPatient.name);
-        if (existing.length > 0) {
-            alert(`خطا: پرونده‌ای با نام «${selectedPatient.name}» قبلاً در سیستم ثبت شده است.`);
+        if (existing.length > 0 && isNewPatientPadMode) {
+            alert(`خطا: پرونده‌ای با نام «${selectedPatient.name}» قبلاً ثبت شده است.`);
             return;
         }
-    }
 
-    // If typing manually and no patient selected, or name changed, auto-create a patient record
-    if (!currentPatient || currentPatient.name !== (selectedPatient?.name || '')) {
-       const guestRecord: PatientRecord = {
-          id: `guest_${Date.now()}`,
-          name: selectedPatient?.name || 'بیمار مهمان',
-          age: selectedPatient?.age || '',
-          gender: selectedPatient?.gender || 'male',
-          chiefComplaint: chiefComplaint,
-          history: '',
-          visitDate: Date.now(),
-          status: 'completed',
-          displayId: await getNextDisplayId(),
-          vitals: vitals
-       };
-       await saveRecord(guestRecord);
-       currentPatient = guestRecord;
+        const realId = crypto.randomUUID();
+        const newRecord: PatientRecord = {
+            id: realId,
+            name: selectedPatient.name,
+            age: selectedPatient.age || '',
+            gender: selectedPatient.gender || 'male',
+            chiefComplaint: chiefComplaint,
+            history: '',
+            visitDate: Date.now(),
+            status: 'completed',
+            displayId: await getNextDisplayId(),
+            vitals: vitals,
+            prescriptions: []
+        };
+        await saveRecord(newRecord);
+        currentPatient = newRecord;
     }
 
     const newPrescription: PrescriptionRecord = {
@@ -647,19 +743,22 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     };
 
     const updatedRecord: PatientRecord = {
-      ...currentPatient, 
+      ...currentPatient!, 
       status: 'completed', 
-      prescriptions: [...(currentPatient.prescriptions || []), newPrescription], 
+      prescriptions: [...(currentPatient!.prescriptions || []), newPrescription], 
       vitals: vitals,
     };
 
     try { 
       await saveRecord(updatedRecord); 
       setSelectedPatient(updatedRecord); 
-      if (currentPatient.id) localStorage.removeItem(`tabib_draft_${currentPatient.id}`); 
-      setIsNewPatientPadMode(false); // Reset mode after successful unique save
+      if (currentPatient?.id) localStorage.removeItem(`tabib_draft_${currentPatient.id}`); 
+      setIsNewPatientPadMode(false); 
+      setActiveSessions(prev => prev.filter(s => s.id !== currentPatient?.id && s.id !== currentTempSessionId.current));
+      alert("نسخه با موفقیت در پرونده ثبت شد.");
     } catch (e) { 
       console.error(e); 
+      alert("خطا در ذخیره اطلاعات.");
     }
   };
 
@@ -762,7 +861,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   const updateItem = (index: number, field: keyof PrescriptionItem, value: string) => {
     const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    const finalValue = (field === 'drug' || field === 'instruction') ? toTitleCase(value) : value;
+    newItems[index] = { ...newItems[index], [field]: finalValue };
     setItems(newItems);
     if (field === 'drug') setSearchQuery(value);
   };
@@ -776,24 +876,42 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         if (stats.lastDosage) newItems[activeItemIndex].dosage = stats.lastDosage;
         if (stats.lastInstruction) newItems[activeItemIndex].instruction = stats.lastInstruction;
     }
-    setItems(newItems); setActiveItemIndex(null); setSuggestionType(null);
+    setItems(newItems); 
+    setSuggestionType(null);
+    focusField(`item_dosage_${activeItemIndex}`);
   };
 
   const selectSuggestedDosage = (dosage: string) => {
     if (activeItemIndex === null) return;
     const newItems = [...items];
     newItems[activeItemIndex].dosage = dosage;
-    setItems(newItems); setActiveItemIndex(null); setSuggestionType(null);
+    setItems(newItems); 
+    setSuggestionType(null);
+    focusField(`item_instruction_${activeItemIndex}`);
   };
 
   const selectSuggestedInstruction = (instruction: string) => {
     if (activeItemIndex === null) return;
     const newItems = [...items];
     newItems[activeItemIndex].instruction = instruction;
-    setItems(newItems); setActiveItemIndex(null); setSuggestionType(null);
+    setItems(newItems); 
+    setSuggestionType(null);
+    if (activeItemIndex === items.length - 1) {
+        addItem();
+    }
+    setTimeout(() => focusField(`item_drug_${activeItemIndex + 1}`), 50);
   };
 
-  const removeItem = (index: number) => setItems(items.filter((_, i) => i !== index));
+  const removeItem = (index: number) => {
+      setItems(items.filter((_, i) => i !== index));
+      if (activeItemIndex === index) {
+          setActiveItemIndex(null);
+          setSuggestionType(null);
+          setActiveTypingFieldId(null);
+      } else if (activeItemIndex !== null && activeItemIndex > index) {
+          setActiveItemIndex(activeItemIndex - 1);
+      }
+  };
 
   const handleSaveTemplate = async () => {
     if (!templateName) return;
@@ -891,7 +1009,52 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     return [...learned, ...customInstructions].slice(0, 20);
   };
 
-  // Helper for digital pad UI placeholders (Updated to Standard English Abbreviations)
+  const focusField = (id: string) => {
+      const el = document.getElementById(id);
+      if (el) el.focus();
+  };
+
+  const handleEnterKey = (e: React.KeyboardEvent, currentId: string) => {
+      if (e.key === 'Enter') {
+          e.preventDefault();
+          const sequence = [
+              'patientName', 'age', 'chiefComplaint', 
+              'vital_bp', 'vital_hr', 'vital_rr', 'vital_temp', 'vital_o2', 'vital_bs', 'vital_weight',
+              'items'
+          ];
+          
+          if (currentId.startsWith('item_')) {
+              const parts = currentId.split('_');
+              const field = parts[1];
+              const idx = parseInt(parts[2]);
+              if (field === 'drug') focusField(`item_dosage_${idx}`);
+              else if (field === 'dosage') focusField(`item_instruction_${idx}`);
+              else if (field === 'instruction') {
+                  if (idx < items.length - 1) focusField(`item_drug_${idx + 1}`);
+                  else {
+                      addItem();
+                      setTimeout(() => focusField(`item_drug_${idx + 1}`), 50);
+                  }
+              }
+              return;
+          }
+
+          const curIndex = sequence.indexOf(currentId);
+          if (curIndex > -1 && curIndex < sequence.length - 1) {
+              const nextId = sequence[curIndex + 1];
+              if (nextId === 'items') {
+                  focusField('item_drug_0');
+              } else {
+                  if (currentId.startsWith('vital_') && !(e.target as any).value) {
+                      focusField('item_drug_0');
+                  } else {
+                      focusField(nextId);
+                  }
+              }
+          }
+      }
+  };
+
   const getCleanLabel = (id: string, originalLabel: string) => {
       switch(id) {
           case 'vital_bp': return 'BP';
@@ -912,9 +1075,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   };
 
   const handlePrint = async (mode: 'plain' | 'custom') => {
-     //commit to database first
      await saveToPatientRecord();
-     
      items.forEach(item => { if (item.drug) trackDrugUsage(item.drug, item.dosage, item.instruction); });
      
      const iframeId = 'tabib-print-frame';
@@ -980,7 +1141,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                ${chiefComplaint ? `<div class="clinical-section"><div class="section-title">Clinical Findings (CC)</div><div class="clinical-content">${chiefComplaint}</div></div>` : ''}
                ${diagnosis ? `<div class="clinical-section"><div class="section-title">Impression / Diagnosis</div><div class="clinical-content" style="font-weight:bold; color:#1e3a8a;">${diagnosis}</div></div>` : ''}
                <div class="rx-symbol">℞</div>
-               <ul class="drug-list">${items.map((item, i) => `<li class="drug-item"><div class="drug-num">${i + 1}.</div><div class="drug-details"><div class="drug-name">${item.drug}</div><div class="drug-sig: ${item.instruction}</div></div><div class="drug-qty">${item.dosage}</div></li>`).join('')}</ul>
+               <ul class="drug-list">${items.filter(it => it.drug).map((item, i) => `<li class="drug-item"><div class="drug-num">${i + 1}.</div><div class="drug-details"><div class="drug-name">${item.drug}</div><div class="drug-sig">Sig: ${item.instruction}</div></div><div class="drug-qty">${item.dosage}</div></li>`).join('')}</ul>
                <div class="footer-pro"><div style="font-size:9pt; color:#64748b;"><div>${doctorProfile?.address || ''}</div><div style="margin-top:1mm;">تلفن: ${doctorProfile?.phone || ''}</div></div><div class="signature-area">Signature & Stamp</div></div>
                <div class="footer-motto">"Preserving the integrity of the profession with AI precision."</div>
             </div>
@@ -1004,7 +1165,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               case 'vital_weight': innerHtml = vitals.weight || ''; break;
               case 'vital_o2': innerHtml = vitals.spO2 || ''; break;
               case 'vital_bs': innerHtml = vitals.bloodSugar || ''; break;
-              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`; break;
+              case 'items': innerHtml = `<ul style="list-style:none; padding:0; margin:0; direction: ltr; text-align: left; font-family: serif;">${items.filter(it => it.drug).map((item, i) => `<li style="margin-bottom:8px; font-size:1.1em;"><span style="font-weight:900; color:#1e3a8a;">${i+1}. ${item.drug}</span> <span style="margin:0 10px; font-weight:800;">(${item.dosage})</span><div style="font-size:0.9em; color:#444; font-style:italic;">Sig: ${item.instruction}</div></li>`).join('')}</ul>`; break;
               default: innerHtml = '';
            }
            if (!innerHtml) return '';
@@ -1019,7 +1180,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      if (bgImg && !bgImg.complete) { bgImg.onload = triggerPrint; bgImg.onerror = triggerPrint; } else { triggerPrint(); }
   };
 
-  const handleAutoPrint = () => { if (items.length === 0) return; const mode = settings.backgroundImage ? 'custom' : 'plain'; handlePrint(mode); };
+  const handleAutoPrint = () => { if (items.filter(it => it.drug).length === 0) return; const mode = settings.backgroundImage ? 'custom' : 'plain'; handlePrint(mode); };
   const printButtonLabel = settings.backgroundImage ? 'چاپ روی سربرگ مطب' : 'چاپ نسخه دیجیتال (Majestic)';
 
   const renderLanding = () => (
@@ -1087,9 +1248,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         .digital-pad-canvas { touch-action: none; display: block; }
         .satellite-bar {
           background: rgba(255, 255, 255, 0.85);
-          backdrop-filter: blur(16px);
+          backdrop-filter: blur(24px);
           border: 1px solid rgba(255, 255, 255, 0.4);
-          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
           border-radius: 2rem;
           transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.3s;
         }
@@ -1140,6 +1301,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           background: rgba(255,255,255,0.3);
           border-bottom: 2px solid rgba(59, 130, 246, 0.1);
           width: 100% !important;
+        }
+        
+        .duplicate-warning-bg {
+           background: rgba(239, 68, 68, 0.1) !important;
+           border-bottom: 2px solid rgba(239, 68, 68, 0.5) !important;
         }
 
         .rx-field-input-med {
@@ -1229,6 +1395,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            resize: none;
            min-height: 40px;
         }
+        .session-item-active {
+            border-right: 4px solid #4f46e5;
+            background: #f5f3ff;
+        }
+        .glass-queue {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 1.8rem;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.15);
+            width: 250px;
+            max-width: 250px;
+        }
       `}</style>
 
       {(loading || isProcessingScribe || isProcessingCC) && (
@@ -1252,19 +1431,17 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
          </div>
       )}
 
-      {/* Main View Control */}
       {viewMode === 'landing' ? renderLanding() : (
         <>
-          {/* MOBILE EDITOR UI */}
           <div className="lg:hidden flex flex-col gap-4">
              <div className="flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
                 <div className="flex items-center gap-2 flex-1 min-w-0"><button onClick={() => setViewMode('landing')} className="p-2 bg-gray-50 rounded-xl text-gray-600 flex-shrink-0"><ArrowLeft size={20}/></button><div className="min-w-0"><h2 className="font-bold text-gray-800 truncate text-sm">{selectedPatient?.name}</h2><p className="text-[10px] text-gray-400 truncate">{selectedPatient?.age} ساله</p></div></div>
                 <div className="flex items-center gap-2">
                    <button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`p-2 rounded-xl transition-all ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse shadow-lg' : 'bg-purple-50 text-purple-600'}`}>{isRecordingScribe ? <MicOff size={20}/> : <Mic size={20}/>}</button>
                    {isExpressMode && <div className="bg-amber-100 text-amber-700 text-[10px] font-black px-2 py-0.5 rounded-lg border border-amber-200 animate-pulse flex items-center gap-1">Guest</div>}
-                   <button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
-                   <button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
-                   <button onClick={handleAutoPrint} disabled={items.length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
+                   <button onClick={handleAuditSafety} disabled={safetyLoading || items.filter(it => it.drug).length === 0} className={`p-2 rounded-xl transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}</button>
+                   <button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Save size={20} /></button>
+                   <button onClick={handleAutoPrint} disabled={items.filter(it => it.drug).length === 0} className="p-2 rounded-xl bg-gray-50 text-gray-600 disabled:opacity-50"><Printer size={20} /></button>
                    <button onClick={startCamera} disabled={!isOnline} className={`p-2 rounded-xl transition-colors ${isOnline ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-300'}`}><Camera size={20} /></button>
                 </div>
              </div>
@@ -1289,7 +1466,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 {mobileTab === 'rx' && (
                    <div className="space-y-4 animate-fade-in">
                       <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}><div className="flex justify-between items-center mb-2"><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label><div className="flex gap-1"><button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}><ListChecks size={14} /></button><button onClick={() => setShowPreferenceModal(true)} className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><RotateCw size={14} /></button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}</div>)}</div><textarea className={`w-full p-3 bg-gray-50 rounded-xl outline-none text-gray-700 h-20 resize-none focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all ${isRecordingScribe ? 'bg-purple-50/50 italic' : ''}`} placeholder={isRecordingScribe ? "در حال شنیدن تشخیص..." : "تشخیص نهایی را بنویسید..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div>
-                      <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}><button onClick={() => removeItem(idx)} className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl"><Trash size={18} /></button><div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors font-bold text-gray-700"><div className="flex items-center gap-3">{getFormIcon(d.name)}<span>{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="whitespace-nowrap bg-teal-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{d}</button>))}</div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="N=30" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{ins}</button>))}</div>)}</div></div></div>))}</div>
+                      <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}>
+                      <button 
+                         type="button"
+                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); removeItem(idx); }} 
+                         className="absolute top-4 left-4 p-2 bg-red-50 text-red-500 rounded-xl z-20 active:bg-red-100"
+                      >
+                         <Trash size={18} />
+                      </button>
+                      <div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_drug_${idx}`) setSuggestionType(prev => prev === 'drug' ? null : prev); }, 400); }} onChange={e => updateItem(idx, 'drug', e.target.value)} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map(d => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(d.name); }} className="w-full text-right p-3 hover:bg-indigo-50 border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors font-bold text-gray-700"><div className="flex items-center gap-3">{getFormIcon(d.name)}<span>{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_dosage_${idx}`) setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 400); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartDosages().map(d => (<button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="whitespace-nowrap bg-teal-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{d}</button>))}</div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="N=30" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_instruction_${idx}`) setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 400); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">{getSmartInstructions(item.drug).map(ins => (<button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="whitespace-nowrap bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[10px] font-black shadow-lg">{ins}</button>))}</div>)}</div></div></div>))}</div>
                     <button onClick={addItem} className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl text-indigo-500 font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors"><Plus size={20} />افزودن قلم داروی جدید</button>
                  </div>
               )}
@@ -1297,27 +1482,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                  <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
               )}
            </div>
-           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
+           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-safe z-30 flex gap-3 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] lg:hidden"><button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="p-4 bg-gray-100 text-gray-600 rounded-2xl disabled:opacity-50"><Save size={24} /></button><button onClick={handleAutoPrint} disabled={items.filter(it => it.drug).length === 0} className="flex-1 bg-indigo-600 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"><Printer size={20} />{printButtonLabel}</button></div>
         </div>
 
-        {/* DESKTOP EDITOR UI */}
         <div className="hidden lg:block min-h-screen">
            <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
              <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name || 'بدون انتخاب'} • {selectedPatient?.age || '--'} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : (selectedPatient?.gender === 'female' ? 'خانم' : '---')})</p></div></div>
-             <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={startCamera} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
+             <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={startCamera} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.filter(it => it.drug).length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
            </div>
            <div className="flex gap-6 items-start">
               <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="kg" field="weight" onChange={handleVitalChange} /></div>
-              <div className="flex-1 flex flex-col gap-6"><div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}><div className="flex items-center justify-between mb-2 px-4"><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><div className="flex gap-2"><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button><button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />مدیریت ترجیحات</button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}</div><input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div><div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (
+              <div className="flex-1 flex flex-col gap-6"><div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}><div className="flex items-center justify-between mb-2 px-4"><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><div className="flex gap-2"><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'شکایات بیمار'}</button><button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />ترجیحات</button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}</div><input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(toTitleCase(e.target.value))} /></div><div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (
                 <tr key={idx} className="group hover:bg-indigo-50/20 transition-all rounded-2xl overflow-hidden">
                   <td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      id={`item_drug_${idx}`}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
                       value={item.drug} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} 
-                      onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setActiveTypingFieldId(`item_drug_${idx}`); }} 
+                      onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_drug_${idx}`) setSuggestionType(prev => prev === 'drug' ? null : prev); }, 400); }} 
                       onChange={e => updateItem(idx, 'drug', e.target.value)} 
+                      onKeyDown={e => handleEnterKey(e, `item_drug_${idx}`)}
                       placeholder="مثال: Tab Amoxicillin 500" 
                     />
                     {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
@@ -1333,16 +1519,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                   </td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      id={`item_dosage_${idx}`}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                       value={item.dosage} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} 
-                      onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setActiveTypingFieldId(`item_dosage_${idx}`); }} 
+                      onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_dosage_${idx}`) setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 400); }} 
                       onChange={e => updateItem(idx, 'dosage', e.target.value)} 
+                      onKeyDown={e => handleEnterKey(e, `item_dosage_${idx}`)}
                       placeholder="N=30" 
                     />
                     {suggestionType === 'dosage' && activeItemIndex === idx && (
                       <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[120px]">
-                        <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دوز</p>
+                        <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">تعداد</p>
                         {getSmartDosages().map(d => (
                           <button key={d} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(d); }} className="text-center p-3 hover:bg-teal-50 rounded-xl text-sm font-black text-teal-700 transition-colors border border-transparent hover:border-teal-100">{d}</button>
                         ))}
@@ -1351,16 +1539,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                   </td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      id={`item_instruction_${idx}`}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                       value={item.instruction} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} 
-                      onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setActiveTypingFieldId(`item_instruction_${idx}`); }} 
+                      onBlur={() => { setTimeout(() => { if (activeTypingFieldId !== `item_instruction_${idx}`) setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 400); }} 
                       onChange={e => updateItem(idx, 'instruction', e.target.value)} 
+                      onKeyDown={e => handleEnterKey(e, `item_instruction_${idx}`)}
                       placeholder="N=30" 
                     />
                     {suggestionType === 'instruction' && activeItemIndex === idx && (
                       <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 p-3 flex flex-col gap-1 animate-slide-up min-w-[250px]">
-                        <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">پیشنهادات دستور مصرف</p>
+                        <p className="text-[9px] font-black text-gray-300 uppercase px-2 mb-1">دستور مصرف</p>
                         {getSmartInstructions(item.drug).map(ins => (
                           <button key={ins} onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(ins); }} className="text-right p-3 hover:bg-indigo-50 rounded-xl text-xs font-black text-gray-700 transition-colors border border-transparent hover:border-indigo-100">{ins}</button>
                         ))}
@@ -1368,16 +1558,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                     )}
                   </td>
                   <td className="py-2 text-center">
-                    <button onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button>
+                    <button type="button" onClick={() => removeItem(idx)} className="text-gray-300 hover:text-red-500 transition-colors p-3 rounded-2xl hover:bg-red-50"><Trash size={22} /></button>
                   </td>
                 </tr>
-              ))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={handleAutoPrint} disabled={items.length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Printer size={26} />{printButtonLabel}</button></div></div></div>
+              ))}</tbody></table><button onClick={addItem} className="mt-8 text-indigo-600 font-black text-sm flex items-center gap-3 hover:bg-indigo-50 px-8 py-4 rounded-[1.5rem] transition-all border-2 border-dashed border-indigo-100 self-start"><Plus size={24} /> افزودن قلم داروی جدید</button><div className="mt-12 pt-10 border-t border-gray-50 flex justify-end gap-5 pb-10"><button onClick={() => setShowSaveModal(true)} disabled={items.filter(it => it.drug).length === 0} className="px-10 py-5 rounded-[1.5rem] font-black text-lg text-gray-600 bg-gray-100 hover:bg-gray-200 flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50 shadow-sm"><Save size={26} /> ذخیره در قالب‌ها</button><button onClick={() => saveToPatientRecord()} disabled={items.filter(it => it.drug).length === 0} className="px-16 py-5 rounded-[1.5rem] font-black text-lg text-white bg-indigo-600 shadow-2xl shadow-indigo-200 hover:bg-indigo-700 flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-50"><Save size={26} /> ثبت نسخه و اتمام</button></div></div></div>
            </div>
         </div>
         </>
       )}
 
-      {/* SHARED OVERLAYS / MODALS */}
       {showNewPatientModal && (
           <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
              <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
@@ -1397,7 +1586,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {showQuickEntryModal && (
           <div className="fixed inset-0 z-[100] bg-white/10 backdrop-blur-xl flex items-center justify-center p-4">
-             <div className="bg-white/80 backdrop-blur-md w-full max-w-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
+             <div className="bg-white/80 backdrop-blur-md w-full max-md rounded-[2.5rem] shadow-2xl border border-white/50 p-8 lg:p-10 animate-fade-in relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                 <div className="flex justify-between items-center mb-8 relative z-10"><div><h3 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Zap className="text-teal-600" /> نسخه سریع</h3><p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p></div><button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button></div>
                 <div className="space-y-5 relative z-10">
@@ -1414,7 +1603,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           <div className="fixed inset-0 z-[210] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col h-[80vh]">
                   <div className="p-8 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><RotateCw size={24} /></div><div><h3 className="text-2xl font-black text-gray-800">مدیریت ترجیحات نسخه‌نویسی</h3><p className="text-xs text-gray-500 font-bold mt-1">شخصی‌سازی دوزها و دستورات مصرف متداول</p></div></div><button onClick={() => setShowPreferenceModal(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div>
-                  <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-10 custom-scrollbar"><div className="space-y-6"><h4 className="font-black text-teal-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-teal-100 pb-2"><Hash size={18} /> مقادیر و دوزها (Qty)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 font-bold text-sm" placeholder="مثلاً N=20" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('dosage')} /><button onClick={() => handleAddPreference('dosage')} className="bg-teal-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customDosages.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customDosages.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-black text-gray-700">{v}</span><button onClick={() => handleRemovePreference('dosage', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div><div className="space-y-6"><h4 className="font-black text-indigo-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-indigo-100 pb-2"><FileText size={18} /> دستورات مصرف (Sig)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-sm" placeholder="مثلاً قبل از خواب" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('instruction')} /><button onClick={() => handleAddPreference('instruction')} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customInstructions.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customInstructions.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-bold text-gray-700 text-xs">{v}</span><button onClick={() => handleRemovePreference('instruction', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div></div>
+                  <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-10 custom-scrollbar"><div className="space-y-6"><h4 className="font-black text-teal-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-teal-100 pb-2"><Hash size={18} /> مقادیر و دوزها (Qty)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 font-bold text-sm" placeholder="مثلاً N=20" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('dosage')} /><button onClick={() => handleAddPreference('dosage')} className="bg-teal-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customDosages.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customDosages.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-black text-gray-700">{v}</span><button onClick={() => handleRemovePreference('dosage', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div><div className="space-y-6"><h4 className="font-black text-indigo-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-indigo-100 pb-2"><FileText size={18} /> دستورات مصرف (Sig)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-sm" placeholder="مثلاً قبل از خواب" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('instruction')} /><button onClick={() => handleAddPreference('instruction')} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customInstructions.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customInstructions.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-bold text-gray-700 text-xs">{v}</span><button onClick={() => handleRemovePreference('instruction', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div></div>
                   <div className="p-6 bg-gray-50 border-t border-gray-100 text-center"><button onClick={() => setShowPreferenceModal(false)} className="px-12 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all">تایید و بستن</button></div>
               </div>
           </div>
@@ -1422,7 +1611,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {showComplaintModal && (
           <div className="fixed inset-0 z-[195] bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-white w-full max-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col relative"><div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div><h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3><div className="relative"><button onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)} className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title="قالب‌های شکایات"><LayoutTemplate size={20} /></button>{showComplaintTemplateMenu && (<div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-80 bg-white shadow-[0_15px_50px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down"><div className="p-3 bg-indigo-50 border-b border-gray-100 text-[10px] font-black uppercase text-indigo-400 text-center">لیست قالب‌های شکایات</div><div className="max-h-64 overflow-y-auto custom-scrollbar bg-white">{complaintTemplates.length === 0 ? (<div className="p-6 text-center text-xs text-gray-400 font-bold">هنوز قالبی ذخیره نکرده‌اید</div>) : (complaintTemplates.map(t => (<div key={t.id} className="flex items-center justify-between p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer transition-colors" onClick={() => selectComplaintTemplate(t.text)}><span className="text-xs font-black text-gray-700 truncate flex-1 leading-relaxed">{t.text}</span><button onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }} className="p-2 text-gray-300 hover:text-red-500 transition-all ml-2"><Trash size={16} /></button></div>)))}</div></div>)}</div></div><button onClick={() => { stopCCRecording(); setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div><div className="p-8 space-y-6"><div className="relative"><textarea autoFocus className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg" placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..." value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} /><div className="absolute bottom-4 left-4 flex gap-2"><button onClick={handleSaveComplaintTemplate} disabled={!chiefComplaint.trim()} className="p-4 bg-white text-indigo-600 border border-indigo-100 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 disabled:opacity-50" title="ذخیره به عنوان قالب جدید"><BookmarkPlus size={24} /></button><button onClick={isRecordingCC ? stopCCRecording : startCCRecording} className={`p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`} title="دیکته صوتی شکایات">{isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}</button></div></div><div className="flex gap-4"><button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button><button onClick={() => { setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button></div></div></div>
+              <div className="bg-white w-full max-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col relative"><div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div><h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3><div className="relative"><button onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)} className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title="قالب‌های شکایات"><LayoutTemplate size={20} /></button>{showComplaintTemplateMenu && (<div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-80 bg-white shadow-[0_15px_50px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down"><div className="p-3 bg-indigo-50 border-b border-gray-100 text-[10px] font-black uppercase text-indigo-400 text-center">لیست قالب‌های شکایات</div><div className="max-h-64 overflow-y-auto custom-scrollbar bg-white">{complaintTemplates.length === 0 ? (<div className="p-6 text-center text-xs text-gray-400 font-bold">هنوز قالبی ذخیره نکرده‌اید</div>) : (complaintTemplates.map(t => (<div key={t.id} className="flex items-center justify-between p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer transition-colors" onClick={() => selectComplaintTemplate(t.text)}><span className="text-xs font-black text-gray-700 truncate flex-1 leading-relaxed">{t.text}</span><button onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }} className="p-2 text-gray-300 hover:text-red-500 transition-all ml-2"><Trash size={16} /></button></div>)))}</div></div>)}</div></div><button onClick={() => { stopCCRecording(); setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div><div className="p-8 space-y-6"><div className="relative"><textarea autoFocus className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg" placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..." value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} /><div className="absolute bottom-4 left-4 flex gap-2"><button onClick={handleSaveComplaintTemplate} disabled={!chiefComplaint.trim()} className="p-4 bg-white text-indigo-600 border border-indigo-100 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 disabled:opacity-50" title="ذخیره به عنوان قالب جدید"><BookmarkPlus size={24} /></button><button onClick={isRecordingCC ? stopCCRecording : startCCRecording} className={`p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`} title="دیکته صوتی شکایات">{isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}</button></div></div><div className="flex gap-4"><button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 : bg-red-100 transition-all">پاک‌سازی</button><button onClick={() => { setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button></div></div></div>
           </div>
       )}
 
@@ -1449,7 +1638,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {showMobileRestrictModal && (
          <div className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-md flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 text-center shadow-2xl animate-bounce-in">
+            <div className="bg-white w-full max-sm rounded-[2.5rem] p-10 text-center shadow-2xl animate-bounce-in">
                <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
                   <MonitorOff size={40} />
                </div>
@@ -1474,107 +1663,110 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 transform: `rotate(${padRotation}deg)`,
                 zIndex: 450
               }}
-              className={`fixed satellite-bar p-1.5 lg:p-2 flex items-center gap-1.5 lg:gap-3 touch-none shadow-[0_0_50px_rgba(0,0,0,0.3)] ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}
+              className={`fixed satellite-bar p-2 flex items-center gap-3 touch-none shadow-[0_0_50px_rgba(0,0,0,0.3)] ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}
            >
-              <div onMouseDown={handleToolbarStart} onTouchStart={handleToolbarStart} className="p-1 lg:p-2 text-gray-300 cursor-move hover:text-indigo-400">
-                 <GripVertical size={20} />
+              <div className={`flex items-center gap-2 ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}>
+                <div onMouseDown={handleToolbarStart} onTouchStart={handleToolbarStart} className="p-1 lg:p-2 text-gray-300 cursor-move hover:text-indigo-400">
+                    <GripVertical size={20} />
+                </div>
+                <button onPointerDown={(e) => { e.stopPropagation(); setShowDigitalPad(false); }} className="p-2 lg:p-3 text-gray-400 hover:text-red-500 bg-gray-50 rounded-2xl transition-all">
+                    <X size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                </button>
+                <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
+                
+                <div className={`flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}>
+                   <button onPointerDown={(e) => { e.stopPropagation(); undoPad(); }} disabled={padHistory.length <= 1} className="p-2 lg:p-3 text-gray-400 hover:text-indigo-600 disabled:opacity-20 transition-all" title="بازگشت (Undo)">
+                      <RotateCcw size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                   </button>
+                   <button onPointerDown={(e) => { e.stopPropagation(); clearPad(); }} className="p-2 lg:p-3 text-red-300 hover:text-red-600 transition-all" title="پاک‌سازی کل صفحه">
+                      <Trash size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                   </button>
+                </div>
+
+                <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
+                
+                <div className={`flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner relative ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}>
+                    <button onPointerDown={(e) => { e.stopPropagation(); setShowPadSearch(!showPadSearch); }} className={`p-2 lg:p-3 rounded-xl transition-all ${showPadSearch ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400'}`}>
+                        <Search size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                    </button>
+                    {showPadSearch && (
+                        <div className="absolute left-0 top-full mt-3 flex flex-col gap-2 pointer-events-auto">
+                            {padSearchTerm && padFilteredPatients.length > 0 && (
+                                <div className="pad-search-results">
+                                    {padFilteredPatients.map(p => (
+                                        <button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full text-right p-4 border-b border-gray-50 last:border-0 flex justify-between items-center transition-colors">
+                                            <div className="flex items-center gap-3"><div className="w-8 h-8 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">{p.displayId}</div><span className="font-bold text-sm text-gray-700">{p.name}</span></div>
+                                            <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-400">#{p.displayId}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="pad-search-glass"><input autoFocus className="w-full bg-transparent outline-none font-bold text-gray-700 text-sm placeholder-indigo-300" placeholder="نام یا کد (001)..." value={padSearchTerm} onChange={e => setPadSearchTerm(e.target.value)} /></div>
+                        </div>
+                    )}
+                    <button onPointerDown={(e) => { e.stopPropagation(); setIsNewPatientPadMode(!isNewPatientPadMode); }} className={`p-2 lg:p-3 rounded-xl transition-all ${isNewPatientPadMode ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:text-indigo-600'}`} title={isNewPatientPadMode ? "ثبت فعال" : "ثبت غیرفعال"}>
+                        <UserPlus size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                    </button>
+                </div>
+
+                <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
+
+                <div className={`flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}>
+                    <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'pen' ? 'idle' : 'pen'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'pen' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}><PenTool size={18} style={{ transform: `rotate(${-padRotation}deg)` }} /></button>
+                    <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'eraser' ? 'idle' : 'eraser'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'eraser' ? 'bg-white text-red-500 shadow-sm' : 'text-gray-400'}`}><Eraser size={18} style={{ transform: `rotate(${-padRotation}deg)` }} /></button>
+                    <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'type' ? 'idle' : 'type'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'type' ? 'tool-active-glow' : 'text-gray-400'}`}><Type size={18} style={{ transform: `rotate(${-padRotation}deg)` }} /></button>
+                </div>
+
+                <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
+                
+                <button onPointerDown={(e) => { e.stopPropagation(); handleAutoPrint(); }} className="p-2 lg:p-3 text-gray-500 hover:text-blue-600 bg-blue-50 rounded-2xl transition-all" title="چاپ مستقیم نسخه">
+                    <Printer size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                </button>
               </div>
-              
-              <button onPointerDown={(e) => { e.stopPropagation(); setShowDigitalPad(false); }} className="p-2 lg:p-3 text-gray-400 hover:text-red-500 bg-gray-50 rounded-2xl transition-all">
-                <X size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-              </button>
 
-              <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
+              <div className={`${padRotation % 180 === 0 ? 'w-full h-[1px]' : 'w-[1px] h-full'} bg-gray-200 mx-1`}></div>
 
-              <div className={`flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner relative ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setShowPadSearch(!showPadSearch); }} className={`p-2 lg:p-3 rounded-xl transition-all ${showPadSearch ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-400'}`}>
-                    <Search size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+              <div className={`flex items-center gap-2 ${padRotation % 180 === 0 ? 'flex-col' : 'flex-row'}`}>
+                 <button onPointerDown={(e) => { e.stopPropagation(); resetPadForNewPatient(); }} className="p-2 lg:p-3 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded-2xl transition-all" title="شروع نشست جدید (بیمار جدید)">
+                    <RefreshCw size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                 </button>
+                 <button onPointerDown={(e) => { e.stopPropagation(); setShowSessionQueue(!showSessionQueue); }} className={`p-2 lg:p-3 rounded-2xl transition-all relative ${showSessionQueue ? 'bg-indigo-600 text-white shadow-md' : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'}`} title="صف انتظار هوشمند">
+                    <Layers size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
+                    {activeSessions.length > 0 && <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-[10px] font-black flex items-center justify-center rounded-full animate-bounce shadow-lg border border-white">
+                      {activeSessions.length}
+                    </span>}
                  </button>
                  
-                 {showPadSearch && (
-                    <div className="absolute left-0 top-full mt-3 flex flex-col gap-2 pointer-events-auto">
-                        {padSearchTerm && padFilteredPatients.length > 0 && (
-                            <div className="pad-search-results">
-                                {padFilteredPatients.map(p => (
-                                    <button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full p-4 text-right hover:bg-indigo-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">{p.displayId}</div>
-                                            <span className="font-bold text-sm text-gray-700">{p.name}</span>
-                                        </div>
-                                        <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded text-gray-400">#{p.displayId}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        <div className="pad-search-glass">
-                            <input 
-                                autoFocus
-                                className="w-full bg-transparent outline-none font-bold text-gray-700 text-sm placeholder-indigo-300"
-                                placeholder="نام یا کد (001)..."
-                                value={padSearchTerm}
-                                onChange={e => setPadSearchTerm(e.target.value)}
-                            />
+                 {showSessionQueue && (
+                    <div className={`absolute ${padRotation % 180 === 0 ? 'left-full top-0 ml-3' : 'top-full left-0 mt-3'} glass-queue z-[500] animate-slide-up pointer-events-auto overflow-hidden`}>
+                        <div className="p-3 bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest text-center shadow-md">صف بیماران معلق</div>
+                        <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                           {activeSessions.length === 0 ? <p className="p-6 text-center text-[10px] text-gray-500 font-black">نشستی یافت نشد</p> : activeSessions.map(s => (
+                              <div key={s.id} className="flex items-center justify-between border-b border-gray-100 last:border-0 hover:bg-white/50 transition-all">
+                                 <button onClick={() => loadSessionFromQueue(s)} className={`flex-1 text-right p-4 flex flex-col gap-1 transition-all ${selectedPatient?.id === s.id || currentTempSessionId.current === s.id ? 'bg-indigo-600 text-white' : ''}`}>
+                                    <span className={`font-black text-[12px] truncate ${selectedPatient?.id === s.id || currentTempSessionId.current === s.id ? 'text-white' : 'text-indigo-900'}`}>{s.patient?.name || 'بیمار بی‌نام'}</span>
+                                    <p className={`text-[9px] truncate ${selectedPatient?.id === s.id || currentTempSessionId.current === s.id ? 'text-white/70' : 'text-gray-500'}`}>{s.diagnosis || 'داده‌های ناتمام...'}</p>
+                                 </button>
+                                 <button onClick={(e) => removeSessionFromQueue(e, s.id)} className="p-4 text-red-300 hover:text-red-500 transition-colors" title="حذف از لیست">
+                                    <Trash2 size={16} />
+                                 </button>
+                              </div>
+                           ))}
                         </div>
                     </div>
                  )}
-
-                 <button onPointerDown={(e) => { e.stopPropagation(); setIsNewPatientPadMode(!isNewPatientPadMode); if(!isNewPatientPadMode) resetPadForNewPatient(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${isNewPatientPadMode ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:text-indigo-600'}`}>
-                    <UserPlus size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-              </div>
-
-              <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
-
-              <div className={`flex gap-1 ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}>
-                 <button onPointerDown={(e) => { e.stopPropagation(); undoPad(); }} disabled={padHistory.length <= 1} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 disabled:opacity-20 transition-all">
-                    <RotateCcw size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); clearPad(); }} className="p-2 lg:p-3 text-red-400 hover:text-red-600 transition-all">
-                    <Trash size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-              </div>
-
-              <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
-
-              <div className={`flex gap-1.5 p-1 bg-gray-50 rounded-2xl shadow-inner ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'pen' ? 'idle' : 'pen'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'pen' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400'}`}>
-                    <PenTool size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'eraser' ? 'idle' : 'eraser'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'eraser' ? 'bg-white text-red-500 shadow-sm' : 'text-gray-400'}`}>
-                    <Eraser size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadTool(prev => prev === 'type' ? 'idle' : 'type'); triggerSettingsDisplay(); }} className={`p-2 lg:p-3 rounded-xl transition-all ${padTool === 'type' ? 'tool-active-glow' : 'text-gray-400'}`}>
-                    <Type size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                 </button>
-                 {padTool === 'type' && (
-                    <button onPointerDown={(e) => { e.stopPropagation(); handleAutoPrint(); }} className="p-2 lg:p-3 rounded-xl transition-all bg-indigo-600 text-white shadow-lg animate-pulse-subtle">
-                       <Printer size={18} style={{ transform: `rotate(${-padRotation}deg)` }} />
-                    </button>
-                 )}
-              </div>
-
-              <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
-
-              <div className={`flex gap-1 ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}>
+                 
+                 <div className={`${padRotation % 180 === 0 ? 'w-6 h-[1px]' : 'w-[1px] h-6'} bg-gray-200`}></div>
                  <button onPointerDown={(e) => { e.stopPropagation(); setPadRotation(r => (r + 90) % 360); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
                     <RotateCw size={18} />
                  </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadZoom(z => Math.max(0.2, z - 0.1)); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
-                    <ZoomOut size={18} />
-                 </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadZoom(z => Math.min(5, z + 0.1)); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
-                    <ZoomIn size={18} />
+                 <button onPointerDown={(e) => { e.stopPropagation(); analyzePad(); }} className="ai-small-btn group">
+                    <Zap size={22} className="group-hover:animate-pulse" />
                  </button>
               </div>
 
-              <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
-
-              <button onPointerDown={(e) => { e.stopPropagation(); analyzePad(); }} className="ai-small-btn group">
-                 <Zap size={22} className="group-hover:animate-pulse" />
-              </button>
-
               {showPadSettings && (padTool === 'pen' || padTool === 'eraser') && (
-                 <div className={`absolute ${padRotation % 180 === 90 ? 'top-full left-1/2 -translate-x-1/2 mt-3' : 'left-full top-1/2 -translate-y-1/2 ml-3'} animate-slide-up z-[460]`}>
+                 <div className={`absolute ${padRotation % 180 === 0 ? 'left-full top-1/2 -translate-y-1/2 ml-3' : 'top-full left-1/2 -translate-x-1/2 mt-3'} animate-slide-up z-[460]`}>
                     <div className="temporal-settings p-4 flex items-center gap-6 border border-gray-100 shadow-2xl">
                        <div className="flex items-center gap-3">
                           <Maximize size={16} className="text-gray-400" />
@@ -1623,16 +1815,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                    className="relative z-10 digital-pad-canvas" 
                  />
                  
-                 {/* TYPE-ON-RX OVERLAY - SYNCED TO DIMENSIONS */}
                  {padTool === 'type' && (
                     <div className="rx-typing-overlay" style={{ width: `${paperDims.w}px`, height: `${paperDims.h}px` }}>
                        {settings.elements.filter(el => el.visible).map(el => {
-                          if (el.id === 'patientId') return null; // ID is system managed
+                          if (el.id === 'patientId') return null; 
 
                           let content = null;
                           const isPatientField = el.id === 'patientName' || el.id === 'age' || el.id === 'vital_weight';
                           
-                          // Balanced Expansion Logic (25% on each side)
                           const isItems = el.id === 'items';
                           const displayWidth = isItems ? el.width * 1.5 : el.width;
                           const displayX = isItems ? el.x - (el.width * 0.25) : el.x;
@@ -1655,10 +1845,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                 <div style={{ width: `${displayWidth}px` }} className="space-y-1 pointer-events-auto bg-white/70 backdrop-blur-xl p-5 rounded-[2.5rem] border-2 border-dashed border-indigo-200 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-visible animate-slide-up">
                                    <div className="flex justify-between items-center mb-4 px-2">
                                       <span className="text-[12px] font-black text-indigo-800 uppercase tracking-widest flex items-center gap-2"><Pill size={16}/> لیست اقلام دارویی</span>
-                                      <button onClick={addItem} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:rotate-90 transition-all active:scale-90"><Plus size={18}/></button>
+                                      <div className="flex gap-2">
+                                         <button onClick={addItem} className="p-2 bg-indigo-600 text-white rounded-xl shadow-lg hover:rotate-90 transition-all active:scale-90"><Plus size={18}/></button>
+                                         <button onClick={handleAutoPrint} className="p-2 bg-blue-600 text-white rounded-xl shadow-lg hover:bg-blue-700 transition-all active:scale-90"><Printer size={18}/></button>
+                                      </div>
                                    </div>
                                    
-                                   {/* Pro Matrix Header (Farsi Only) */}
                                    <div className="med-matrix-header">
                                       <div>نام و شکل دارو</div>
                                       <div className="text-center">تعداد</div>
@@ -1671,12 +1863,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                          <div key={idx} className="rx-item-row group relative overflow-visible bg-white/50 border border-transparent hover:border-indigo-100 hover:bg-white transition-all shadow-sm">
                                             <div className="flex-[5] relative overflow-visible">
                                                <input 
+                                                   id={`item_drug_${idx}`}
                                                    className="rx-item-input rx-field-input-med w-full px-2" 
                                                    placeholder="نام دارو..." 
                                                    value={item.drug} 
                                                    onChange={e => updateItem(idx, 'drug', e.target.value)} 
                                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setActiveTypingFieldId(`item_drug_${idx}`); }}
-                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_drug_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
+                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_drug_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 400); }}
+                                                   onKeyDown={e => handleEnterKey(e, `item_drug_${idx}`)}
                                                />
                                                {suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (
                                                    <div className="suggestion-box-overlay">
@@ -1691,12 +1885,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                             </div>
                                             <div className="flex-[1.5] relative overflow-visible">
                                                <input 
+                                                   id={`item_dosage_${idx}`}
                                                    className="rx-item-input rx-field-input-med w-full font-mono text-center text-indigo-700" 
                                                    placeholder="N=30" 
                                                    value={item.dosage} 
                                                    onChange={e => updateItem(idx, 'dosage', e.target.value)} 
                                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setActiveTypingFieldId(`item_dosage_${idx}`); }}
-                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_dosage_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
+                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_dosage_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 400); }}
+                                                   onKeyDown={e => handleEnterKey(e, `item_dosage_${idx}`)}
                                                />
                                                {suggestionType === 'dosage' && activeItemIndex === idx && (
                                                    <div className="suggestion-box-overlay p-2 flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar min-w-[120px]">
@@ -1709,12 +1905,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                             </div>
                                             <div className="flex-[3.5] relative overflow-visible">
                                                <input 
+                                                   id={`item_instruction_${idx}`}
                                                    className="rx-item-input rx-field-input-med w-full text-gray-500 font-bold text-center" 
                                                    placeholder="N=30" 
                                                    value={item.instruction} 
                                                    onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                                                    onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setActiveTypingFieldId(`item_instruction_${idx}`); }}
-                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_instruction_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
+                                                   onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_instruction_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 400); }}
+                                                   onKeyDown={e => handleEnterKey(e, `item_instruction_${idx}`)}
                                                />
                                                {suggestionType === 'instruction' && activeItemIndex === idx && (
                                                    <div className="suggestion-box-overlay p-2 flex flex-col gap-1 max-h-56 overflow-y-auto custom-scrollbar">
@@ -1739,14 +1937,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                              switch(el.id) {
                                 case 'patientName': 
                                     val = selectedPatient?.name || ""; 
-                                    updateFn = (v) => setSelectedPatient(prev => ({ ...(prev || {} as PatientRecord), name: v }));
+                                    updateFn = (v) => setSelectedPatient(prev => ({ ...(prev || {} as PatientRecord), name: toTitleCase(v) }));
                                     break;
                                 case 'age': 
                                     val = selectedPatient?.age || ""; 
                                     updateFn = (v) => setSelectedPatient(prev => ({ ...(prev || {} as PatientRecord), age: v }));
                                     break;
-                                case 'diagnosis': val = diagnosis; updateFn = setDiagnosis; break;
-                                case 'chiefComplaint': val = chiefComplaint; updateFn = setChiefComplaint; break;
+                                case 'diagnosis': val = diagnosis; updateFn = (v) => setDiagnosis(toTitleCase(v)); break;
+                                case 'chiefComplaint': val = chiefComplaint; updateFn = (v) => setChiefComplaint(toTitleCase(v)); break;
                                 case 'vital_bp': val = vitals.bloodPressure; updateFn = (v) => handleVitalChange('bloodPressure', v); break;
                                 case 'vital_hr': val = vitals.heartRate; updateFn = (v) => handleVitalChange('heartRate', v); break;
                                 case 'vital_rr': val = vitals.respiratoryRate; updateFn = (v) => handleVitalChange('respiratoryRate', v); break;
@@ -1758,11 +1956,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                              }
 
                              const isCC = el.id === 'chiefComplaint';
+                             const isPName = el.id === 'patientName';
                              
                              content = (
                                 <div className="majestic-input-group">
                                    {isCC ? (
                                       <textarea 
+                                         id={el.id}
                                          className={`rx-field-input w-full auto-height-textarea ${activeTypingFieldId === el.id ? 'active' : ''}`}
                                          value={val}
                                          onChange={e => {
@@ -1776,16 +1976,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                             e.target.style.height = `${e.target.scrollHeight}px`;
                                          }}
                                          onBlur={() => setActiveTypingFieldId(null)}
+                                         onKeyDown={e => handleEnterKey(e, el.id)}
                                          placeholder=" "
                                          style={{ textAlign: el.align as any, fontSize: `${el.fontSize}pt`, fontWeight: 900 }}
                                       />
                                    ) : (
                                       <input 
-                                         className={`rx-field-input w-full ${activeTypingFieldId === el.id ? 'active' : ''} ${isPatientField ? 'rx-field-input-patient' : ''}`}
+                                         id={el.id}
+                                         className={`rx-field-input w-full ${activeTypingFieldId === el.id ? 'active' : ''} ${isPatientField ? 'rx-field-input-patient' : ''} ${isPName && duplicateWarning ? 'duplicate-warning-bg' : ''}`}
                                          value={val}
                                          onChange={e => updateFn(e.target.value)}
                                          onFocus={() => setActiveTypingFieldId(el.id)}
                                          onBlur={() => setActiveTypingFieldId(null)}
+                                         onKeyDown={e => handleEnterKey(e, el.id)}
                                          placeholder=" "
                                          style={{ textAlign: el.align as any, fontSize: isPatientField ? `${el.fontSize * 1.2}pt` : `${el.fontSize}pt`, fontWeight: 900 }}
                                       />
@@ -1793,6 +1996,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                    <span className="rx-field-placeholder absolute inset-0 flex items-center pointer-events-none" style={{ justifyContent: el.align === 'center' ? 'center' : (el.align === 'left' ? 'flex-start' : 'flex-end'), padding: '0 12px' }}>
                                       {placeholderText}
                                    </span>
+                                   {isPName && duplicateWarning && (
+                                      <div className="absolute top-[-25px] right-0 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-lg flex items-center gap-1 shadow-lg animate-bounce">
+                                         <AlertTriangle size={12}/> پرونده موجود است
+                                      </div>
+                                   )}
                                 </div>
                              );
                           }
