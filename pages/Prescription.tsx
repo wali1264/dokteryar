@@ -594,7 +594,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
           setItems(res.items || items);
           
-          setShowDigitalPad(false); // Only close if successful
+          // CRITICAL: Ensure the Pad is closed AND the view is set to 'editor' for review
+          setShowDigitalPad(false); 
+          setViewMode('editor');
         } catch (e) {
           alert("خطا در تحلیل دست‌خط دیجیتال. لطفاً مجدداً تلاش کنید.");
           // IMPORTANT: showDigitalPad remains TRUE, preserving the ink
