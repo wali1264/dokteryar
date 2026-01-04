@@ -1,31 +1,48 @@
 
-const CACHE_NAME = 'tabib-ai-cache-v4';
+const CACHE_NAME = 'tabib-ai-cache-v6';
+
+// لیست دقیق منابع حیاتی بر اساس importmap در index.html
 const urlsToCache = [
   '/',
   '/index.html',
+  '/index.tsx',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap',
+  'https://aistudiocdn.com/react-dom@^19.2.1/',
+  'https://aistudiocdn.com/react-markdown@^10.1.0',
+  'https://aistudiocdn.com/react@^19.2.1/',
+  'https://aistudiocdn.com/react@^19.2.1',
+  'https://aistudiocdn.com/lucide-react@^0.556.0',
+  'https://aistudiocdn.com/@google/genai@^1.31.0',
+  'https://aistudiocdn.com/@supabase/supabase-js@^2.39.0'
 ];
 
-// Install SW - Pre-cache critical Shell
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(urlsToCache);
+      console.log('[SW] Installing resilient offline cache...');
+      // استفاده از متد تک‌تک برای جلوگیری از شکست کل عملیات در صورت خطای یک URL
+      const cachePromises = urlsToCache.map((url) => {
+        return cache.add(url).catch((err) => {
+          console.warn(`[SW] Failed to cache: ${url}`, err);
+        });
+      });
+      return Promise.all(cachePromises);
     })
   );
 });
 
-// Activate SW - Clean OLD caches and take control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', cacheName);
+            console.log('[SW] Removing old cache version:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -35,62 +52,37 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch Strategy: AGGRESSIVE CACHE-FIRST for Local Assets
+// استراتژی Cache-First با مدیریت Navigation برای ریفرش آفلاین
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-  
-  // Logic for Local Assets (Same Origin)
-  if (url.origin === self.location.origin) {
-    // Strategy for HTML (Navigation) -> Cache First then Network
-    if (event.request.mode === 'navigate') {
-      event.respondWith(
-        caches.match(event.request).then((cachedResponse) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
-            return networkResponse;
-          });
-          return cachedResponse || fetchPromise;
-        }).catch(() => caches.match('/') || caches.match('/index.html'))
-      );
-      return;
-    }
-
-    // Strategy for Assets (JS, CSS, Images) -> STALE-WHILE-REVALIDATE
-    // Load from cache INSTANTLY, update in background.
+  // مدیریت درخواست‌های ناوبری (ریفرش صفحه)
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((response) => {
-          const fetchPromise = fetch(event.request).then((networkResponse) => {
-            if (networkResponse.status === 200) {
-              cache.put(event.request, networkResponse.clone());
-            }
-            return networkResponse;
-          });
-          return response || fetchPromise;
-        });
+      fetch(event.request).catch(() => {
+        return caches.match('/index.html') || caches.match('/');
       })
     );
-  } else {
-    // EXTERNAL RESOURCES (Google Fonts, Tailwind CDN, etc.)
-    // Only cache known reliable CDNs to avoid CORS errors
-    if (
-      url.hostname.includes('tailwindcss.com') || 
-      url.hostname.includes('gstatic.com') || 
-      url.hostname.includes('googleapis.com') ||
-      url.hostname.includes('aistudiocdn.com')
-    ) {
-      event.respondWith(
-        caches.match(event.request).then((cachedResponse) => {
-          return cachedResponse || fetch(event.request).then((networkResponse) => {
-            return caches.open(CACHE_NAME).then((cache) => {
-              if (networkResponse.status === 200) {
-                cache.put(event.request, networkResponse.clone());
-              }
-              return networkResponse;
-            });
-          });
-        })
-      );
-    }
+    return;
   }
+
+  event.respondWith(
+    caches.match(event.request).then((response) => {
+      if (response) {
+        return response; // بازگرداندن از کش در صورت موجود بودن
+      }
+
+      return fetch(event.request).then((networkResponse) => {
+        // ذخیره داینامیک منابع جدید در کش
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        // اگر آفلاین بودیم و منبع در کش نبود، خطای شبکه ندهیم (Silent fail)
+        return new Response('Offline content unavailable', { status: 503, statusText: 'Service Unavailable' });
+      });
+    })
+  );
 });
