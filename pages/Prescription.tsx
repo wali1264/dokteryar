@@ -38,16 +38,18 @@ const MobileVitalInput = ({ label, icon: Icon, value, prevValue, unit, field, co
 );
 
 // --- DESKTOP PROFESSIONAL VITAL INPUT ---
-const DesktopVitalSidebarItem = ({ label, icon: Icon, value, unit, field, color, onChange }: any) => (
+const DesktopVitalSidebarItem = ({ label, icon: Icon, value, unit, field, color, onChange, onKeyDown, inputRef }: any) => (
   <div className="bg-white p-2 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50 transition-all flex flex-col items-center gap-0">
     <div className="flex items-center justify-between w-full mb-0.5 px-1">
       <Icon size={12} className={color} />
       {unit && <span className="text-[7px] font-black text-gray-300 uppercase">{unit}</span>}
     </div>
     <input 
+      ref={inputRef}
       className="w-full text-center text-base font-black text-gray-800 outline-none bg-transparent placeholder:text-gray-100"
       placeholder=""
       value={value}
+      onKeyDown={onKeyDown}
       onChange={e => onChange(field, e.target.value)}
     />
     <div className={`text-[9px] font-black uppercase tracking-tighter ${color} opacity-90`}>
@@ -112,6 +114,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [safetyLoading, setSafetyLoading] = useState(false);
   const [safetyReport, setSafetyReport] = useState<any | null>(null);
   const [showSafetyModal, setShowSafetyModal] = useState(false);
+
+  // --- REFS FOR SMART NAVIGATION ---
+  const patientNameRef = useRef<HTMLInputElement>(null);
+  const ageRef = useRef<HTMLInputElement>(null);
+  const weightRef = useRef<HTMLInputElement>(null);
+  const diagnosisRef = useRef<HTMLInputElement>(null);
+  const itemRefs = useRef<any[]>([]);
+  const autoFocusNewItem = useRef(false);
+
+  // Vitals Refs for chain navigation
+  const vitalRefs = {
+    bp: useRef<HTMLInputElement>(null),
+    hr: useRef<HTMLInputElement>(null),
+    temp: useRef<HTMLInputElement>(null),
+    rr: useRef<HTMLInputElement>(null),
+    bs: useRef<HTMLInputElement>(null),
+    weight: useRef<HTMLInputElement>(null)
+  };
 
   // --- AI SCRIBE STATE ---
   const [isRecordingScribe, setIsRecordingScribe] = useState(false);
@@ -189,6 +209,24 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   }, [initialRecord]);
 
+  // AUTO FOCUS ON EXPRESS MODE START
+  useEffect(() => {
+    if (viewMode === 'editor' && isExpressMode && window.innerWidth >= 1024) {
+      setTimeout(() => {
+        patientNameRef.current?.focus();
+      }, 500);
+    }
+  }, [viewMode, isExpressMode]);
+
+  // SMART FOCUS FOR NEW DRUG ITEMS
+  useEffect(() => {
+    if (autoFocusNewItem.current && items.length > 0) {
+      const lastIndex = items.length - 1;
+      itemRefs.current[lastIndex]?.drug?.focus();
+      autoFocusNewItem.current = false;
+    }
+  }, [items.length]);
+
   useEffect(() => {
     if (!selectedPatient || viewMode !== 'editor' || isExpressMode) return;
     const draft = { items, diagnosis, chiefComplaint, vitals, timestamp: Date.now() };
@@ -222,6 +260,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
       const p = await getDoctorProfile();
       if (p) setDoctorProfile(p);
     } catch (e) { console.error(e); }
+  };
+
+  const smartCapitalize = (str: string) => {
+    return str.replace(/\b\w/g, char => char.toUpperCase());
   };
 
   const filteredPatients = allPatients.filter(p => 
@@ -272,6 +314,19 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   const handleVitalChange = (field: string, value: string) => {
     setVitals(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleVitalKeyDown = (e: React.KeyboardEvent, current: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      switch(current) {
+        case 'bp': vitalRefs.hr.current?.focus(); break;
+        case 'hr': vitalRefs.temp.current?.focus(); break;
+        case 'temp': vitalRefs.rr.current?.focus(); break;
+        case 'rr': vitalRefs.bs.current?.focus(); break;
+        case 'bs': vitalRefs.weight.current?.focus(); break;
+      }
+    }
   };
 
   const applyDraft = () => {
@@ -762,15 +817,16 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
   const updateItem = (index: number, field: keyof PrescriptionItem, value: string) => {
     const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    const finalValue = (field === 'drug') ? smartCapitalize(value) : value;
+    newItems[index] = { ...newItems[index], [field]: finalValue };
     setItems(newItems);
-    if (field === 'drug') setSearchQuery(value);
+    if (field === 'drug') setSearchQuery(finalValue);
   };
 
   const selectSuggestedDrug = (drugName: string) => {
     if (activeItemIndex === null) return;
     const newItems = [...items];
-    newItems[activeItemIndex].drug = drugName;
+    newItems[activeItemIndex].drug = smartCapitalize(drugName);
     const stats = usageStats.find(u => u.drugName === drugName);
     if (stats) {
         if (stats.lastDosage) newItems[activeItemIndex].dosage = stats.lastDosage;
@@ -1031,7 +1087,25 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           <p className="text-gray-500 mb-8 font-medium">نام بیمار را جستجو کنید یا از کپچر عملیاتی برای ثبت آنی استفاده کنید</p>
           
           <div className="flex justify-center gap-6 mb-10 animate-slide-up">
-             <button onClick={() => setShowQuickEntryModal(true)} title="نسخه سریع (بدون بایگانی)" className="flex flex-col items-center gap-2 group">
+             <button onClick={() => {
+                if (window.innerWidth >= 1024) {
+                   const guestRecord: PatientRecord = {
+                       id: `guest_${Date.now()}`,
+                       name: '',
+                       age: '',
+                       gender: 'male',
+                       chiefComplaint: '', 
+                       history: '',
+                       visitDate: Date.now(),
+                       status: 'waiting',
+                       vitals: { bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: '' }
+                   };
+                   handleSelectPatient(guestRecord);
+                   setIsExpressMode(true);
+                } else {
+                   setShowQuickEntryModal(true);
+                }
+             }} title="نسخه سریع (بدون بایگانی)" className="flex flex-col items-center gap-2 group">
                 <div className="w-16 h-16 bg-white border-2 border-teal-50 rounded-[1.5rem] flex items-center justify-center text-teal-600 shadow-sm group-hover:shadow-xl group-hover:bg-teal-50 group-hover:border-teal-100 transition-all active:scale-95">
                    <User size={30} />
                 </div>
@@ -1056,7 +1130,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           <div className="relative max-w-2xl mx-auto mb-4">
              <div className="relative group">
                 <div className="absolute inset-y-2 right-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-teal-600 transition-colors"><Search size={24} /></div>
-                <input type="text" autoFocus placeholder="نام یا کد بیمار (001) را جستجو کنید..." className="w-full p-6 pr-14 text-xl bg-gray-50 border border-gray-200 rounded-3xl focus:ring-8 focus:ring-teal-50 focus:border-teal-500 outline-none transition-all shadow-inner font-bold text-gray-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                <input type="text" placeholder="نام یا کد بیمار (001) را جستجو کنید..." className="w-full p-6 pr-14 text-xl bg-gray-50 border border-gray-200 rounded-3xl focus:ring-8 focus:ring-teal-50 focus:border-teal-500 outline-none transition-all shadow-inner font-bold text-gray-700" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
              </div>
              {searchTerm && filteredPatients.length > 0 && (
                <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden z-20 max-h-72 overflow-y-auto animate-slide-up">
@@ -1229,6 +1303,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            resize: none;
            min-height: 40px;
         }
+        .ghost-input { background: transparent; border: none; border-bottom: 2px solid #f1f5f9; border-radius: 0; padding: 4px 0; outline: none; transition: border-color 0.3s; }
+        .ghost-input:focus { border-color: #4f46e5; }
       `}</style>
 
       {(loading || isProcessingScribe || isProcessingCC) && (
@@ -1303,20 +1379,120 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         {/* DESKTOP EDITOR UI */}
         <div className="hidden lg:block min-h-screen">
            <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-[2rem] shadow-sm border border-gray-100">
-             <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name || 'بدون انتخاب'} • {selectedPatient?.age || '--'} ساله ({selectedPatient?.gender === 'male' ? 'آقا' : (selectedPatient?.gender === 'female' ? 'خانم' : '---')})</p></div></div>
+             <div className="flex items-center gap-5"><div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 shadow-inner"><Monitor size={32} /></div><div><h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">کنسول نسخه الکترونیک{isExpressMode && <span className="bg-amber-100 text-amber-700 text-xs font-black px-3 py-1 rounded-full border border-amber-200 animate-pulse flex items-center gap-1"><ZapOff size={14} /> حالت موقت</span>}</h2><p className="text-sm text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2"><User size={14} /> {selectedPatient?.name || 'بدون انتخاب'} • {selectedPatient?.age || '--'} ساله</p></div></div>
              <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={startCamera} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
            </div>
            <div className="flex gap-6 items-start">
-              <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="kg" field="weight" onChange={handleVitalChange} /></div>
-              <div className="flex-1 flex flex-col gap-6"><div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}><div className="flex items-center justify-between mb-2 px-4"><div className="flex items-center gap-3"><label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label><div className="flex gap-2"><button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button><button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />مدیریت ترجیحات</button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}</div><input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div><div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (
+              <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem inputRef={vitalRefs.bp} label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.hr} label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'hr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.temp} label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'temp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.rr} label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'rr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.bs} label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bs')} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem inputRef={vitalRefs.weight} label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="kg" field="weight" onChange={handleVitalChange} /></div>
+              <div className="flex-1 flex flex-col gap-6">
+                
+                {/* DYNAMIC DIAGNOSIS / IDENTITY CARD */}
+                <div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}>
+                   {isExpressMode ? (
+                      <div className="animate-fade-in flex items-center gap-6 px-4 h-16">
+                         {/* One Row Integrated Identity Bar */}
+                         <div className="flex-[4] relative">
+                            <input 
+                               ref={patientNameRef}
+                               className="w-full ghost-input text-2xl font-black text-gray-800 placeholder-gray-200 py-1" 
+                               placeholder="نام بیمار (Patient Name)..." 
+                               value={selectedPatient?.name || ''} 
+                               onKeyDown={(e) => {
+                                 if (e.key === 'Enter') { e.preventDefault(); ageRef.current?.focus(); }
+                               }}
+                               onChange={e => {
+                                 const val = smartCapitalize(e.target.value);
+                                 setSelectedPatient(p => p ? ({ ...p, name: val }) : null);
+                               }}
+                            />
+                         </div>
+                         <div className="w-16 relative">
+                            <input 
+                               ref={ageRef}
+                               className="w-full ghost-input text-2xl font-black text-gray-800 text-center placeholder-gray-200 py-1" 
+                               placeholder="سن" 
+                               value={selectedPatient?.age || ''} 
+                               onKeyDown={(e) => {
+                                 if (e.key === 'Enter') { e.preventDefault(); weightRef.current?.focus(); }
+                               }}
+                               onChange={e => setSelectedPatient(p => p ? ({ ...p, age: e.target.value }) : null)}
+                            />
+                         </div>
+                         <div className="w-20 relative">
+                            <input 
+                               ref={weightRef}
+                               className="w-full ghost-input text-2xl font-black text-indigo-600 text-center placeholder-gray-200 py-1" 
+                               placeholder="وزن" 
+                               value={vitals.weight} 
+                               onKeyDown={(e) => {
+                                 if (e.key === 'Enter') { e.preventDefault(); diagnosisRef.current?.focus(); }
+                               }}
+                               onChange={e => handleVitalChange('weight', e.target.value)} 
+                            />
+                         </div>
+                         
+                         <div className="w-px h-10 bg-gray-100 self-center"></div>
+
+                         {/* Compressed Diagnosis & CC Integrated */}
+                         <div className="flex-[3] flex items-center gap-3">
+                            <div className="flex-1">
+                               <input 
+                                  ref={diagnosisRef}
+                                  maxLength={40}
+                                  className="w-full ghost-input text-lg font-black text-gray-700 placeholder-gray-200 py-1" 
+                                  placeholder="تشخیص نهایی (Impression)..." 
+                                  value={diagnosis} 
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { 
+                                      e.preventDefault(); 
+                                      if (items.length === 0) addItem();
+                                      autoFocusNewItem.current = true;
+                                    }
+                                  }}
+                                  onChange={e => setDiagnosis(e.target.value)}
+                               />
+                            </div>
+                            <button 
+                              onClick={() => setShowComplaintModal(true)} 
+                              title="ثبت شکایات بیمار"
+                              className={`p-2 rounded-xl transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100'}`}
+                            >
+                              <ListChecks size={20} />
+                            </button>
+                         </div>
+                         
+                         {isRecordingScribe && (<div className="flex gap-1 items-end h-6">{[...Array(8)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}
+                      </div>
+                   ) : (
+                      <div className="animate-fade-in p-2">
+                         <div className="flex items-center justify-between mb-2 px-4">
+                            <div className="flex items-center gap-3">
+                               <label className="flex items-center gap-2 text-indigo-800 font-black text-xs uppercase tracking-widest"><Activity size={16} /> <span>تشخیص نهایی پزشک متخصص</span></label>
+                               <div className="flex gap-2">
+                                  <button onClick={() => setShowComplaintModal(true)} className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}><ListChecks size={14} />{chiefComplaint ? 'شکایات ثبت شد' : 'ثبت شکایات بیمار'}</button>
+                                  <button onClick={() => setShowPreferenceModal(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition-all"><RotateCw size={14} />مدیریت ترجیحات</button>
+                               </div>
+                            </div>
+                            {isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(10)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.05}s` }}></div>)}</div>)}
+                         </div>
+                         <input className={`w-full p-4 bg-gray-50/50 border border-transparent focus:border-indigo-100 focus:bg-white rounded-2xl text-xl font-black text-gray-800 outline-none transition-all ${isRecordingScribe ? 'placeholder:italic' : ''}`} placeholder={isRecordingScribe ? "در حال استخراج تشخیص..." : "Working Diagnosis (Differential Diagnosis)..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} />
+                      </div>
+                   )}
+                </div>
+
+                <div className={`flex-1 bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 min-h-[400px] flex flex-col transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : ''}`}><table className="w-full text-right border-separate border-spacing-y-4"><thead><tr className="border-b border-gray-50"><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-10 text-center">#</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-3/5">نام دارو و شکل دارویی (Drug Name, Strength, Form)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase w-32 text-center">تعداد (Qty)</th><th className="pb-4 text-[11px] font-black text-gray-400 uppercase">دستور مصرف (Sig)</th><th className="pb-4 w-12"></th></tr></thead><tbody className="divide-y divide-gray-50">{items.map((item, idx) => (
                 <tr key={idx} className="group hover:bg-indigo-50/20 transition-all rounded-2xl overflow-hidden">
                   <td className="py-2 text-gray-400 text-sm font-black text-center">{idx + 1}</td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].drug = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
                       value={item.drug} 
                       onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} 
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); itemRefs.current[idx].dosage?.focus(); }
+                      }}
                       onChange={e => updateItem(idx, 'drug', e.target.value)} 
                       placeholder="مثال: Tab Amoxicillin 500" 
                     />
@@ -1333,10 +1509,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                   </td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].dosage = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                       value={item.dosage} 
                       onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} 
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { e.preventDefault(); itemRefs.current[idx].instruction?.focus(); }
+                      }}
                       onChange={e => updateItem(idx, 'dosage', e.target.value)} 
                       placeholder="N=30" 
                     />
@@ -1351,10 +1531,18 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                   </td>
                   <td className="py-2 px-2 relative">
                     <input 
+                      ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].instruction = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                       value={item.instruction} 
                       onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} 
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { 
+                          e.preventDefault(); 
+                          addItem(); 
+                          autoFocusNewItem.current = true;
+                        }
+                      }}
                       onChange={e => updateItem(idx, 'instruction', e.target.value)} 
                       placeholder="N=30" 
                     />
@@ -1377,7 +1565,6 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         </>
       )}
 
-      {/* SHARED OVERLAYS / MODALS */}
       {showNewPatientModal && (
           <div className="fixed inset-0 z-[100] lg:bg-black/60 lg:backdrop-blur-sm flex items-end lg:items-center justify-center p-0 lg:p-4">
              <div className="bg-white w-full lg:max-w-lg h-[100dvh] lg:h-auto lg:rounded-3xl shadow-2xl relative animate-slide-up lg:animate-fade-in flex flex-col">
@@ -1401,7 +1588,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 <div className="absolute top-0 right-0 p-4 opacity-5"><User size={120} /></div>
                 <div className="flex justify-between items-center mb-8 relative z-10"><div><h3 className="text-2xl font-black text-gray-800 flex items-center gap-2"><Zap className="text-teal-600" /> نسخه سریع</h3><p className="text-xs text-gray-500 font-bold mt-1">نشست موقت - بدون ثبت در بایگانی</p></div><button onClick={() => { setShowQuickEntryModal(false); clearFormStates(); }} className="p-2 bg-gray-100 rounded-full text-gray-400 hover:bg-red-50 hover:text-red-500 transition-all"><X size={20}/></button></div>
                 <div className="space-y-5 relative z-10">
-                   <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label><input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(e.target.value)} /></div>
+                   <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">نام بیمار (اختیاری)</label><input autoFocus className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold shadow-sm" placeholder="" value={newPatientName} onChange={e => setNewPatientName(smartCapitalize(e.target.value))} /></div>
                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">سن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientAge} onChange={e => setNewPatientAge(e.target.value)} /></div><div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">وزن</label><input type="text" className="w-full p-4 bg-white/50 border border-gray-100 rounded-2xl outline-none focus:ring-4 focus:ring-teal-100 font-bold text-center" placeholder="" value={newPatientWeight} onChange={e => setNewPatientWeight(e.target.value)} /></div></div>
                    <div className="space-y-1"><label className="text-xs font-black text-teal-600 mr-1">جنسیت</label><div className="flex bg-gray-100/50 p-1.5 rounded-2xl"><button onClick={() => setNewPatientGender('male')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'male' ? 'bg-white shadow-md text-blue-600' : 'text-gray-400'}`}>آقا</button><button onClick={() => setNewPatientGender('female')} className={`flex-1 py-3 rounded-xl text-sm font-black transition-all ${newPatientGender === 'female' ? 'bg-white shadow-md text-pink-600' : 'text-gray-400'}`}>خانم</button></div></div>
                    <button onClick={handleQuickEntry} className="w-full bg-teal-600 text-white py-5 rounded-[1.5rem] font-black shadow-xl shadow-teal-200 mt-4 flex items-center justify-center gap-3 text-lg hover:bg-teal-700 transition-all active:scale-95"><FileSignature size={24} /> شروع نسخه‌نویسی</button>
@@ -1449,7 +1636,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {showMobileRestrictModal && (
          <div className="fixed inset-0 z-[500] bg-black/60 backdrop-blur-md flex items-center justify-center p-6">
-            <div className="bg-white w-full max-w-sm rounded-[2.5rem] p-10 text-center shadow-2xl animate-bounce-in">
+            <div className="bg-white w-full max-sm rounded-[2.5rem] p-10 text-center shadow-2xl animate-bounce-in">
                <div className="w-20 h-20 bg-amber-50 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6">
                   <MonitorOff size={40} />
                </div>
@@ -1496,7 +1683,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                         {padSearchTerm && padFilteredPatients.length > 0 && (
                             <div className="pad-search-results">
                                 {padFilteredPatients.map(p => (
-                                    <button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full p-4 text-right hover:bg-indigo-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-colors">
+                                    <button key={p.id} onClick={() => handleSelectPatient(p)} className="w-full text-right p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 flex justify-between items-center transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">{p.displayId}</div>
                                             <span className="font-bold text-sm text-gray-700">{p.name}</span>
@@ -1739,7 +1926,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                              switch(el.id) {
                                 case 'patientName': 
                                     val = selectedPatient?.name || ""; 
-                                    updateFn = (v) => setSelectedPatient(prev => ({ ...(prev || {} as PatientRecord), name: v }));
+                                    updateFn = (v) => setSelectedPatient(prev => ({ ...(prev || {} as PatientRecord), name: smartCapitalize(v) }));
                                     break;
                                 case 'age': 
                                     val = selectedPatient?.age || ""; 

@@ -14,29 +14,102 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+    <!-- Critical CSS: اجرا قبل از لود شدن تلویند -->
     <style>
+      :root {
+        --primary: #2563eb;
+        --bg: #f8fafc;
+      }
       body {
+        margin: 0;
+        padding: 0;
         font-family: 'Vazirmatn', sans-serif;
-        background-color: #f3f4f6;
+        background-color: var(--bg);
+        color: #1e293b;
+        overflow: hidden; /* جلوگیری از اسکرول زمان لود */
+      }
+      /* استایل پایه برای المان‌ها جهت جلوگیری از حالت مدادی */
+      input, button, textarea, select {
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        font-family: inherit;
+      }
+      #splash-screen {
+        position: fixed;
+        inset: 0;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.5s ease-out, visibility 0.5s;
+      }
+      .logo-container {
+        width: 100px;
+        height: 100px;
+        background: var(--primary);
+        border-radius: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 20px 40px rgba(37, 99, 235, 0.2);
+        margin-bottom: 24px;
+        animation: pulse-logo 2s infinite ease-in-out;
+      }
+      .pulse-ring {
+        position: absolute;
+        width: 100px;
+        height: 100px;
+        border: 4px solid var(--primary);
+        border-radius: 24px;
+        animation: ring-expand 2s infinite;
+      }
+      @keyframes pulse-logo {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+      }
+      @keyframes ring-expand {
+        0% { transform: scale(1); opacity: 0.5; }
+        100% { transform: scale(1.8); opacity: 0; }
+      }
+      .loading-bar-container {
+        width: 200px;
+        height: 4px;
+        background: #f1f5f9;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-top: 20px;
+      }
+      .loading-bar-fill {
+        height: 100%;
+        width: 30%;
+        background: var(--primary);
+        border-radius: 10px;
+        animation: loading-progress 2s infinite ease-in-out;
+      }
+      @keyframes loading-progress {
+        0% { width: 0%; transform: translateX(-100%); }
+        50% { width: 70%; }
+        100% { width: 0%; transform: translateX(200%); }
+      }
+      .brand-text {
+        font-weight: 900;
+        font-size: 1.5rem;
+        color: #1e293b;
+        margin-top: 16px;
       }
       /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #f1f1f1; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #888; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #555; 
-      }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #f1f1f1; }
+      ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #555; }
     </style>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+
   <script type="importmap">
 {
   "imports": {
@@ -53,6 +126,19 @@
 <link rel="stylesheet" href="/index.css">
 </head>
   <body>
+    <!-- Splash Screen: نمایش آنی قبل از لود شدن JS -->
+    <div id="splash-screen">
+      <div class="logo-container">
+        <div class="pulse-ring"></div>
+        <!-- Simple medical cross icon in SVG -->
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+      </div>
+      <div class="brand-text">طبیب هوشمند</div>
+      <div class="loading-bar-container">
+        <div class="loading-bar-fill"></div>
+      </div>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
   </body>

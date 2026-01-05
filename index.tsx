@@ -46,8 +46,23 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
+// اجرای رندر و حذف اسپلش اسکرین
 root.render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
+
+// حذف اسپلش اسکرین پس از لود کامل
+window.addEventListener('DOMContentLoaded', () => {
+  const splash = document.getElementById('splash-screen');
+  if (splash) {
+    // ایجاد وقفه کوتاه برای اطمینان از اعمال کامل استایل‌های تلویند
+    setTimeout(() => {
+      splash.style.opacity = '0';
+      splash.style.visibility = 'hidden';
+      document.body.style.overflow = 'auto'; // بازگرداندن اسکرول
+    }, 800);
+  }
+});

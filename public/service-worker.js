@@ -1,8 +1,7 @@
 
-const CACHE_NAME = 'tabib-ai-cache-v6';
+const CACHE_NAME = 'tabib-ai-cache-v7';
 
-// لیست دقیق منابع حیاتی بر اساس importmap در index.html
-const urlsToCache = [
+const criticalAssets = [
   '/',
   '/index.html',
   '/index.tsx',
@@ -24,14 +23,13 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[SW] Installing resilient offline cache...');
-      // استفاده از متد تک‌تک برای جلوگیری از شکست کل عملیات در صورت خطای یک URL
-      const cachePromises = urlsToCache.map((url) => {
-        return cache.add(url).catch((err) => {
-          console.warn(`[SW] Failed to cache: ${url}`, err);
-        });
-      });
-      return Promise.all(cachePromises);
+      console.log('[SW] Warm starting resilient cache for medical suite...');
+      // کش کردن تک‌تک برای جلوگیری از شکست کل عملیات (مقاوم‌سازی)
+      return Promise.all(
+        criticalAssets.map(url => 
+          cache.add(url).catch(err => console.warn(`[SW] Skip non-critical or failed asset: ${url}`))
+        )
+      );
     })
   );
 });
@@ -42,7 +40,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
-            console.log('[SW] Removing old cache version:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -52,9 +49,9 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// استراتژی Cache-First با مدیریت Navigation برای ریفرش آفلاین
+// استراتژی Cache-First با Fallback به ریشه برای ناوبری آفلاین
 self.addEventListener('fetch', (event) => {
-  // مدیریت درخواست‌های ناوبری (ریفرش صفحه)
+  // مدیریت ریفرش صفحه در حالت آفلاین
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request).catch(() => {
@@ -66,12 +63,10 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(event.request).then((response) => {
-      if (response) {
-        return response; // بازگرداندن از کش در صورت موجود بودن
-      }
+      if (response) return response;
 
       return fetch(event.request).then((networkResponse) => {
-        // ذخیره داینامیک منابع جدید در کش
+        // ذخیره خودکار منابع جدید (استایل‌های فونت و غیره)
         if (networkResponse && networkResponse.status === 200) {
           const responseToCache = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -80,8 +75,11 @@ self.addEventListener('fetch', (event) => {
         }
         return networkResponse;
       }).catch(() => {
-        // اگر آفلاین بودیم و منبع در کش نبود، خطای شبکه ندهیم (Silent fail)
-        return new Response('Offline content unavailable', { status: 503, statusText: 'Service Unavailable' });
+        // بازگرداندن پاسخ خالی برای جلوگیری از نمایش صفحه خطای شبکه در کنسول
+        if (event.request.destination === 'image') {
+          return new Response(''); 
+        }
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       });
     })
   );
