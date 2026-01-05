@@ -233,7 +233,7 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
       { g: 'Warfarin', f: 'Tab' }, { g: 'Clopidogrel', f: 'Tab' }, { g: 'Aspirin', f: 'Tab' },
       { g: 'Gabapentin', f: 'Cap' }, { g: 'Pregabalin', f: 'Cap' }, { g: 'Fluoxetine', f: 'Cap' },
       { g: 'Risperidone', f: 'Tab' }, { g: 'Quetiapine', f: 'Tab' }, { g: 'Olanzapine', f: 'Tab' },
-      { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Nitrofurantoin', f: 'Cap' },
+      { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Nitrofurantoin', f: 'Cap' },
       { g: 'Lisinopril', f: 'Tab' }, { g: 'Enalapril', f: 'Tab' }, { g: 'Captopril', f: 'Tab' },
       { g: 'Montelukast', f: 'Tab' }, { g: 'Budesonide', f: 'Spray' }, { g: 'Tiotropium', f: 'Cap' },
       { g: 'Gliclazide', f: 'Tab' }, { g: 'Sitagliptin', f: 'Tab' }, { g: 'Empagliflozin', f: 'Tab' },
@@ -586,20 +586,31 @@ export const exportDatabase = async (): Promise<string> => {
   });
 };
 
+/**
+ * importDatabase
+ * Enhanced Protocol: ATOMIC WIPE & RESET
+ * Ensures complete replacement of current data with backup data.
+ */
 export const importDatabase = async (jsonString: string): Promise<void> => {
   const db = await initDB();
   const data = JSON.parse(jsonString);
   const stores = [STORE_NAME, TEMPLATE_STORE, COMPLAINT_TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
 
   return new Promise((resolve, reject) => {
+    // Start an atomic transaction for all target stores
     const tx = db.transaction(stores, 'readwrite');
     
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
 
     for (const storeName of stores) {
-      if (data[storeName]) {
-        const store = tx.objectStore(storeName);
+      const store = tx.objectStore(storeName);
+      
+      // Step 1: Wipe the current store completely
+      store.clear();
+      
+      // Step 2: Inject backup records if they exist for this store
+      if (data[storeName] && Array.isArray(data[storeName])) {
         for (const record of data[storeName]) {
           store.put(record);
         }
