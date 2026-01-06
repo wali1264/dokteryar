@@ -233,7 +233,7 @@ const seedMegaDrugBank = async (db: IDBDatabase) => {
       { g: 'Warfarin', f: 'Tab' }, { g: 'Clopidogrel', f: 'Tab' }, { g: 'Aspirin', f: 'Tab' },
       { g: 'Gabapentin', f: 'Cap' }, { g: 'Pregabalin', f: 'Cap' }, { g: 'Fluoxetine', f: 'Cap' },
       { g: 'Risperidone', f: 'Tab' }, { g: 'Quetiapine', f: 'Tab' }, { g: 'Olanzapine', f: 'Tab' },
-      { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Nitrofurantoin', f: 'Cap' },
+      { g: 'Metronidazole', f: 'Tab' }, { g: 'Doxycycline', f: 'Cap' }, { g: 'Nitrofurantoin', f: 'Cap' },
       { g: 'Lisinopril', f: 'Tab' }, { g: 'Enalapril', f: 'Tab' }, { g: 'Captopril', f: 'Tab' },
       { g: 'Montelukast', f: 'Tab' }, { g: 'Budesonide', f: 'Spray' }, { g: 'Tiotropium', f: 'Cap' },
       { g: 'Gliclazide', f: 'Tab' }, { g: 'Sitagliptin', f: 'Tab' }, { g: 'Empagliflozin', f: 'Tab' },
@@ -363,6 +363,74 @@ export const getUsageStats = async (): Promise<any[]> => {
         resolve(stats);
     };
     request.onerror = () => reject(request.error);
+  });
+};
+
+export const removeDosageFromUsage = async (dosage: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(USAGE_STORE, 'readwrite');
+    const store = tx.objectStore(USAGE_STORE);
+    const request = store.openCursor();
+    request.onsuccess = (event) => {
+      const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+      if (cursor) {
+        const usage = cursor.value;
+        if (usage.lastDosage === dosage) {
+          usage.lastDosage = undefined;
+          cursor.update(usage);
+        }
+        cursor.continue();
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const removeInstructionFromUsage = async (instruction: string, drugName?: string): Promise<void> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(USAGE_STORE, 'readwrite');
+    const store = tx.objectStore(USAGE_STORE);
+    
+    if (drugName) {
+        const getReq = store.get(drugName);
+        getReq.onsuccess = () => {
+            const usage = getReq.result;
+            if (usage) {
+                if (usage.commonInstructions) {
+                    usage.commonInstructions = usage.commonInstructions.filter((i: string) => i !== instruction);
+                }
+                if (usage.lastInstruction === instruction) usage.lastInstruction = undefined;
+                store.put(usage);
+            }
+        };
+    } else {
+        const request = store.openCursor();
+        request.onsuccess = (event) => {
+            const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+            if (cursor) {
+                const usage = cursor.value;
+                let changed = false;
+                if (usage.commonInstructions) {
+                    const filtered = usage.commonInstructions.filter((i: string) => i !== instruction);
+                    if (filtered.length !== usage.commonInstructions.length) {
+                        usage.commonInstructions = filtered;
+                        changed = true;
+                    }
+                }
+                if (usage.lastInstruction === instruction) {
+                    usage.lastInstruction = undefined;
+                    changed = true;
+                }
+                if (changed) cursor.update(usage);
+                cursor.continue();
+            }
+        };
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 };
 
@@ -586,31 +654,20 @@ export const exportDatabase = async (): Promise<string> => {
   });
 };
 
-/**
- * importDatabase
- * Enhanced Protocol: ATOMIC WIPE & RESET
- * Ensures complete replacement of current data with backup data.
- */
 export const importDatabase = async (jsonString: string): Promise<void> => {
   const db = await initDB();
   const data = JSON.parse(jsonString);
   const stores = [STORE_NAME, TEMPLATE_STORE, COMPLAINT_TEMPLATE_STORE, SETTINGS_STORE, PROFILE_STORE, DRUG_STORE, USAGE_STORE];
 
   return new Promise((resolve, reject) => {
-    // Start an atomic transaction for all target stores
     const tx = db.transaction(stores, 'readwrite');
     
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
 
     for (const storeName of stores) {
-      const store = tx.objectStore(storeName);
-      
-      // Step 1: Wipe the current store completely
-      store.clear();
-      
-      // Step 2: Inject backup records if they exist for this store
-      if (data[storeName] && Array.isArray(data[storeName])) {
+      if (data[storeName]) {
+        const store = tx.objectStore(storeName);
         for (const record of data[storeName]) {
           store.put(record);
         }

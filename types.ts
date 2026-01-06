@@ -74,6 +74,8 @@ export interface DrugUsage {
   count: number;
   lastUsed: number;
   commonInstructions: string[]; // Top 3 most used instructions for this drug
+  lastDosage?: string;
+  lastInstruction?: string;
 }
 
 export interface LayoutElement {
