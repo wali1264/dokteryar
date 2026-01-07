@@ -436,7 +436,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     } catch (e) { alert('خطا در اسکن نسخه'); } finally { setLoading(false); }
   };
 
-  // --- DIGITAL PAD LOGIC ---
+  // --- DIGITAL PAD LOGIC (Pointer API Refactored) ---
   const startDigitalPad = () => {
     if (window.innerWidth < 1024) {
        setShowMobileRestrictModal(true);
@@ -483,12 +483,13 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     };
   };
 
-  const getCanvasMousePos = (e: any) => {
+  const getCanvasMousePos = (e: React.PointerEvent) => {
     const canvas = padInkCanvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    
+    const clientX = e.clientX;
+    const clientY = e.clientY;
 
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
@@ -503,16 +504,21 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     return { x: rotatedX + canvas.width / 2, y: rotatedY + canvas.height / 2 };
   };
 
-  const handlePadStart = (e: any) => {
-    if (padTool === 'type') return; 
-    e.preventDefault();
-    if (padTool === 'idle') return; 
+  const handlePadStart = (e: React.PointerEvent) => {
+    if (padTool === 'type' || padTool === 'idle') return;
+    
+    // Lock pointer to canvas for continuous drawing outside bounds
+    e.currentTarget.setPointerCapture(e.pointerId);
+    
     setPadIsDrawing(true);
     const { x, y } = getCanvasMousePos(e);
-    const ctx = padInkCanvasRef.current?.getContext('2d');
+    const ctx = padInkCanvasRef.current?.getContext('2d', { alpha: true });
+    
     if (ctx) {
       ctx.beginPath();
-      ctx.moveTo(x, y);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
       if (padTool === 'eraser') {
         ctx.globalCompositeOperation = 'destination-out';
         ctx.lineWidth = padEraserThickness; 
@@ -521,12 +527,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         ctx.strokeStyle = padColor;
         ctx.lineWidth = padPenThickness; 
       }
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+
+      // Draw immediate point for dots (similar to professional software)
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + 0.1);
+      ctx.stroke();
     }
   };
 
-  const handlePadMove = (e: any) => {
+  const handlePadMove = (e: React.PointerEvent) => {
     if (!padIsDrawing) return;
     const { x, y } = getCanvasMousePos(e);
     const ctx = padInkCanvasRef.current?.getContext('2d');
@@ -536,9 +545,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }
   };
 
-  const handlePadEnd = () => {
+  const handlePadEnd = (e: React.PointerEvent) => {
     if (!padIsDrawing) return;
     setPadIsDrawing(false);
+    
+    // Release pointer capture
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+
     const inkCanvas = padInkCanvasRef.current;
     if (inkCanvas) setPadHistory(prev => [...prev, inkCanvas.toDataURL()]);
   };
@@ -1911,13 +1926,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                    ref={padInkCanvasRef} 
                    width={paperDims.w} 
                    height={paperDims.h}
-                   onMouseDown={handlePadStart} 
-                   onMouseMove={handlePadMove} 
-                   onMouseUp={handlePadEnd} 
-                   onMouseLeave={handlePadEnd} 
-                   onTouchStart={handlePadStart} 
-                   onTouchMove={handlePadMove} 
-                   onTouchEnd={handlePadEnd} 
+                   onPointerDown={handlePadStart}
+                   onPointerMove={handlePadMove}
+                   onPointerUp={handlePadEnd}
+                   onPointerLeave={handlePadEnd}
+                   onPointerCancel={handlePadEnd}
                    className="relative z-10 digital-pad-canvas" 
                  />
                  
