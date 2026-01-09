@@ -81,7 +81,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
   const [suggestionType, setSuggestionType] = useState<'drug' | 'dosage' | 'instruction' | null>(null);
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
 
   // Preference Hub State
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
@@ -899,7 +899,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setItems(newItems);
     if (field === 'drug') {
       setSearchQuery(finalValue);
-      setSelectedSuggestionIndex(0);
+      setSelectedSuggestionIndex(-1);
     }
   };
 
@@ -908,7 +908,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     newItems[index].drug = smartCapitalize(drugName);
     setItems(newItems); 
     setSuggestionType(null);
-    setSelectedSuggestionIndex(0);
+    setSelectedSuggestionIndex(-1);
     // Smart focus to dosage
     setTimeout(() => itemRefs.current[index]?.dosage?.focus(), 50);
   };
@@ -918,7 +918,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     newItems[index].dosage = dosage;
     setItems(newItems); 
     setSuggestionType(null);
-    setSelectedSuggestionIndex(0);
+    setSelectedSuggestionIndex(-1);
     // Smart focus to instruction
     setTimeout(() => itemRefs.current[index]?.instruction?.focus(), 50);
   };
@@ -928,7 +928,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     newItems[index].instruction = instruction;
     setItems(newItems); 
     setSuggestionType(null);
-    setSelectedSuggestionIndex(0);
+    setSelectedSuggestionIndex(-1);
     // If it's the last item, create new one and focus its drug
     if (index === items.length - 1) {
       addItem();
@@ -1047,18 +1047,36 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     if (suggestionType && list.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => (prev + 1) % list.length);
+        setSelectedSuggestionIndex(prev => prev === -1 ? 0 : (prev + 1) % list.length);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setSelectedSuggestionIndex(prev => (prev - 1 + list.length) % list.length);
+        setSelectedSuggestionIndex(prev => prev <= 0 ? list.length - 1 : prev - 1);
       } else if (e.key === 'Enter') {
-        e.preventDefault();
-        const selected = list[selectedSuggestionIndex];
-        if (type === 'drug') selectSuggestedDrug(index, selected.name || selected);
-        else if (type === 'dosage') selectSuggestedDosage(index, selected);
-        else if (type === 'instruction') selectSuggestedInstruction(index, selected);
+        // PROFESSIONAL FIX: If index is -1, accept manual input and jump.
+        // If index is >= 0, it means user used arrow keys to highlight a choice.
+        if (selectedSuggestionIndex === -1) {
+            e.preventDefault();
+            if (type === 'drug') itemRefs.current[index]?.dosage?.focus();
+            else if (type === 'dosage') itemRefs.current[index]?.instruction?.focus();
+            else if (type === 'instruction') {
+               if (index === items.length - 1) {
+                 addItem();
+                 autoFocusNewItem.current = true;
+               } else {
+                 itemRefs.current[index + 1]?.drug?.focus();
+               }
+            }
+            setSuggestionType(null);
+        } else {
+            e.preventDefault();
+            const selected = list[selectedSuggestionIndex];
+            if (type === 'drug') selectSuggestedDrug(index, selected.name || selected);
+            else if (type === 'dosage') selectSuggestedDosage(index, selected);
+            else if (type === 'instruction') selectSuggestedInstruction(index, selected);
+        }
       } else if (e.key === 'Escape') {
         setSuggestionType(null);
+        setSelectedSuggestionIndex(-1);
       }
     } else {
       if (e.key === 'Enter') {
@@ -1520,14 +1538,14 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                 {mobileTab === 'rx' && (
                    <div className="space-y-4 animate-fade-in">
                       <div className={`bg-white p-4 rounded-2xl border transition-all duration-500 ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-sm'}`}><div className="flex justify-between items-center mb-2"><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm font-bold text-gray-500"><Activity size={16} className="text-purple-500" />تشخیص پزشک</label><div className="flex gap-1"><button onClick={() => setShowComplaintModal(true)} className={`p-1.5 rounded-lg transition-all ${chiefComplaint ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-100 text-gray-400'}`}><ListChecks size={14} /></button><button onClick={() => setShowPreferenceModal(true)} className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600"><RotateCw size={14} /></button></div></div>{isRecordingScribe && (<div className="flex gap-1 items-end h-4">{[...Array(6)].map((_, i) => <div key={i} className="waveform-bar" style={{ animationDelay: `${i * 0.1}s` }}></div>)}</div>)}</div><textarea className={`w-full p-3 bg-gray-50 rounded-xl outline-none text-gray-700 h-20 resize-none focus:bg-white focus:ring-2 focus:ring-purple-100 transition-all ${isRecordingScribe ? 'bg-purple-50/50 italic' : ''}`} placeholder={isRecordingScribe ? "در حال شنیدن تشخیص..." : "تشخیص نهایی را بنویسید..."} value={diagnosis} onChange={e => setDiagnosis(e.target.value)} /></div>
-                      <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}><button type="button" onClick={(e) => { e.stopPropagation(); removeItem(idx); }} className="absolute top-4 left-4 z-20 p-2 bg-red-50 text-red-500 rounded-xl active:scale-90 transition-transform"><Trash size={18} /></button><div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'drug')} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map((d, sIdx) => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(idx, d.name); }} className={`w-full text-right p-3 border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors font-bold text-gray-700 ${selectedSuggestionIndex === sIdx ? 'suggestion-item-highlight' : 'hover:bg-indigo-50'}`}><div className="flex items-center gap-3">{getFormIcon(d.name)}<span>{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'dosage')} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
+                      <div className="space-y-3">{items.map((item, idx) => (<div key={idx} className={`bg-white p-4 rounded-2xl border transition-all duration-500 relative group animate-slide-up ${isRecordingScribe ? 'scribe-glow' : 'border-gray-100 shadow-[0_4px_20px_rgba(0,0,0,0.03)]'}`}><button type="button" onClick={(e) => { e.stopPropagation(); removeItem(idx); }} className="absolute top-4 left-4 z-20 p-2 bg-red-50 text-red-500 rounded-xl active:scale-90 transition-transform"><Trash size={18} /></button><div className="mb-4 pl-12 relative"><label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 block">نام دارو</label><input className="w-full font-bold text-gray-800 text-lg border-b border-gray-100 pb-2 outline-none focus:border-indigo-500 placeholder-gray-300" placeholder="مثال: Tab Amoxicillin 500" value={item.drug} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setSelectedSuggestionIndex(-1); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'drug', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'drug')} />{suggestionType === 'drug' && activeItemIndex === idx && getDrugSuggestions().length > 0 && (<div className="absolute bottom-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-200 z-[9999] overflow-hidden mb-2 animate-slide-up flex flex-col-reverse">{getDrugSuggestions().map((d, sIdx) => (<button key={d.id} onMouseDown={(e) => { e.preventDefault(); selectSuggestedDrug(idx, d.name); }} className={`w-full text-right p-3 border-b border-gray-50 last:border-0 flex items-center justify-between transition-colors font-bold text-gray-700 ${selectedSuggestionIndex === sIdx ? 'suggestion-item-highlight' : 'hover:bg-indigo-50'}`}><div className="flex items-center gap-3">{getFormIcon(d.name)}<span>{d.name}</span></div><Zap size={14} className="text-amber-500" /></button>))}</div>)}</div><div className="flex gap-3"><div className="flex-1 bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">تعداد</label><input className="w-full bg-transparent font-mono text-center font-bold text-gray-700 outline-none placeholder-gray-300" placeholder="N=30" value={item.dosage} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setSelectedSuggestionIndex(-1); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'dosage', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'dosage')} />{suggestionType === 'dosage' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
                         {getSmartDosages().map((d, sIdx) => (
                           <div key={d} className={`flex items-center text-white rounded-xl shadow-lg overflow-hidden whitespace-nowrap ${selectedSuggestionIndex === sIdx ? 'ring-2 ring-indigo-300 scale-105 bg-indigo-700' : 'bg-teal-600'}`}>
                             <button onMouseDown={(e) => { e.preventDefault(); selectSuggestedDosage(idx, d); }} className="px-3 py-1.5 text-[10px] font-black border-l border-white/20">{d}</button>
                             <button onMouseDown={(e) => { e.preventDefault(); handleDeleteSuggestion(e, 'dosage', d); }} className="p-1.5 hover:bg-black/10 transition-colors"><X size={10} /></button>
                           </div>
                         ))}
-                      </div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="N=30" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'instruction')} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
+                      </div>)}</div><div className="flex-[2] bg-gray-50 p-2 rounded-xl border border-gray-100 relative"><label className="text-[10px] font-bold text-gray-400 block mb-1">دستور مصرف</label><input className="w-full bg-transparent font-medium text-gray-700 outline-none text-right placeholder-gray-300" placeholder="N=30" value={item.instruction} onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSelectedSuggestionIndex(-1); }} onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} onChange={e => updateItem(idx, 'instruction', e.target.value)} onKeyDown={(e) => handleInputKeyDown(e, idx, 'instruction')} />{suggestionType === 'instruction' && activeItemIndex === idx && (<div className="absolute bottom-full right-0 left-0 bg-white/95 backdrop-blur-md shadow-2xl p-2 rounded-t-2xl flex gap-2 overflow-x-auto no-scrollbar border-t border-indigo-100 z-50">
                         {getSmartInstructions(item.drug).map((ins, sIdx) => (
                           <div key={ins} className={`flex items-center text-white rounded-xl shadow-lg overflow-hidden whitespace-nowrap ${selectedSuggestionIndex === sIdx ? 'ring-2 ring-indigo-300 scale-105 bg-indigo-700' : 'bg-indigo-600'}`}>
                             <button onMouseDown={(e) => { e.preventDefault(); selectSuggestedInstruction(idx, ins); }} className="px-3 py-1.5 text-[10px] font-black border-l border-white/20">{ins}</button>
@@ -1657,7 +1675,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                       ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].drug = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-gray-800 text-xl transition-all border border-transparent focus:border-indigo-100 placeholder-gray-300" 
                       value={item.drug} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setSelectedSuggestionIndex(0); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setSelectedSuggestionIndex(-1); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'drug' ? null : prev); }, 200); }} 
                       onKeyDown={(e) => handleInputKeyDown(e, idx, 'drug')}
                       onChange={e => updateItem(idx, 'drug', e.target.value)} 
@@ -1679,7 +1697,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                       ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].dosage = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-black text-lg text-indigo-700 transition-all font-mono border border-transparent focus:border-indigo-100 text-center placeholder-gray-200" 
                       value={item.dosage} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setSelectedSuggestionIndex(0); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setSelectedSuggestionIndex(-1); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'dosage' ? null : prev); }, 200); }} 
                       onKeyDown={(e) => handleInputKeyDown(e, idx, 'dosage')}
                       onChange={e => updateItem(idx, 'dosage', e.target.value)} 
@@ -1702,7 +1720,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                       ref={el => { if (!itemRefs.current[idx]) itemRefs.current[idx] = {}; itemRefs.current[idx].instruction = el; }}
                       className="w-full p-4 bg-transparent focus:bg-white focus:shadow-lg rounded-2xl outline-none font-bold text-lg text-gray-600 text-right transition-all border border-transparent focus:border-indigo-100 placeholder-gray-200" 
                       value={item.instruction} 
-                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSelectedSuggestionIndex(0); }} 
+                      onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setSelectedSuggestionIndex(-1); }} 
                       onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'instruction' ? null : prev); }, 200); }} 
                       onKeyDown={(e) => handleInputKeyDown(e, idx, 'instruction')}
                       onChange={e => updateItem(idx, 'instruction', e.target.value)} 
@@ -1766,7 +1784,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           <div className="fixed inset-0 z-[210] bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
               <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col h-[80vh]">
                   <div className="p-8 border-b border-gray-100 bg-gray-50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-600 p-2 rounded-xl text-white shadow-lg"><RotateCw size={24} /></div><div><h3 className="text-2xl font-black text-gray-800">مدیریت ترجیحات نسخه‌نویسی</h3><p className="text-xs text-gray-500 font-bold mt-1">شخصی‌سازی دوزها و دستورات مصرف متداول</p></div></div><button onClick={() => setShowPreferenceModal(false)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div>
-                  <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-10 custom-scrollbar"><div className="space-y-6"><h4 className="font-black text-teal-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-teal-100 pb-2"><Hash size={18} /> مقادیر و دوزها (Qty)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 font-bold text-sm" placeholder="مثلاً N=20" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('dosage')} /><button onClick={() => handleAddPreference('dosage')} className="bg-teal-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customDosages.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customDosages.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-black text-gray-700">{v}</span><button onClick={() => handleRemovePreference('dosage', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div><div className="space-y-6"><h4 className="font-black text-indigo-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-indigo-100 pb-2"><FileText size={18} /> دستورات مصرف (Sig)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-sm" placeholder="مثلاً قبل از خواب" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('instruction')} /><button onClick={() => handleAddPreference('instruction')} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-indigo-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customInstructions.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customInstructions.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-bold text-gray-700 text-xs">{v}</span><button onClick={() => handleRemovePreference('instruction', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div></div>
+                  <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 gap-10 custom-scrollbar"><div className="space-y-6"><h4 className="font-black text-teal-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-teal-100 pb-2"><Hash size={18} /> مقادیر و دوزها (Qty)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-teal-100 font-bold text-sm" placeholder="مثلاً N=20" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('dosage')} /><button onClick={() => handleAddPreference('dosage')} className="bg-teal-600 text-white p-3 rounded-xl shadow-lg shadow-teal-100 hover:bg-teal-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customDosages.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customDosages.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-black text-gray-700">{v}</span><button onClick={() => handleRemovePreference('dosage', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div><div className="space-y-6"><h4 className="font-black text-indigo-600 flex items-center gap-2 text-sm uppercase tracking-widest border-b border-indigo-100 pb-2"><FileText size={18} /> دستورات مصرف (Sig)</h4><div className="flex gap-2"><input className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-100 font-bold text-sm" placeholder="مثلاً قبل از خواب" value={newPrefValue} onChange={e => setNewPrefValue(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAddPreference('instruction')} /><button onClick={() => handleAddPreference('instruction')} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg shadow-indigo-700 transition-all"><Plus size={20}/></button></div><div className="space-y-2">{customInstructions.length === 0 ? (<p className="text-center text-xs text-gray-400 py-10">موردی ثبت نشده</p>) : (customInstructions.map(v => (<div key={v} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100 group"><span className="font-bold text-gray-700 text-xs">{v}</span><button onClick={() => handleRemovePreference('instruction', v)} className="text-gray-300 hover:text-red-500 p-1"><X size={16}/></button></div>)))}</div></div></div>
                   <div className="p-6 bg-gray-50 border-t border-gray-100 text-center"><button onClick={() => setShowPreferenceModal(false)} className="px-12 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all">تایید و بستن</button></div>
               </div>
           </div>
@@ -2049,7 +2067,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                                    placeholder="نام دارو..." 
                                                    value={item.drug} 
                                                    onChange={e => updateItem(idx, 'drug', e.target.value)} 
-                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setActiveTypingFieldId(`item_drug_${idx}`); setSelectedSuggestionIndex(0); }}
+                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('drug'); setSearchQuery(item.drug); setActiveTypingFieldId(`item_drug_${idx}`); setSelectedSuggestionIndex(-1); }}
                                                    onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_drug_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
                                                    onKeyDown={(e) => handleInputKeyDown(e, idx, 'drug')}
                                                />
@@ -2070,7 +2088,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                                    placeholder="N=30" 
                                                    value={item.dosage} 
                                                    onChange={e => updateItem(idx, 'dosage', e.target.value)} 
-                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setActiveTypingFieldId(`item_dosage_${idx}`); setSelectedSuggestionIndex(0); }}
+                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('dosage'); setActiveTypingFieldId(`item_dosage_${idx}`); setSelectedSuggestionIndex(-1); }}
                                                    onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_dosage_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
                                                    onKeyDown={(e) => handleInputKeyDown(e, idx, 'dosage')}
                                                />
@@ -2092,7 +2110,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                                    placeholder="N=30" 
                                                    value={item.instruction} 
                                                    onChange={e => updateItem(idx, 'instruction', e.target.value)} 
-                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setActiveTypingFieldId(`item_instruction_${idx}`); setSelectedSuggestionIndex(0); }}
+                                                   onFocus={() => { setActiveItemIndex(idx); setSuggestionType('instruction'); setActiveTypingFieldId(`item_instruction_${idx}`); setSelectedSuggestionIndex(-1); }}
                                                    onBlur={() => { setTimeout(() => { if (activeTypingFieldId === `item_instruction_${idx}`) { setSuggestionType(null); setActiveTypingFieldId(null); } }, 200); }}
                                                    onKeyDown={(e) => handleInputKeyDown(e, idx, 'instruction')}
                                                />
