@@ -74,6 +74,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [templates, setTemplates] = useState<PrescriptionTemplate[]>([]);
   const [complaintTemplates, setComplaintTemplates] = useState<any[]>([]);
   const [showComplaintTemplateMenu, setShowComplaintTemplateMenu] = useState(false);
+  const [saveComplaintSuccess, setSaveComplaintSuccess] = useState(false);
   
   const [allDrugs, setAllDrugs] = useState<Drug[]>([]);
   const [usageStats, setUsageStats] = useState<any[]>([]);
@@ -157,17 +158,30 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const padInkCanvasRef = useRef<HTMLCanvasElement>(null);
   const [padIsDrawing, setPadIsDrawing] = useState(false);
   const [padHistory, setPadHistory] = useState<string[]>([]);
-  const [padRotation, setPadRotation] = useState(0);
-  const [padZoom, setPadZoom] = useState(1);
+  
+  // Persistent Workspace Settings
+  const [padRotation, setPadRotation] = useState(() => {
+    const saved = localStorage.getItem('tabib_pad_rotation');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [padZoom, setPadZoom] = useState(() => {
+    const saved = localStorage.getItem('tabib_pad_zoom');
+    return saved ? parseFloat(saved) : 1;
+  });
+  const [padToolbarPos, setPadToolbarPos] = useState(() => {
+    const saved = localStorage.getItem('tabib_pad_toolbar_pos');
+    return saved ? JSON.parse(saved) : { x: 100, y: 100 };
+  });
+  
   const [padColor, setPadColor] = useState('#1e3a8a'); 
   const [padTool, setPadTool] = useState<'pen' | 'eraser' | 'idle' | 'type'>('idle');
   const [padPenThickness, setPadPenThickness] = useState(3);
   const [padEraserThickness, setPadEraserThickness] = useState(20);
   const [padThickness, setPadThickness] = useState(3);
   const [activeTypingFieldId, setActiveTypingFieldId] = useState<string | null>(null);
+  const [padError, setPadError] = useState<string | null>(null);
   
   // Floating Lever & Temporal State
-  const [padToolbarPos, setPadToolbarPos] = useState({ x: 20, y: 20 });
   const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
   const toolbarDragOffset = useRef({ x: 0, y: 0 });
   const [showPadSettings, setShowPadSettings] = useState(false);
@@ -445,11 +459,9 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     stopCamera();
     setShowDigitalPad(true);
     setPadHistory([]);
-    setPadRotation(0);
-    setPadZoom(1);
     setPadTool('idle'); 
     setPadThickness(padPenThickness); 
-    setPadToolbarPos({ x: (window.innerWidth / 2) - 200, y: (window.innerHeight / 2) - 40 });
+    setPadError(null);
     setTimeout(initPadCanvas, 100);
   };
 
@@ -601,8 +613,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     finalCanvas.toBlob(async (blob) => {
       if (blob) {
         const file = new File([blob], "digital_handwritten_rx.jpg", { type: "image/jpeg" });
-        setShowDigitalPad(false);
         setLoading(true);
+        setPadError(null);
         try {
           const res = await processDigitalPadAI(file);
           const guestRecord: PatientRecord = {
@@ -630,8 +642,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
           if (res.diagnosis) setDiagnosis(res.diagnosis);
           if (res.chiefComplaint) setChiefComplaint(res.chiefComplaint);
           if (res.vitals) setVitals(prev => ({ ...prev, ...res.vitals, weight: res.patientWeight || prev.weight }));
+          
+          // Close ONLY on success
+          setShowDigitalPad(false);
         } catch (e) {
-          alert("خطا در تحلیل دست‌خط دیجیتال");
+          setPadError("متأسفانه هوش مصنوعی قادر به واکاوی دست‌خط نبود. لطفاً دوباره تلاش کنید.");
         } finally {
           setLoading(false);
         }
@@ -653,7 +668,10 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
      setPadToolbarPos({ x: clientX - toolbarDragOffset.current.x, y: clientY - toolbarDragOffset.current.y });
   };
 
-  const handleToolbarEnd = () => setIsDraggingToolbar(false);
+  const handleToolbarEnd = () => {
+    setIsDraggingToolbar(false);
+    localStorage.setItem('tabib_pad_toolbar_pos', JSON.stringify(padToolbarPos));
+  };
 
   const triggerSettingsDisplay = () => {
      setShowPadSettings(true);
@@ -935,7 +953,8 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     try {
       await saveComplaintTemplate(chiefComplaint.trim());
       loadInitialData();
-      alert('شکایت به عنوان قالب ذخیره شد.');
+      setSaveComplaintSuccess(true);
+      setTimeout(() => setSaveComplaintSuccess(false), 2000);
     } catch (e) { console.error(e); }
   };
 
@@ -1175,7 +1194,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               default: innerHtml = '';
            }
            if (!innerHtml) return '';
-           return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: ${el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
+           return `<div class="print-element" style="left: ${el.x}px; top: ${el.y}px; width: ${el.width}px; font-size: ${el.fontSize}pt; transform: rotate(${el.rotation}deg); text-align: el.align || (el.id === 'items' ? 'left' : 'right')};">${innerHtml}</div>`;
         }).join('');
         content = `<div class="print-wrapper"><div class="custom-container">${bgHtml}${elementsHtml}</div></div>`;
      }
@@ -1368,7 +1387,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
         @keyframes slideUpIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
         .pad-search-glass {
-           background: rgba(255,255,255,0.9);
+           background: rgba(255, 255, 255, 0.9);
            backdrop-filter: blur(12px);
            border-radius: 1.5rem;
            padding: 6px 12px;
@@ -1421,6 +1440,26 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
            background-color: rgba(59, 130, 246, 0.1) !important;
            border-right: 4px solid #2563eb !important;
         }
+
+        .pad-error-banner {
+          position: absolute;
+          top: 1rem;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 470;
+          background: #ef4444;
+          color: white;
+          padding: 0.75rem 1.5rem;
+          border-radius: 1rem;
+          font-weight: bold;
+          font-size: 0.9rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          box-shadow: 0 10px 30px rgba(239, 68, 68, 0.3);
+          animation: slideDownIn 0.3s ease-out;
+        }
+        @keyframes slideDownIn { from { transform: translate(-50%, -20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
       `}</style>
 
       {(loading || isProcessingScribe || isProcessingCC) && (
@@ -1498,7 +1537,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                       </div>)}</div></div></div>))}</div>
                     <button onClick={addItem} className="w-full py-4 border-2 border-dashed border-indigo-200 rounded-2xl text-indigo-500 font-bold flex items-center justify-center gap-2 hover:bg-indigo-50 transition-colors"><Plus size={20} />افزودن قلم داروی جدید</button>
                  </div>
-              )}
+                )}
               {mobileTab === 'templates' && (
                  <div className="animate-fade-in space-y-3">{templates.length === 0 ? <div className="text-center p-8 text-gray-400 bg-white rounded-2xl border border-gray-100">قالبی یافت نشد</div> : templates.map(t => (<div key={t.id} onClick={() => loadTemplate(t)} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-transform cursor-pointer"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600"><LayoutTemplate size={20} /></div><span className="font-bold text-gray-700">{t.name}</span></div><ChevronRight className="text-gray-300" size={20} /></div>))}</div>
               )}
@@ -1735,7 +1774,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
 
       {showComplaintModal && (
           <div className="fixed inset-0 z-[195] bg-black/50 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-white w-full max-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col relative"><div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div><h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3><div className="relative"><button onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)} className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title="قالب‌های شکایات"><LayoutTemplate size={20} /></button>{showComplaintTemplateMenu && (<div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-80 bg-white shadow-[0_15px_50px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down"><div className="p-3 bg-indigo-50 border-b border-gray-100 text-[10px] font-black uppercase text-indigo-400 text-center">لیست قالب‌های شکایات</div><div className="max-h-64 overflow-y-auto custom-scrollbar bg-white">{complaintTemplates.length === 0 ? (<div className="p-6 text-center text-xs text-gray-400 font-bold">هنوز قالبی ذخیره نکرده‌اید</div>) : (complaintTemplates.map(t => (<div key={t.id} className="flex items-center justify-between p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer transition-colors" onClick={() => selectComplaintTemplate(t.text)}><span className="text-xs font-black text-gray-700 truncate flex-1 leading-relaxed">{t.text}</span><button onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }} className="p-2 text-gray-300 hover:text-red-500 transition-all ml-2"><Trash size={16} /></button></div>)))}</div></div>)}</div></div><button onClick={() => { stopCCRecording(); setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div><div className="p-8 space-y-6"><div className="relative"><textarea autoFocus className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg" placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..." value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} /><div className="absolute bottom-4 left-4 flex gap-2"><button onClick={handleSaveComplaintTemplate} disabled={!chiefComplaint.trim()} className="p-4 bg-white text-indigo-600 border border-indigo-100 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 disabled:opacity-50" title="ذخیره به عنوان قالب جدید"><BookmarkPlus size={24} /></button><button onClick={isRecordingCC ? stopCCRecording : startCCRecording} className={`p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`} title="دیکته صوتی شکایات">{isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}</button></div></div><div className="flex gap-4"><button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button><button onClick={() => { setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button></div></div></div>
+              <div className="bg-white w-full max-xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-slide-up flex flex-col relative"><div className="p-8 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-xl text-indigo-600"><ListChecks size={24} /></div><h3 className="text-2xl font-black text-gray-800">شکایات اصلی بیمار (CC)</h3><div className="relative"><button onClick={() => setShowComplaintTemplateMenu(!showComplaintTemplateMenu)} className={`p-2 rounded-xl transition-all ${showComplaintTemplateMenu ? 'bg-indigo-600 text-white shadow-md' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`} title="قالب‌های شکایات"><LayoutTemplate size={20} /></button>{showComplaintTemplateMenu && (<div className="absolute top-full left-1/2 -translate-x-1/2 mt-3 w-80 bg-white shadow-[0_15px_50px_rgba(0,0,0,0.15)] rounded-2xl border border-gray-100 z-[220] overflow-hidden animate-slide-down"><div className="p-3 bg-indigo-50 border-b border-gray-100 text-[10px] font-black uppercase text-indigo-400 text-center">لیست قالب‌های شکایات</div><div className="max-h-64 overflow-y-auto custom-scrollbar bg-white">{complaintTemplates.length === 0 ? (<div className="p-6 text-center text-xs text-gray-400 font-bold">هنوز قالبی ذخیره نکرده‌اید</div>) : (complaintTemplates.map(t => (<div key={t.id} className="flex items-center justify-between p-4 hover:bg-indigo-50 border-b border-gray-50 last:border-0 group cursor-pointer transition-colors" onClick={() => selectComplaintTemplate(t.text)}><span className="text-xs font-black text-gray-700 truncate flex-1 leading-relaxed">{t.text}</span><button onClick={(e) => { e.stopPropagation(); handleDeleteComplaintTemplate(t.id); }} className="p-2 text-gray-300 hover:text-red-500 transition-all ml-2"><Trash size={16} /></button></div>)))}</div></div>)}</div></div><button onClick={() => { stopCCRecording(); setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"><X size={24} /></button></div><div className="p-8 space-y-6"><div className="relative"><textarea autoFocus className="w-full p-6 bg-gray-50 border border-gray-200 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-100 font-bold text-gray-700 h-64 resize-none leading-relaxed text-lg" placeholder="شکایات و علائم اصلی بیمار را اینجا بنویسید یا دیکته کنید..." value={chiefComplaint} onChange={e => setChiefComplaint(e.target.value)} /><div className="absolute bottom-4 left-4 flex gap-2"><button onClick={handleSaveComplaintTemplate} disabled={!chiefComplaint.trim()} className="p-4 bg-white text-indigo-600 border border-indigo-100 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 disabled:opacity-50" title="ذخیره به عنوان قالب جدید">{saveComplaintSuccess ? <Check size={24} className="text-green-500" /> : <BookmarkPlus size={24} />}</button><button onClick={isRecordingCC ? stopCCRecording : startCCRecording} className={`p-4 rounded-2xl shadow-lg transition-all active:scale-95 ${isRecordingCC ? 'bg-red-600 text-white animate-pulse' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-50'}`} title="دیکته صوتی شکایات">{isProcessingCC ? <Loader2 size={24} className="animate-spin" /> : isRecordingCC ? <MicOff size={24} /> : <Mic size={24} />}</button></div></div><div className="flex gap-4"><button onClick={() => { setChiefComplaint(''); }} className="px-8 py-4 rounded-2xl font-black text-sm text-red-600 bg-red-50 hover:bg-red-100 transition-all">پاک‌سازی</button><button onClick={() => { setShowComplaintModal(false); setShowComplaintTemplateMenu(false); }} className="flex-1 bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all text-lg">ثبت و تایید شکایات</button></div></div></div>
           </div>
       )}
 
@@ -1780,6 +1819,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
              onMouseMove={handleToolbarMove} onTouchMove={handleToolbarMove}
              onMouseUp={handleToolbarEnd} onTouchEnd={handleToolbarEnd}>
            
+           {/* Fault-Tolerant Error Banner */}
+           {padError && (
+              <div className="pad-error-banner">
+                 <AlertCircle size={18} />
+                 <span>{padError}</span>
+                 <button onClick={() => setPadError(null)} className="ml-2 bg-white/20 p-1 rounded-full hover:bg-white/30"><X size={12}/></button>
+              </div>
+           )}
+
            <div 
               style={{ 
                 left: padToolbarPos.x,
@@ -1869,13 +1917,28 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
               <div className={`${padRotation % 180 === 90 ? 'w-[1px] h-6' : 'w-6 h-[1px]'} bg-gray-200`}></div>
 
               <div className={`flex gap-1 ${padRotation % 180 === 90 ? 'flex-row' : 'flex-col'}`}>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadRotation(r => (r + 90) % 360); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
+                 <button onPointerDown={(e) => { 
+                   e.stopPropagation(); 
+                   const next = (padRotation + 90) % 360;
+                   setPadRotation(next); 
+                   localStorage.setItem('tabib_pad_rotation', next.toString());
+                 }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
                     <RotateCw size={18} />
                  </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadZoom(z => Math.max(0.2, z - 0.1)); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
+                 <button onPointerDown={(e) => { 
+                   e.stopPropagation(); 
+                   const next = Math.max(0.2, padZoom - 0.1);
+                   setPadZoom(next); 
+                   localStorage.setItem('tabib_pad_zoom', next.toString());
+                 }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
                     <ZoomOut size={18} />
                  </button>
-                 <button onPointerDown={(e) => { e.stopPropagation(); setPadZoom(z => Math.min(5, z + 0.1)); }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
+                 <button onPointerDown={(e) => { 
+                   e.stopPropagation(); 
+                   const next = Math.min(5, padZoom + 0.1);
+                   setPadZoom(next); 
+                   localStorage.setItem('tabib_pad_zoom', next.toString());
+                 }} className="p-2 lg:p-3 text-gray-500 hover:text-indigo-600 transition-all">
                     <ZoomIn size={18} />
                  </button>
               </div>

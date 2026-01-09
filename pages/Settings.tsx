@@ -157,10 +157,15 @@ const Settings: React.FC = () => {
   };
 
   const handleDeleteDrug = async (id: string) => {
-    if (confirm('آیا از حذف این دارو از بانک محلی مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) {
+    setLoading(true);
+    try {
         await deleteDrug(id);
         await loadData();
         showMessage('success', 'دارو حذف گردید.');
+    } catch (e) {
+        showMessage('error', 'خطا در حذف دارو.');
+    } finally {
+        setLoading(false);
     }
   };
 

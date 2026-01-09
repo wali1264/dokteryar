@@ -26,8 +26,8 @@ import Settings from './pages/Settings';
 import AuthPage from './components/AuthPage';
 import { AppRoute, PatientRecord } from './types';
 import { supabase } from './services/supabase';
-import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock, getSettings, exportDatabase, uploadBackupOnline, updateLastBackupTime, getLastBackupTime, isDatabaseEmpty, getOnlineBackupMetadata, fetchOnlineBackup, importDatabase } from './services/db';
-import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Database, CloudDownload, RefreshCcw, X, History, Sparkles } from 'lucide-react';
+import { getAuthMetadata, saveAuthMetadata, clearAuthMetadata, isAuthHardLocked, getSessionAge, setAuthHardLock, getSettings, exportDatabase, uploadBackupOnline, updateLastBackupTime, getLastBackupTime, isDatabaseEmpty, getOnlineBackupMetadata, fetchOnlineBackup, importDatabase, savePendingBackup, getPendingBackup, clearPendingBackup } from './services/db';
+import { Loader2, LogOut, Clock, ShieldCheck, ShieldAlert, AlertTriangle, Smartphone, Database, CloudDownload, RefreshCw, X, History, Sparkles } from 'lucide-react';
 
 function App() {
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(AppRoute.PRESCRIPTION);
@@ -45,6 +45,17 @@ function App() {
 
   const isVerifyingRef = useRef(false);
   const localSessionIdRef = useRef<string | null>(null);
+
+  // Sync Logic: Watch for online status to flush pending cloud backups
+  useEffect(() => {
+    const handleOnlineSync = () => {
+       if (session?.user?.id) {
+          flushPendingBackup(session.user.id);
+       }
+    };
+    window.addEventListener('online', handleOnlineSync);
+    return () => window.removeEventListener('online', handleOnlineSync);
+  }, [session]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -134,6 +145,7 @@ function App() {
      try {
         const json = await fetchOnlineBackup(session.user.id);
         if (json) {
+           // Professional Mirror Restore (Purge then populate)
            await importDatabase(json);
            setShowRestorePrompt(false);
            window.location.reload();
@@ -142,6 +154,19 @@ function App() {
         alert("خطا در بازیابی اطلاعات ابری.");
      } finally {
         setRestoreLoading(false);
+     }
+  };
+
+  const flushPendingBackup = async (userId: string) => {
+     const pending = getPendingBackup();
+     if (pending && navigator.onLine) {
+        try {
+           await uploadBackupOnline(userId, pending);
+           clearPendingBackup();
+           console.log("Pending cloud backup flushed successfully.");
+        } catch (e) {
+           console.warn("Flush pending backup failed. Will retry later.");
+        }
      }
   };
 
@@ -161,8 +186,13 @@ function App() {
             await uploadBackupOnline(userId, json);
             updateLastBackupTime();
           } catch (e) {
-            console.warn("Auto-Backup Online Failed.");
+            console.warn("Auto-Backup Online failed, saving to hybrid queue.");
+            savePendingBackup(json);
           }
+        } else {
+          // Professional Offline Protocol: Queue for later sync
+          console.log("Offline: Queuing backup for cloud sync.");
+          savePendingBackup(json);
         }
       }
     } catch (error) {
@@ -412,7 +442,7 @@ function App() {
                     disabled={restoreLoading}
                     className="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all flex items-center justify-center gap-3 text-lg"
                  >
-                    {restoreLoading ? <Loader2 className="animate-spin" /> : <RefreshCcw size={20} />}
+                    {restoreLoading ? <Loader2 className="animate-spin" /> : <RefreshCw size={20} />}
                     بازیابی و همگام‌سازی تمام داده‌ها
                  </button>
                  <button 
