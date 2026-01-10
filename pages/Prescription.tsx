@@ -80,8 +80,11 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const [usageStats, setUsageStats] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeItemIndex, setActiveItemIndex] = useState<number | null>(null);
-  const [suggestionType, setSuggestionType] = useState<'drug' | 'dosage' | 'instruction' | null>(null);
+  const [suggestionType, setSuggestionType] = useState<'drug' | 'dosage' | 'instruction' | 'complaint' | null>(null);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+
+  // New state for CC typing in Express Mode
+  const [ccTyping, setCcTyping] = useState('');
 
   // Preference Hub State
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
@@ -121,6 +124,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
   const patientNameRef = useRef<HTMLInputElement>(null);
   const ageRef = useRef<HTMLInputElement>(null);
   const weightRef = useRef<HTMLInputElement>(null);
+  const ccInputRef = useRef<HTMLInputElement>(null);
   const diagnosisRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<any[]>([]);
   const autoFocusNewItem = useRef(false);
@@ -308,6 +312,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setItems([]);
     setDiagnosis('');
     setChiefComplaint('');
+    setCcTyping('');
 
     if (!patient.id.startsWith('guest_')) {
       const savedDraft = localStorage.getItem(`tabib_draft_${patient.id}`);
@@ -757,6 +762,7 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     setItems([]);
     setDiagnosis('');
     setChiefComplaint('');
+    setCcTyping('');
     setVitals({
       bloodPressure: '', heartRate: '', temperature: '', spO2: '', weight: '', height: '', respiratoryRate: '', bloodSugar: ''
     });
@@ -1014,6 +1020,12 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     }).slice(0, 10);
   };
 
+  const getComplaintSuggestions = () => {
+    if (!ccTyping || ccTyping.length < 1) return [];
+    const q = ccTyping.toLowerCase();
+    return complaintTemplates.filter(t => t.text.toLowerCase().includes(q)).slice(0, 8);
+  };
+
   const getFormIcon = (name: string) => {
     const n = name.toLowerCase();
     if (n.includes('tab') || n.includes('cap') || n.includes('قرص') || n.includes('کپسول')) return <Pill className="text-blue-500" size={14} />;
@@ -1035,6 +1047,46 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
     const stats = usageStats.find(u => u.drugName === drugName);
     const learned = stats?.commonInstructions || [];
     return [...learned, ...customInstructions].slice(0, 20);
+  };
+
+  // Logic to handle Chief Complaint field keydown
+  const handleCCInputKeyDown = (e: React.KeyboardEvent) => {
+    const suggestions = getComplaintSuggestions();
+    
+    if (suggestionType === 'complaint' && suggestions.length > 0) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedSuggestionIndex(prev => (prev + 1) % suggestions.length);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedSuggestionIndex(prev => prev <= 0 ? suggestions.length - 1 : prev - 1);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedSuggestionIndex >= 0) {
+                const selected = suggestions[selectedSuggestionIndex];
+                selectComplaintTemplate(selected.text);
+                setCcTyping('');
+                setSelectedSuggestionIndex(-1);
+            } else if (ccTyping.trim()) {
+                setChiefComplaint(prev => prev + (prev ? " " : "") + ccTyping.trim());
+                setCcTyping('');
+            } else {
+                diagnosisRef.current?.focus();
+            }
+        } else if (e.key === 'Escape') {
+            setSuggestionType(null);
+        }
+    } else {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (ccTyping.trim()) {
+                setChiefComplaint(prev => prev + (prev ? " " : "") + ccTyping.trim());
+                setCcTyping('');
+            } else {
+                diagnosisRef.current?.focus();
+            }
+        }
+    }
   };
 
   // Key Down Handler for keyboard navigation
@@ -1570,15 +1622,15 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
              <div className="flex gap-2"><button onClick={() => setShowPreferenceModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><RotateCw size={20} /> ترجیحات</button><button onClick={() => setShowTemplatesModal(true)} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 transition-all shadow-sm"><List size={20} /> قالب‌ها</button><button onClick={startCamera} disabled={!isOnline} className="px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100 transition-all shadow-sm"><Camera size={20} /> اسکن دوربین</button><button onClick={isRecordingScribe ? stopScribeRecording : startScribeRecording} disabled={isProcessingScribe || !isOnline} className={`px-8 py-3 rounded-2xl font-black text-sm flex items-center gap-3 shadow-lg transition-all active:scale-95 ${isRecordingScribe ? 'bg-purple-600 text-white animate-scribe-pulse' : 'bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-200'}`}>{isRecordingScribe ? <MicOff size={20} /> : <Mic size={20} />}{isRecordingScribe ? 'ضبط صوت...' : 'کاتب هوشمند'}</button><button onClick={handleAuditSafety} disabled={safetyLoading || items.length === 0} className={`px-6 py-3 rounded-2xl font-black text-sm flex items-center gap-2 shadow-sm transition-all ${isOnline ? (safetyLoading ? 'bg-indigo-50 text-indigo-400' : 'bg-indigo-50 text-indigo-600 animate-safety-pulse') : 'bg-gray-100 text-gray-300 border border-gray-200 cursor-not-allowed'}`}>{safetyLoading ? <Loader2 size={20} className="animate-spin" /> : <ShieldAlert size={20} />}{safetyLoading ? 'پایش AI...' : 'سپر ایمنی'}</button><button onClick={() => setViewMode('landing')} className="p-3 bg-gray-50 rounded-2xl text-gray-400 hover:text-red-500 transition-colors"><ArrowLeft size={24} /></button></div>
            </div>
            <div className="flex gap-6 items-start">
-              <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem inputRef={vitalRefs.bp} label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.hr} label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'hr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.temp} label="T" icon={Thermometer} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'temp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.rr} label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'rr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.bs} label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bs')} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem inputRef={vitalRefs.weight} label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="kg" field="weight" onChange={handleVitalChange} /></div>
+              <div className="w-28 flex flex-col gap-1.5 shrink-0"><div className="bg-indigo-600 text-white p-2 rounded-xl shadow-lg flex items-center justify-center mb-0.5"><Activity size={20} /></div><DesktopVitalSidebarItem inputRef={vitalRefs.bp} label="BP" icon={Activity} color="text-red-500" value={vitals.bloodPressure} unit="mmHg" field="bloodPressure" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.hr} label="HR" icon={Heart} color="text-rose-500" value={vitals.heartRate} unit="bpm" field="heartRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'hr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.temp} label="T" icon={Heart} color="text-orange-500" value={vitals.temperature} unit="°C" field="temperature" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'temp')} /><DesktopVitalSidebarItem inputRef={vitalRefs.rr} label="RR" icon={Wind} color="text-cyan-500" value={vitals.respiratoryRate} unit="rpm" field="respiratoryRate" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'rr')} /><DesktopVitalSidebarItem inputRef={vitalRefs.bs} label="BS" icon={Droplet} color="text-pink-500" value={vitals.bloodSugar} unit="mg/dL" field="bloodSugar" onChange={handleVitalChange} onKeyDown={(e: any) => handleVitalKeyDown(e, 'bs')} /><DesktopVitalSidebarItem label="O2" icon={Wind} color="text-blue-500" value={vitals.spO2} unit="%" field="spO2" onChange={handleVitalChange} /><DesktopVitalSidebarItem inputRef={vitalRefs.weight} label="WT" icon={Scale} color="text-slate-500" value={vitals.weight} unit="kg" field="weight" onChange={handleVitalChange} /></div>
               <div className="flex-1 flex flex-col gap-6">
                 
                 {/* DYNAMIC DIAGNOSIS / IDENTITY CARD */}
                 <div className={`p-4 rounded-[2rem] border transition-all duration-500 shadow-sm ${isRecordingScribe ? 'bg-purple-50/50 scribe-glow border-purple-200' : 'bg-white border-gray-100'}`}>
                    {isExpressMode ? (
-                      <div className="animate-fade-in flex items-center gap-6 px-4 h-16">
-                         {/* One Row Integrated Identity Bar */}
-                         <div className="flex-[4] relative">
+                      <div className="animate-fade-in flex items-center gap-4 px-4 h-16">
+                         {/* One Row Integrated Identity Bar - Resized 60/40 Split */}
+                         <div className="flex-[2.4] relative">
                             <input 
                                ref={patientNameRef}
                                className="w-full ghost-input text-2xl font-black text-gray-800 placeholder-gray-200 py-1" 
@@ -1612,15 +1664,43 @@ const Prescription: React.FC<PrescriptionProps> = ({ initialRecord }) => {
                                placeholder="وزن" 
                                value={vitals.weight} 
                                onKeyDown={(e) => {
-                                 if (e.key === 'Enter') { e.preventDefault(); diagnosisRef.current?.focus(); }
+                                 if (e.key === 'Enter') { e.preventDefault(); ccInputRef.current?.focus(); }
                                }}
                                onChange={e => handleVitalChange('weight', e.target.value)} 
                             />
                          </div>
+
+                         {/* New Chief Complaint Integrated Field (The 40% part) */}
+                         <div className="flex-[1.6] relative">
+                            <input 
+                               ref={ccInputRef}
+                               className="w-full ghost-input text-lg font-black text-blue-600 placeholder-blue-100 py-1" 
+                               placeholder="شکایت اصلی (CC)..." 
+                               value={ccTyping} 
+                               onFocus={() => { setSuggestionType('complaint'); setSelectedSuggestionIndex(-1); }}
+                               onBlur={() => { setTimeout(() => { setSuggestionType(prev => prev === 'complaint' ? null : prev); }, 200); }}
+                               onKeyDown={handleCCInputKeyDown}
+                               onChange={e => setCcTyping(e.target.value)}
+                            />
+                            {suggestionType === 'complaint' && getComplaintSuggestions().length > 0 && (
+                                <div className="absolute top-full right-0 left-0 bg-white shadow-2xl rounded-2xl border border-gray-100 z-[9999] overflow-hidden mt-2 animate-slide-up">
+                                    {getComplaintSuggestions().map((s, sIdx) => (
+                                        <button 
+                                          key={s.id} 
+                                          onMouseDown={(e) => { e.preventDefault(); selectComplaintTemplate(s.text); setCcTyping(''); }} 
+                                          className={`w-full text-right p-4 border-b border-gray-50 last:border-0 font-bold text-gray-700 flex justify-between items-center transition-colors ${selectedSuggestionIndex === sIdx ? 'suggestion-item-highlight' : 'hover:bg-blue-50'}`}
+                                        >
+                                            <span className="truncate flex-1">{s.text}</span>
+                                            <CheckCircle size={14} className="text-blue-500" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                         </div>
                          
                          <div className="w-px h-10 bg-gray-100 self-center"></div>
 
-                         {/* Compressed Diagnosis & CC Integrated */}
+                         {/* Compressed Diagnosis Integrated */}
                          <div className="flex-[3] flex items-center gap-3">
                             <div className="flex-1">
                                <input 
